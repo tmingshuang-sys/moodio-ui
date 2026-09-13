@@ -136,7 +136,7 @@
       }
       function agentUI(){
         if($('#agent-cursor')) return;
-        document.body.insertAdjacentHTML('beforeend',`<div id="agent-cursor" class="hidden" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5 19 11l-6.2 1.6L9.6 19z"/></svg><span class="agent-cursor-tag">Agent</span></div><div id="agent-live" class="hidden" role="status"><span class="agent-live-dot"></span><span id="agent-live-text"></span><button type="button" id="agent-live-stop" data-no-tip>停止</button></div>`);
+        document.body.insertAdjacentHTML('beforeend',`<div id="agent-glow" aria-hidden="true"></div><div id="agent-cursor" class="hidden" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5 19 11l-6.2 1.6L9.6 19z"/></svg><span class="agent-cursor-tag">Agent</span></div><div id="agent-live" class="hidden" role="status"><span class="agent-live-dot"></span><span id="agent-live-text"></span><button type="button" id="agent-live-stop" data-no-tip>停止</button></div>`);
         $('#agent-live-stop').addEventListener('click',()=>{ if(runningWorkflow){const w=findWorkflow(runningWorkflow.id)?.w;if(w)stopWorkflow(w);return;} agentAbort=true; agentStatus('正在停止…'); });
       }
       function agentStatus(text){ agentUI(); const el=$('#agent-live'); el.classList.remove('hidden'); $('#agent-live-text').textContent=text; }
@@ -168,7 +168,8 @@
         for(const ch of text){ if(agentAbort) break; cur+=ch; set(cur); await sleep(/[，。！？；：…—]/.test(ch)?per*5:per); }
         set(text); el?.classList?.remove('agent-typing');
       }
-      function agentEnd(){ $('#agent-cursor')?.classList.add('hidden'); $('#agent-live')?.classList.add('hidden'); document.querySelectorAll('.agent-focus,.agent-typing').forEach(e=>e.classList.remove('agent-focus','agent-typing')); }
+      function agentGlow(on){ agentUI(); $('#agent-glow')?.classList.toggle('on',!!on); }   // 显式化执行期间工作区表面的一层淡蓝紫流光
+      function agentEnd(){ agentGlow(false); $('#agent-cursor')?.classList.add('hidden'); $('#agent-live')?.classList.add('hidden'); document.querySelectorAll('.agent-focus,.agent-typing').forEach(e=>e.classList.remove('agent-focus','agent-typing')); }
       async function agentGoPage(page){
         if(state.projectPage===page) return;
         await agentClick($(`.top-nav button[data-flow="page-${page}"]`),`切换到「${PAGE_NAME[page]}」页`);
@@ -887,7 +888,7 @@
           // Validate the complete selected batch before the first mutation, not only the first item.
           if(w.kind==='assets')normalizeAgentAssets({assets:pending},w.context);else normalizeAgentShotDrafts(pending,w.context);
         }catch(e){w.error=e.message;save();renderAgent();return;}
-        const run={id:w.id,phase:'execute',stopped:false};runningWorkflow=run;agentBusy=true;
+        const run={id:w.id,phase:'execute',stopped:false};runningWorkflow=run;agentBusy=true;agentGlow(true);
         w.status='executing';w.error='';w.confirmed=true;
         publishWorkflow(w,`用户已确认，开始逐项写入${workflowName(w)}；同一任务不会重复创建。`);
         try{
@@ -1010,7 +1011,7 @@
           let autoLog=[];
           if(plan.length&&plan.every(a=>NO_CONFIRM_TOOLS.has(a.tool))){
             pending.text='Agent 正在读取…'; renderAgent();
-            const {results,buttons}=await runActions(plan,text); autoLog=results; out.actions=buttons;
+            agentGlow(true); let autoRes; try{ autoRes=await runActions(plan,text); } finally { agentGlow(false); } const {results,buttons}=autoRes; autoLog=results; out.actions=buttons;
             const reads=lastToolContents.splice(0);
             if(reads.length){
               const feed=reads.map(r=>`《${r.title}》：\n${r.content}`).join('\n\n');
@@ -1126,7 +1127,7 @@
         delete pendingPlans[key];
         const c=store.chats.find(x=>x.id===p.chatId)||chat();
         const pending={role:'system',text:'Agent 正在操作…',at:Date.now()}; c.messages.push(pending); renderAgent();
-        agentBusy=true; agentAbort=false; agentLogLines=[]; agentPending=pending; $('#agent-send').classList.add('busy');
+        agentBusy=true; agentAbort=false; agentLogLines=[]; agentPending=pending; $('#agent-send').classList.add('busy'); agentGlow(true);
         let out={role:'assistant',text:'',at:Date.now()};
         try{ await sleep(250); try{ await moodioVersions.snapshotAll('agent-before'); }catch(e){} const {results,buttons,reviewTargets}=await runActions(p.plan,p.text); out.text=results.map(r=>'✓ '+r).join('\n'); out.actions=buttons; try{ await moodioVersions.snapshotAll('agent'); }catch(e){} try{ refreshSceneSummaries(latestFile('script')); }catch(e){}
           if(reviewTargets&&reviewTargets.length&&modelCfg()?.apiKey){ pending.text='正在自审刚写的内容…'; renderAgent(); try{ out.review=await selfReview(reviewTargets.slice(0,2)); }catch(e){ console.warn('自审失败',e); } } }
