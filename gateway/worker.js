@@ -39,14 +39,13 @@ export default {
     if (request.method !== 'POST' || url.pathname !== '/v1/chat/completions') {
       return json({ error: { message: '只支持 POST /v1/chat/completions' } }, 404, cors);
     }
-    if (!env.DEEPSEEK_API_KEY) return json({ error: { message: '网关未配置上游 API key' } }, 500, cors);
-
-    // 共享口令：页面在 API Key 位置填的就是它
+    // 共享口令：页面在 API Key 位置填的就是它（先校验口令，再检查网关自身配置）
     const auth = request.headers.get('Authorization') || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
     if (!env.ACCESS_TOKEN || token !== env.ACCESS_TOKEN) {
       return json({ error: { message: '访问口令不正确' } }, 401, cors);
     }
+    if (!env.DEEPSEEK_API_KEY) return json({ error: { message: '网关未配置上游 API key' } }, 500, cors);
 
     let body;
     try { body = await request.json(); } catch (_) { return json({ error: { message: '请求体不是合法 JSON' } }, 400, cors); }
