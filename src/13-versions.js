@@ -75,21 +75,36 @@
         const file = findFile(row.fileId); if (!file) throw new Error('这份文档已不存在（可能在回收站里）');
         try { captureVisibleEdits?.(); } catch (_) {}
         await snapshot(file, 'before-restore');
+        apply(file, row.data);
+        return { file, row };
+      }
+      // 把一份内容写进文档并重绘（快照恢复与「历史版本恢复为最新」共用）
+      function apply(file, data) {
         if (file.type === 'script') {
           const h = shist(file); h.past.push(JSON.stringify(file.scriptBlocks || [])); if (h.past.length > 100) h.past.shift(); h.future = [];
-          file.scriptBlocks = JSON.parse(JSON.stringify(row.data.scriptBlocks || [])); h.baseline = JSON.stringify(file.scriptBlocks);
+          file.scriptBlocks = JSON.parse(JSON.stringify(data.scriptBlocks || [])); h.baseline = JSON.stringify(file.scriptBlocks);
         } else if (file.type === 'storyboard') {
-          const board = file.id; state.shots = [...state.shots.filter(s => (s.boardFileId || 'film-storyboard-list') !== board), ...JSON.parse(JSON.stringify(row.data.shots || []))];
+          const board = file.id, keep = state.shots.filter(s => (s.boardFileId || 'film-storyboard-list') !== board), used = new Set(keep.map(s => s.id));
+          const incoming = JSON.parse(JSON.stringify(data.shots || [])).map(s => ({ ...s, boardFileId: board, id: used.has(s.id) ? `${s.id}-${Math.random().toString(36).slice(2, 6)}` : s.id }));   // 来自另一份分镜表时改挂到本表、避开重复 id
+          state.shots = [...keep, ...incoming];
         } else {
-          Object.entries(row.data).forEach(([k, v]) => { file[k] = JSON.parse(JSON.stringify(v)); });
+          Object.entries(data).forEach(([k, v]) => { file[k] = JSON.parse(JSON.stringify(v)); });
         }
         file.updated = '刚刚'; file.updatedAt = Date.now();
         // 先把这份文档的稿纸从画面上移除，避免 render() 把旧内容写回文件
         $$(`[data-paper][data-page-file="${file.id}"]`).forEach(el => el.remove());
         scriptRestoring = true; try { persistWorkspace(); render(); } finally { scriptRestoring = false; }
         lastHash.set(file.id, hash(JSON.stringify(content(file))));
-        refreshPanel();
-        return { file, row };
+      }
+      // 历史版本恢复为最新：把 source 这份文档的内容写进 target（最新版本），target 原内容先存快照（Agent 撤回用）
+      async function restoreFromFile(source, target) {
+        if (!source || !target || source === target) return null;
+        try { captureVisibleEdits?.(); } catch (_) {}
+        try { await snapshot(target, 'before-restore'); } catch (_) {}
+        const data = content(source); if (!data) throw new Error('这类文档不支持恢复');
+        if (data.title !== undefined) delete data.title;   // 标题沿用最新版本的
+        apply(target, data);
+        return target;
       }
       // ---- 侧栏「历史版本」区 ----
       const fmtTime = at => { const d = new Date(at), now = new Date(); const sameDay = d.toDateString() === now.toDateString(); return (sameDay ? '今天 ' : `${d.getMonth() + 1}/${d.getDate()} `) + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -108,7 +123,7 @@
         const rs = event.target.closest('[data-version-restore]');
         if (rs) { event.preventDefault(); const id = Number(rs.dataset.versionRestore); get(id).then(row => { if (!row) return; if (!window.confirm(`恢复「${row.title}」到 ${fmtTime(row.at)} 的版本？当前内容会先另存一份，可以再恢复回来。`)) return; return restore(id).then(({ file }) => showToast(`已恢复「${file.title}」到 ${fmtTime(row.at)} 的版本`)); }).catch(e => showToast('恢复失败：' + e.message)); }
       });
-      primeHashes().then(() => snapshotAll('auto')).then(() => { try { render(); } catch (_) {} });   // 模块就绪后重绘一次，让侧栏出现「历史版本」
+      primeHashes().then(() => snapshotAll('auto'));   // 快照只作为 Agent 执行与恢复的安全网，不再在侧栏展示
       setInterval(() => { if (!document.hidden) snapshotAll('auto'); }, AUTO_INTERVAL);
-      return { list, get, snapshot, snapshotAll, restore, sectionHtml, fillSlot, refreshPanel, preview, REASON_LABEL, fmtTime };
+      return { list, get, snapshot, snapshotAll, restore, restoreFromFile, content, sectionHtml, fillSlot, refreshPanel, preview, REASON_LABEL, fmtTime };
     })();

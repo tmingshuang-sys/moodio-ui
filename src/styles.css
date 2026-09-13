@@ -3633,3 +3633,22 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #flow-dialog[data-kind="blank-page"] footer { border-top: 0; padding-top: 4px; }
     #flow-dialog[data-kind="blank-page"] .import-target { align-items: center; }
     #flow-dialog[data-kind="blank-page"] .import-target strong { font-size: 14px; }
+
+    /* 文档版本：历史行的「恢复」按钮、历史稿纸只读栏，版本列表展开动效（只在用户点开那一次播放） */
+    .writing-version-row { position: relative; }
+    .writing-version-restore { flex: none; margin-left: 4px; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink-2); font-size: 10px; font-weight: 400; opacity: 0; transition: opacity 120ms ease; }
+    .writing-version-row:hover .writing-version-restore, .writing-version-restore:focus-visible { opacity: 1; }
+    .writing-version-restore:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .paper-readonly-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f7f7f5; color: var(--ink-2); font-size: 12px; }
+    .paper-readonly-bar > span:last-child { display: flex; gap: 6px; }
+    .paper-readonly-bar button { height: 24px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink); font-size: 11px; cursor: pointer; }
+    .paper-readonly-bar button:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .paper-readonly [contenteditable="false"] { caret-color: transparent; cursor: default; }
+    .flow-note { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.7; }
+    .writing-doc-history.fx-open { animation: fx-menu-grow-down 400ms cubic-bezier(.215, .61, .355, 1); }
+    .writing-doc-history.fx-open > * { animation: fx-menu-row-in 400ms cubic-bezier(.215, .61, .355, 1) both; animation-delay: 300ms; }
+    .writing-doc-history.fx-open > :nth-child(2) { animation-delay: 380ms; }
+    .writing-doc-history.fx-open > :nth-child(3) { animation-delay: 460ms; }
+    .writing-doc-history.fx-open > :nth-child(4) { animation-delay: 540ms; }
+    .writing-doc-history.fx-open > :nth-child(n+5) { animation-delay: 620ms; }
+    @media (prefers-reduced-motion: reduce) { .writing-doc-history.fx-open, .writing-doc-history.fx-open > * { animation: none !important; } }

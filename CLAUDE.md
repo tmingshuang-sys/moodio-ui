@@ -54,7 +54,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 - **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。
 - **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
 - **密钥**：任何 API key 不得进入仓库、备份文件或对话；页面里的 key 只存 localStorage `moodio-agent-model`（备份时跳过）。
-- **数据**：多项目。索引在 localStorage `moodio-projects-v1`；每个项目的工作区在 `moodio-ui-refined-storyboard-v1::<项目id>`，对话在 `moodio-agent-chats::<项目id>`（键由 `moodioProjects.key()` 生成，见 src/00-projects.js）；媒体在 IndexedDB `moodio-cdoc-media`（全局）；文档快照在 IndexedDB `moodio-versions`（按项目和文档索引，见 src/13-versions.js：每 2 分钟自动、Agent 执行前后、手动、恢复前，内容相同不重复，每文档最多 100 条，自动快照 30 天后清理）。`persistWorkspace()` 是唯一的保存入口。切换 / 新建项目会整页重新加载；新建的项目通过 `moodio-project-fresh::<id>` 标记在首次加载时重置为空白（逻辑在 src/08 的 episodes 闭包末尾）。
+- **数据**：多项目。索引在 localStorage `moodio-projects-v1`；每个项目的工作区在 `moodio-ui-refined-storyboard-v1::<项目id>`，对话在 `moodio-agent-chats::<项目id>`（键由 `moodioProjects.key()` 生成，见 src/00-projects.js）；媒体在 IndexedDB `moodio-cdoc-media`（全局）；文档快照在 IndexedDB `moodio-versions`（按项目和文档索引，见 src/13-versions.js：每 2 分钟自动、Agent 执行前后、恢复前，内容相同不重复，每文档最多 100 条，自动快照 30 天后清理；只作安全网，UI 不展示）。**文档版本**：每类文档（空白页面按 lineageId）最新一份可编辑、自动保存，旧版本只读（稿纸顶部只读栏，可「恢复为最新版本」= 用旧版内容覆盖最新版）；新建版本只由用户点「新建版本」或明确要求 Agent（create_version）。`persistWorkspace()` 是唯一的保存入口。切换 / 新建项目会整页重新加载；新建的项目通过 `moodio-project-fresh::<id>` 标记在首次加载时重置为空白（逻辑在 src/08 的 episodes 闭包末尾）。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`。
 - **不要编辑** `~/Downloads` 里的旧副本；不要把 `dist/`、`node_modules/`、`.wrangler/` 提交进仓库。
 
@@ -68,8 +68,9 @@ npm run check          # 对 src/*.js 逐个 node --check
 | 资产侧栏 | `.project-rail`，`alignAssetsRail()` 已改为固定内边距 |
 | Agent 面板 | `(function agentWindow(){ ... })()` |
 | 聊天规划 | `remotePlan()`（模型）、`localPlan()`（本地回退）、`partialPlanMessage()`（流式取 message） |
-| 执行工具 | `AGENT_TOOLS`：追问 ask_user / save_brief；读取 read_asset / read_doc / open_doc / locate_scene；文档 create_doc / rename_doc / duplicate_doc / delete_doc；剧本 write_cover / write_script / rewrite_scene / insert_scene / delete_scene / move_scene；镜头 create_shots / update_shot / delete_shot / move_shot / create_chunk；资产 create_asset / update_asset / merge_assets / delete_asset；剧集 create_episode / switch_episode / rename_episode（通过 `episodesApi`，定义在 src/08）；项目 create_project / switch_project / rename_project（`moodioProjects`）；版本 list_versions / restore_version（`moodioVersions`）；导出 export_docs / export_backup |
-| 历史版本 | `moodioVersions`（src/13）：`snapshot()` / `snapshotAll()` / `list()` / `restore()`；侧栏区由 `sectionHtml()` + `fillSlot()` 渲染，按钮 `data-version-save` / `data-version-restore` |
+| 执行工具 | `AGENT_TOOLS`：追问 ask_user / save_brief；读取 read_asset / read_doc / open_doc / locate_scene；文档 create_doc / rename_doc / duplicate_doc / delete_doc；剧本 write_cover / write_script / rewrite_scene / insert_scene / delete_scene / move_scene；镜头 create_shots / update_shot / delete_shot / move_shot / create_chunk；资产 create_asset / update_asset / merge_assets / delete_asset；剧集 create_episode / switch_episode / rename_episode（通过 `episodesApi`，定义在 src/08）；项目 create_project / switch_project / rename_project（`moodioProjects`）；版本 list_versions / restore_version / create_version（文档版本链，见 src/08）；导出 export_docs / export_backup |
+| 文档版本 | 侧栏文件夹展开区（src/08 `renderWritingFolders()`）：`docVersionsOf()` / `latestVersionOf()` / `isHistoricalFile()`；恢复 `restoreVersionToLatest()`（入口 `data-version-restore-file`，确认弹窗 `data-version-restore-confirm`）；新建 `createVersionFromCurrent()`；历史稿纸只读由 `applyHistoricalReadonly()` 包在 render 上 |
+| 内容快照（安全网） | `moodioVersions`（src/13）：`snapshot()` / `snapshotAll()` / `restore()` / `restoreFromFile()`，只给 Agent 执行前后与恢复前留底，不在侧栏展示 |
 | 回收站 | `state.trash`，文档用 `trashPut()`、资产用 `trashPutAsset()`，`trashRestore()` 统一恢复；入口是消息里的 `restore-trash:` 按钮 |
 | 识别分镜 / 资产工作流 | `agentWorkflowClient`、`analyzeWorkflow()`、`executeWorkflow()` |
 | 模型设置对话框 | `[data-agent-model-settings]` 处理器，`PROVIDER_DEFAULTS` |

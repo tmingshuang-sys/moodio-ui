@@ -153,17 +153,17 @@
         const files = filesForType(d.id), current = files[files.length - 1], history = files.slice(0, -1).reverse();
         const activeFile = files.find(f => activeIds.has(f.id)) || null, viewingHistory = !!activeFile && activeFile !== current;
         const hasActive = !!activeFile || (d.id === 'script' && coverShown), open = openFolders().has(d.id);
-        const versionRow = (f, index, isCurrent) => `<button class="writing-version-row ${activeIds.has(f.id) ? 'active' : ''}" data-writing-file="${f.id}" data-file-id="${f.id}" data-drag-file="${f.id}" draggable="true"><span class="writing-version-no">v${index}</span><span class="writing-version-title">${escapeHtml(displayFileTitle(f))}</span><small>${isCurrent ? '当前' : escapeHtml(f.updated || '')}</small></button>`;
-        const panel = open ? `<div class="writing-folder-files writing-doc-history">${versionRow(current, files.length, true)}${history.map((f, i) => versionRow(f, files.length - 1 - i, false)).join('')}<button class="writing-file-new" data-writing-new="${d.id}">${icons.plus}<span>新建版本</span></button></div>` : '';
-        return `<div class="writing-folder ${open ? 'open' : ''} ${hasActive ? 'has-active' : ''}"><button class="writing-folder-row writing-doc-row ${hasActive ? 'active' : ''}" data-writing-file="${current.id}" data-drag-folder="${d.id}" draggable="true"><span class="writing-doc-icon">${icons[d.icon] || icons.custom}</span><span class="writing-folder-name">${escapeHtml(d.name)}</span>${viewingHistory ? '<span class="writing-doc-tag">查看历史</span>' : ''}<span class="writing-doc-versions" data-writing-folder="${d.id}" role="button" aria-expanded="${open}" aria-label="${escapeHtml(d.name)} 的版本历史"><small>${files.length > 1 ? files.length + ' 个版本' : '1 个版本'}</small>${chevron}</span></button>${panel}</div>`;
+        const versionRow = (f, index, isCurrent) => `<button class="writing-version-row ${activeIds.has(f.id) ? 'active' : ''}" data-writing-file="${f.id}" data-file-id="${f.id}" data-drag-file="${f.id}" draggable="true"><span class="writing-version-no">v${index}</span><span class="writing-version-title">${escapeHtml(displayFileTitle(f))}</span><small>${isCurrent ? '最新' : escapeHtml(f.updated || '')}</small>${isCurrent ? '' : `<span class="writing-version-restore" role="button" tabindex="0" data-version-restore-file="${f.id}" title="用这一版的内容覆盖最新版本">恢复</span>`}</button>`;
+        const panel = open ? `<div class="writing-folder-files writing-doc-history ${folderJustOpened === d.id ? 'fx-open' : ''}">${versionRow(current, files.length, true)}${history.map((f, i) => versionRow(f, files.length - 1 - i, false)).join('')}<button class="writing-file-new" data-writing-new="${d.id}">${icons.plus}<span>新建版本</span></button></div>` : '';
+        return `<div class="writing-folder ${open ? 'open' : ''} ${hasActive ? 'has-active' : ''}"><button class="writing-folder-row writing-doc-row ${hasActive ? 'active' : ''}" data-writing-file="${current.id}" data-drag-folder="${d.id}" draggable="true"><span class="writing-doc-icon">${icons[d.icon] || icons.custom}</span><span class="writing-folder-name">${escapeHtml(d.name)}</span>${viewingHistory ? '<span class="writing-doc-tag">历史 · 只读</span>' : ''}<span class="writing-doc-versions" data-writing-folder="${d.id}" role="button" aria-expanded="${open}" aria-label="${escapeHtml(d.name)} 的版本历史"><small>${files.length > 1 ? files.length + ' 个版本' : '1 个版本'}</small>${chevron}</span></button>${panel}</div>`;
       }).join('')
       // 空白页面：每一页是一条独立的版本链（lineageId 相同的文件互为版本），最新一份为当前版本
       + blankPageLineages().map(({ key, files }) => {
         const current = files[files.length - 1], history = files.slice(0, -1).reverse(), folderKey = 'custom:' + key;
         const activeFile = files.find(f => activeIds.has(f.id)) || null, viewingHistory = !!activeFile && activeFile !== current, open = openFolders().has(folderKey);
-        const versionRow = (f, index, isCurrent) => `<button class="writing-version-row ${activeIds.has(f.id) ? 'active' : ''}" data-writing-file="${f.id}" data-file-id="${f.id}" data-drag-file="${f.id}" draggable="true"><span class="writing-version-no">v${index}</span><span class="writing-version-title">${escapeHtml(displayFileTitle(f))}</span><small>${isCurrent ? '当前' : escapeHtml(f.updated || '')}</small></button>`;
-        const panel = open ? `<div class="writing-folder-files writing-doc-history">${versionRow(current, files.length, true)}${history.map((f, i) => versionRow(f, files.length - 1 - i, false)).join('')}<button class="writing-file-new" data-writing-new="${folderKey}">${icons.plus}<span>新建版本</span></button></div>` : '';
-        return `<div class="writing-folder ${open ? 'open' : ''} ${activeFile ? 'has-active' : ''}"><button class="writing-folder-row writing-doc-row blank-page ${activeFile ? 'active' : ''}" data-writing-file="${current.id}" data-file-id="${current.id}" data-drag-file="${current.id}" draggable="true"><span class="writing-doc-icon">${blankKindIcon(current.kind)}</span><span class="writing-folder-name">${escapeHtml(displayFileTitle(current))}</span>${viewingHistory ? '<span class="writing-doc-tag">查看历史</span>' : ''}<span class="writing-doc-versions" data-writing-folder="${folderKey}" role="button" aria-expanded="${open}" aria-label="${escapeHtml(displayFileTitle(current))} 的版本历史"><small>${files.length} 个版本</small>${chevron}</span></button>${panel}</div>`;
+        const versionRow = (f, index, isCurrent) => `<button class="writing-version-row ${activeIds.has(f.id) ? 'active' : ''}" data-writing-file="${f.id}" data-file-id="${f.id}" data-drag-file="${f.id}" draggable="true"><span class="writing-version-no">v${index}</span><span class="writing-version-title">${escapeHtml(displayFileTitle(f))}</span><small>${isCurrent ? '最新' : escapeHtml(f.updated || '')}</small>${isCurrent ? '' : `<span class="writing-version-restore" role="button" tabindex="0" data-version-restore-file="${f.id}" title="用这一版的内容覆盖最新版本">恢复</span>`}</button>`;
+        const panel = open ? `<div class="writing-folder-files writing-doc-history ${folderJustOpened === folderKey ? 'fx-open' : ''}">${versionRow(current, files.length, true)}${history.map((f, i) => versionRow(f, files.length - 1 - i, false)).join('')}<button class="writing-file-new" data-writing-new="${folderKey}">${icons.plus}<span>新建版本</span></button></div>` : '';
+        return `<div class="writing-folder ${open ? 'open' : ''} ${activeFile ? 'has-active' : ''}"><button class="writing-folder-row writing-doc-row blank-page ${activeFile ? 'active' : ''}" data-writing-file="${current.id}" data-file-id="${current.id}" data-drag-file="${current.id}" draggable="true"><span class="writing-doc-icon">${blankKindIcon(current.kind)}</span><span class="writing-folder-name">${escapeHtml(displayFileTitle(current))}</span>${viewingHistory ? '<span class="writing-doc-tag">历史 · 只读</span>' : ''}<span class="writing-doc-versions" data-writing-folder="${folderKey}" role="button" aria-expanded="${open}" aria-label="${escapeHtml(displayFileTitle(current))} 的版本历史"><small>${files.length} 个版本</small>${chevron}</span></button>${panel}</div>`;
       }).join('')
       ;
     }
@@ -198,14 +198,17 @@
     window.addEventListener('resize', stopWritingWorkspaceTransition);
     writingWorkspaceMotionPreference.addEventListener?.('change', stopWritingWorkspaceTransition);
 
+    var folderJustOpened = null;   // 刚被用户点开的文件夹，只有它的版本列表播放展开动效（重绘不重播）
     document.addEventListener('click', event => {
+      const restoreBtn = event.target.closest('[data-version-restore-file]');
+      if (restoreBtn) { event.preventDefault(); event.stopImmediatePropagation(); askRestoreVersion(restoreBtn.dataset.versionRestoreFile); return; }
       const folder = event.target.closest('[data-writing-folder]'), file = event.target.closest('[data-writing-file]'), create = event.target.closest('[data-writing-new]'), blank = event.target.closest('[data-writing-blank]');
       if (!folder && !file && !create && !blank) return;
       // 对照模式下，从侧栏打开 / 新建的文档默认落在左页
       if (!folder && state.view === 'compare') state.selectedPageSlot = 'left';
       if (blank) { event.preventDefault(); event.stopImmediatePropagation(); return createBlankPage(); }
       event.preventDefault(); event.stopImmediatePropagation();
-      if (folder) { const id = folder.dataset.writingFolder; openFolders().has(id) ? openFolders().delete(id) : openFolders().add(id); renderWritingPanel(); return; }
+      if (folder) { const id = folder.dataset.writingFolder; const opening = !openFolders().has(id); opening ? openFolders().add(id) : openFolders().delete(id); folderJustOpened = opening ? id : null; try { renderWritingPanel(); } finally { folderJustOpened = null; } return; }
       if (file) return selectWritingFile(file.dataset.writingFile);
       openFolders().add(create.dataset.writingNew); createVersionFromCurrent(create.dataset.writingNew);
     }, true);
@@ -244,6 +247,59 @@
       showToast(`已基于「${source.title}」新建 ${copy.title}，可以继续编辑`);
     }
 
+
+    /* ===== 文档版本：每类文档（空白页面按 lineage）最新一份自动保存，旧版本只读，可恢复为最新；新建版本只由用户或明确要求 Agent 执行 ===== */
+    const VERSIONED_HIDDEN = new Set(['cover', 'dailyReport', 'dailySchedule', 'locationBreakdown', 'scriptOrder']);   // 这些类型不按版本链管理
+    function docVersionsOf(file){
+      if (!file || VERSIONED_HIDDEN.has(file.type)) return file ? [file] : [];
+      if (file.type === 'custom') return blankPageLineages().find(g => g.files.includes(file))?.files || [file];
+      return filesForType(file.type);
+    }
+    function versionIndexOf(file){ return docVersionsOf(file).indexOf(file) + 1; }
+    function latestVersionOf(file){ const chain = docVersionsOf(file); return chain[chain.length - 1] || file; }
+    function isHistoricalFile(file){ return !!file && latestVersionOf(file) !== file; }
+    function askRestoreVersion(id){
+      const source = findFile(id); if (!source || !isHistoricalFile(source)) return;
+      const latest = latestVersionOf(source);
+      openFlowDialog('恢复为最新版本', `<p class="flow-note">用 <strong>v${versionIndexOf(source)}「${escapeHtml(displayFileTitle(source))}」</strong> 的内容覆盖最新版本 <strong>v${versionIndexOf(latest)}「${escapeHtml(displayFileTitle(latest))}」</strong>。最新版本现在的内容会先存一份快照，Agent 可以帮你撤回。</p>`,
+        flowButton('close-dialog', '取消') + `<button type="button" class="canvas-action primary" data-version-restore-confirm="${source.id}">恢复</button>`);
+    }
+    async function restoreVersionToLatest(id){
+      const source = findFile(id); if (!source) throw new Error('找不到这份文档');
+      if (!isHistoricalFile(source)) throw new Error('这已经是最新版本');
+      const latest = latestVersionOf(source);
+      await moodioVersions.restoreFromFile(source, latest);
+      selectFile(latest.id); persistWorkspace(); render();
+      showToast(`已把 v${versionIndexOf(source)} 的内容恢复为最新版本`);
+      return latest;
+    }
+    document.addEventListener('click', event => {
+      const ok = event.target.closest('[data-version-restore-confirm]'); if (!ok) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      const id = ok.dataset.versionRestoreConfirm; closeFlowDialog();
+      restoreVersionToLatest(id).catch(e => showToast('恢复失败：' + e.message));
+    }, true);
+    // 历史版本的稿纸只读：去掉可编辑属性、禁用表单控件，顶部给一条提示栏（恢复 / 回到最新）
+    function applyHistoricalReadonly(){
+      $$('[data-paper][data-page-file]').forEach(paper => {
+        const file = findFile(paper.dataset.pageFile);
+        if (!file || !isHistoricalFile(file)) return;
+        paper.querySelectorAll('[contenteditable]:not([contenteditable="false"])').forEach(el => el.setAttribute('contenteditable', 'false'));
+        paper.querySelectorAll('input, textarea, select').forEach(el => { el.disabled = true; });
+        if (paper.classList.contains('paper-readonly')) return;
+        paper.classList.add('paper-readonly');
+        const latest = latestVersionOf(file);
+        paper.insertAdjacentHTML('afterbegin', `<div class="paper-readonly-bar" contenteditable="false"><span>历史版本 v${versionIndexOf(file)} · 只读</span><span><button type="button" data-version-restore-file="${file.id}">恢复为最新版本</button><button type="button" data-writing-file="${latest.id}">回到最新版本</button></span></div>`);
+      });
+    }
+    const renderBeforeReadonly = render;
+    render = () => { renderBeforeReadonly(); applyHistoricalReadonly(); };
+    document.addEventListener('focusin', event => { if (event.target.closest?.('[data-paper]')) applyHistoricalReadonly(); });
+    document.addEventListener('beforeinput', event => {
+      const paper = event.target.closest?.('[data-paper][data-page-file]'); if (!paper) return;
+      if (isHistoricalFile(findFile(paper.dataset.pageFile))) { event.preventDefault(); showToast('历史版本只读，可恢复为最新版本后再编辑'); }
+    }, true);
+    applyHistoricalReadonly();
 
     /* ===== 侧栏文件夹：拖拽调整顺序 ===== */
     (function folderReorder(){
@@ -531,7 +587,7 @@
       const base = renderContextSectionsBase(sceneRows);
       const { type } = contextDocInfo();
       const lintPart = type === 'script' && typeof MOODIO_SCRIPT_RULES !== 'undefined' ? scriptLintSection(contextDocInfo().file) : '';   // 规则表在 src/15 赋值，首屏渲染时可能尚未就绪
-      return base + lintPart + (type && type !== 'cover' && typeof moodioVersions !== 'undefined' ? moodioVersions.sectionHtml() : '');
+      return base + lintPart;   // 版本管理在文档列表的展开区（v1 / v2…），不在这里
     }
     // 侧栏「格式检查」：按当前排版规则校验剧本，点击定位到那一行
     function scriptLintSection(file){
