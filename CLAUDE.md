@@ -42,7 +42,8 @@ npm run check          # 对 src/*.js 逐个 node --check
 
 - **样式**：都在 `src/styles.css`。不要改动早期规则，新的覆盖规则追加到文件末尾、带一行中文注释说明用途。品牌渐变用 `var(--brand)`；SVG 线条渐变引用 `#moodio-brand-gradient`。
 - **JS**：先用 `grep -n` 在 `src/` 里定位到具体文件，再用精确字符串替换或小段插入；新增顶层函数放在相关文件里即可，不需要导出。`src/11-agent.js` 里的 `agentWindow` IIFE 内部函数在外部不可见。
-- **Agent 执行前必须确认**：`reply()` 只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`localPlan()`、`remotePlan()` 的系统提示。
+- **Agent 执行前必须确认**：`reply()` 只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。例外：`NO_CONFIRM_TOOLS`（read_doc / open_doc / locate_scene）直接执行，read_doc 的结果会交回模型再规划一轮。`DESTRUCTIVE_TOOLS`（delete_doc / delete_scene / delete_shot）在计划里标 ⚠，确认按钮显示删除计数；delete_doc 进 `state.trash`（7 天），结果里带「撤销删除」按钮。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`previewAction()`（如有内容预览）、`remotePlan()` 的系统提示，以及必要时 `NO_CONFIRM_TOOLS` / `DESTRUCTIVE_TOOLS`。
+- **Agent 上下文**：`remotePlan()` 通过 `agentInventoryText()` 把文档清单（含 id）、剧本场次、镜头、资产、剧集塞给模型；模型只能引用清单里的 id，找不到要反问。
 - **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。
 - **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
 - **密钥**：任何 API key 不得进入仓库、备份文件或对话；页面里的 key 只存 localStorage `moodio-agent-model`（备份时跳过）。
@@ -60,7 +61,8 @@ npm run check          # 对 src/*.js 逐个 node --check
 | 资产侧栏 | `.project-rail`，`alignAssetsRail()` 已改为固定内边距 |
 | Agent 面板 | `(function agentWindow(){ ... })()` |
 | 聊天规划 | `remotePlan()`（模型）、`localPlan()`（本地回退）、`partialPlanMessage()`（流式取 message） |
-| 执行工具 | `AGENT_TOOLS`（write_cover / write_script / create_shots / create_chunk / create_doc / create_asset） |
+| 执行工具 | `AGENT_TOOLS`：读取 read_doc / open_doc / locate_scene；文档 create_doc / rename_doc / duplicate_doc / delete_doc；剧本 write_cover / write_script / rewrite_scene / insert_scene / delete_scene / move_scene；镜头 create_shots / update_shot / delete_shot / move_shot / create_chunk；资产 create_asset |
+| 回收站 | `state.trash`、`trashPut()`、`trashRestore()`，恢复入口是消息里的 `restore-trash:` 按钮 |
 | 识别分镜 / 资产工作流 | `agentWorkflowClient`、`analyzeWorkflow()`、`executeWorkflow()` |
 | 模型设置对话框 | `[data-agent-model-settings]` 处理器，`PROVIDER_DEFAULTS` |
 | 吉祥物气泡 | `agentHintController`（约 10 秒一轮） |
