@@ -3552,6 +3552,11 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
 
     .agent-model-note { display: block; margin-top: 6px; color: var(--ink-3); font-size: 11px; line-height: 1.5; }
 
+    /* 导出窗口底部：项目备份按钮组 */
+    .export-backup { display: flex; gap: 8px; align-items: center; }
+    .export-backup button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line-strong); background: #fff; color: var(--ink-2); font-size: 11px; font-weight: 620; cursor: pointer; }
+    .export-backup button:hover { background: #f3f3f1; color: var(--ink); }
+
 </style>
 </head>
 <body>
@@ -3691,6 +3696,11 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
       </div>
       <div class="export-file-list" id="export-file-list"></div>
       <footer class="export-dialog-foot">
+        <div class="export-backup" aria-label="项目备份">
+          <button type="button" class="secondary" data-backup-export data-tooltip="把剧本、分镜、资产、对话和图片打包成一个 JSON 文件">导出项目备份</button>
+          <button type="button" class="secondary" data-backup-import data-tooltip="从备份文件恢复，会覆盖当前浏览器里的数据">导入备份…</button>
+          <input type="file" id="backup-file-input" accept="application/json,.json" hidden>
+        </div>
         <span id="export-foot-note" hidden></span>
         <div><button class="secondary" data-export-close>取消</button><button class="primary" id="export-confirm-button" data-export-confirm>导出</button></div>
       </footer>
@@ -5733,6 +5743,81 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     function closeExportDialog() {
       $('#export-dialog-backdrop')?.classList.add('hidden');
     }
+
+    /* ===== 项目备份：导出 / 导入（localStorage 里的 moodio-* 数据 + IndexedDB 媒体） ===== */
+    const BACKUP_SKIP_KEYS = new Set(['moodio-agent-model']);   // API 密钥不进备份文件
+    function backupLocalKeys() { return Object.keys(localStorage).filter(k => k.startsWith('moodio-') && !BACKUP_SKIP_KEYS.has(k)); }
+    function blobToDataUrl(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
+    async function readAllMedia() {
+      const db = await cdocDb();
+      const rows = await new Promise((res, rej) => {
+        const tx = db.transaction('files'), store = tx.objectStore('files'), out = [];
+        const req = store.openCursor();
+        req.onsuccess = () => { const c = req.result; if (!c) return res(out); out.push({ id: String(c.key), blob: c.value }); c.continue(); };
+        req.onerror = () => rej(req.error);
+      });
+      const media = [];
+      for (const row of rows) { if (row.blob instanceof Blob) media.push({ id: row.id, type: row.blob.type || 'application/octet-stream', data: await blobToDataUrl(row.blob) }); }
+      return media;
+    }
+    async function writeAllMedia(media) {
+      const db = await cdocDb();
+      await new Promise((res, rej) => { const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').clear(); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+      for (const m of media || []) {
+        if (!m || typeof m.id !== 'string' || typeof m.data !== 'string') continue;
+        const blob = await (await fetch(m.data)).blob();
+        await cdocPutMedia(m.id, blob);
+      }
+    }
+    async function buildProjectBackup() {
+      try { captureVisibleEdits?.(); } catch (_) {}
+      persistWorkspace();
+      const entries = {}; backupLocalKeys().forEach(k => { entries[k] = localStorage.getItem(k); });
+      let media = []; try { media = await readAllMedia(); } catch (e) { console.warn('媒体读取失败，备份中不含图片视频', e); }
+      return { app: 'moodio-ui', kind: 'project-backup', version: 1, exportedAt: new Date().toISOString(), localStorage: entries, media };
+    }
+    async function exportProjectBackup() {
+      const backup = await buildProjectBackup();
+      const json = JSON.stringify(backup);
+      const d = new Date(), pad = n => String(n).padStart(2, '0');
+      const name = `moodio-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      showToast(`已导出备份 ${name}（${(json.length / 1024 / 1024).toFixed(2)} MB，含 ${backup.media.length} 个媒体文件）`);
+    }
+    let pendingBackup = null;
+    function validateBackup(data) {
+      if (!data || data.app !== 'moodio-ui' || data.kind !== 'project-backup' || typeof data.localStorage !== 'object') throw new Error('这不是 Moodio 的项目备份文件');
+      if (!data.localStorage[WORKSPACE_STORAGE_KEY]) throw new Error('备份文件里没有项目数据');
+      JSON.parse(data.localStorage[WORKSPACE_STORAGE_KEY]);   // 确认能解析
+      return data;
+    }
+    async function applyProjectBackup(data) {
+      backupLocalKeys().forEach(k => localStorage.removeItem(k));
+      Object.entries(data.localStorage).forEach(([k, v]) => { if (k.startsWith('moodio-') && !BACKUP_SKIP_KEYS.has(k) && typeof v === 'string') localStorage.setItem(k, v); });
+      try { await writeAllMedia(data.media); } catch (e) { console.warn('媒体恢复失败', e); }
+    }
+    document.addEventListener('click', event => {
+      if (event.target.closest('[data-backup-export]')) { event.preventDefault(); exportProjectBackup().catch(e => showToast('导出失败：' + e.message)); return; }
+      if (event.target.closest('[data-backup-import]')) { event.preventDefault(); $('#backup-file-input').value = ''; $('#backup-file-input').click(); return; }
+      if (event.target.closest('[data-backup-confirm]')) {
+        event.preventDefault(); const data = pendingBackup; pendingBackup = null; closeFlowDialog();
+        if (!data) return;
+        applyProjectBackup(data).then(() => { showToast('备份已恢复，正在重新加载…'); setTimeout(() => location.reload(), 600); }).catch(e => showToast('恢复失败：' + e.message));
+      }
+    });
+    document.addEventListener('change', event => {
+      if (event.target.id !== 'backup-file-input') return;
+      const file = event.target.files?.[0]; if (!file) return;
+      file.text().then(text => {
+        const data = validateBackup(JSON.parse(text));
+        pendingBackup = data;
+        const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString() : '未知时间';
+        closeExportDialog?.();
+        openFlowDialog('导入项目备份', `<p>将用备份文件 <strong>${escapeHtml(file.name)}</strong>（导出于 ${escapeHtml(when)}，含 ${(data.media || []).length} 个媒体文件）覆盖当前浏览器里的全部项目数据，包括剧本、分镜、资产和 Agent 对话。</p><p>此操作不可撤销。建议先导出一份当前数据的备份。</p>`, flowButton('close-dialog', '取消') + '<button class="canvas-action primary" data-backup-confirm>覆盖并恢复</button>');
+      }).catch(e => showToast('无法读取备份：' + e.message));
+    });
 
     function createStoryboardFile(options = {}) {
       const newId = Math.max(0, ...state.shots.map(shot => shot.id)) + 1;
