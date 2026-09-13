@@ -79,7 +79,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 | 渐变聚焦光圈 / 渐变光标 | `#gradient-focus-ring`、`#gradient-caret` 两个 IIFE |
 | 项目备份 | `buildProjectBackup()`、`applyProjectBackup()`，入口在导出窗口底部 |
 | 导出文档 | `openExportDialog()` |
-| 通用对话框 | `openFlowDialog()` / `closeFlowDialog()` / `flowButton()` |
+| 通用对话框 | `openFlowDialog()` / `closeFlowDialog()` / `flowButton()`。**弹窗规范**（以「导入文档到哪个板块」为准）：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、两列卡片只显示名称（不放名称下的说明文字）、底栏 14/22 按钮靠右；非 flow 的弹窗（导出窗口）用样式对齐到同样尺寸 |
 
 ## 已知限制
 
