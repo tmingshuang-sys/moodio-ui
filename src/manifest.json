@@ -16,5 +16,6 @@
   "13-versions.js",
   "14-writing-guides.js",
   "15-script-rules.js",
-  "16-shot-rules.js"
+  "16-shot-rules.js",
+  "17-i18n.js"
 ]

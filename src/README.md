@@ -18,6 +18,7 @@
 - `13-versions.js` 版本层：文档快照（IndexedDB）、侧栏历史版本面板、恢复
 - `14-writing-guides.js` 分类型写作规范（剧集 / 电影 / 短片 / 广告），按创作纲领类型注入提示
 - `00-menu-motion.js` 下拉菜单开合动效助手 `moodioMenuFx`（open / close / settle / isOpen），放最前面加载；样式在 styles.css 末尾的 `.fx-menu` 规则
+- `17-i18n.js` 界面语言层：中 / EN 词典与正则、渲染后替换引擎、右上角切换按钮
 - `16-shot-rules.js` 分镜规范（按类型）、结构化镜头字段规整、草案预检（查重 / 错配 / 覆盖）、规则检查、用户风格样例
 - `15-script-rules.js` 剧本格式规则（美式 / 中式标题、虚写与不可拍词表、镜头术语）与校验器
 - `styles.css` 全部样式；新增覆盖规则追加到文件末尾

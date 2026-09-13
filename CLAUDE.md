@@ -53,6 +53,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 - **写作规范**：`src/14-writing-guides.js` 的 `MOODIO_WRITING_GUIDES` 按类型（series / film / short / ad / other）给出结构、格式、对白与节奏、自查清单，`writingGuideText()` 只注入当前纲领类型那一份。多场内容分两轮：先大纲后逐场。
 - **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染问题卡片（`questionsHtml()`，消息字段 `questions` / `answers` / `questionsUsed`），不执行其他动作；用户点选后自动发送回答。用户给出的纲领信息由 `save_brief` 记录。
 - **下拉菜单动效**：由 JS 开合的菜单（剧集 / 剧本格式 / 资产切换 / 文件右键 / 云文档块菜单）统一走 `moodioMenuFx`（src/00-menu-motion.js）：先摆位、移除 hidden，再 `open(menu)`；关闭用 `close(menu, () => menu.classList.add('hidden'))`，判断是否打开用 `isOpen(menu)`（收起中途视为已关闭）。随 render 重建的菜单（标签、媒体、画布操作、云文档小弹层）只用 styles.css 末尾的关键帧入场。新增下拉菜单沿用同一套。
+- **界面语言（中 / EN）**：`src/17-i18n.js` 的 `moodioI18n`。不改各处代码：渲染后用 MutationObserver 按词典 `MOODIO_I18N_EN`（精确）和 `MOODIO_I18N_PATTERNS`（带数字 / 名称的正则）把系统文案替换成英文，并记住原文以便切回中文；可编辑区、输入控件、模型正文（用户内容）不动。右上角 `#lang-toggle` 切换，偏好存 localStorage `moodio-lang`。**新增系统文案时在词典里补一条**（带数字的用正则）。
 - **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。执行期间（`executePlan()`、`executeWorkflow()`、`reply()` 里免确认工具的自动执行）通过 `agentGlow(true/false)` 在工作区表面盖一层淡蓝紫流光 `#agent-glow`（z-index 460，在 Agent 面板之下，不可点击），同时 `agentExecMode()` 收起对话面板、把状态胶囊 `#agent-live` 变成吉祥物旁的气泡（`.as-bubble`，`positionLiveBubble()` 按 `#agent-fab` 定位、带小三角）；`agentEnd()` 关掉流光、气泡复原，面板若执行前是开着的就重新打开。
 - **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
 - **密钥**：任何 API key 不得进入仓库、备份文件或对话；页面里的 key 只存 localStorage `moodio-agent-model`（备份时跳过）。

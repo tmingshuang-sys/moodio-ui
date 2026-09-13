@@ -3782,3 +3782,7 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .workflow-plans li, .workflow-lint li, .workflow-review-result li { margin: 4px 0; line-height: 1.5; }
     .workflow-plans span, .workflow-review-result li span { color: var(--ink-3); }
     .workflow-review-result .agent-review-fix { margin-top: 8px; }
+
+    /* 右上角语言切换按钮：与其他顶栏图标按钮同尺寸，文字 EN / 中 */
+    .lang-toggle { font-size: 12px; font-weight: 600; letter-spacing: .02em; min-width: 36px; color: var(--ink-2); }
+    .lang-toggle:hover { color: var(--ink); }
