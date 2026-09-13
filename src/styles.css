@@ -3683,3 +3683,7 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #agent-live button { background: rgba(255,255,255,.22); }
     #agent-live button:hover { background: rgba(255,255,255,.36); }
     @media (prefers-reduced-motion: reduce) { #agent-live { animation: none; } }
+
+    /* Agent 状态胶囊移到底部「专注 / 对照」按钮上方，水平对齐同一中心 */
+    #agent-live { top: auto; bottom: calc(var(--stack-tray) + 14px + 42px + 10px); left: calc(var(--sidebar) + (100vw - var(--sidebar)) / 2); }
+    @media (max-width: 600px) { #agent-live { left: 50%; bottom: calc(12px + 42px + 10px); } }
