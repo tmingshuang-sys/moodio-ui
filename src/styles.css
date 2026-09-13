@@ -3763,3 +3763,22 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #flow-dialog[data-kind="recognize-assets"] header { background: #6d9bb6 url(../assets/dialog-bg-recognize-assets.jpg) center 30% / cover no-repeat; border-bottom: 1px solid var(--line); }
     #flow-dialog[data-kind="recognize-assets"] header h2, #flow-dialog[data-kind="recognize-assets"] .close-dialog { color: #191917; }
     #flow-dialog[data-kind="recognize-assets"] .close-dialog { border: 0; background: transparent; box-shadow: none; }
+
+    /* 分镜识别卡片：预检徽标、镜头策略、规则提示、复核结果 */
+    .wf-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 500; vertical-align: middle; background: #ececea; color: var(--ink-2); }
+    .wf-badge.wf-new { background: #e6efe8; color: #2f6b45; }
+    .wf-badge.wf-duplicate { background: #ececea; color: var(--ink-3); }
+    .wf-badge.wf-suspect { background: #f6e9d8; color: #8a5b18; }
+    .wf-badge.wf-warn { background: #f3e4e4; color: #9a3d3d; }
+    .workflow-precheck { margin: 8px 0 0; font-size: 11px; color: var(--ink-2); }
+    .workflow-precheck .wf-badge:first-child { margin-left: 4px; }
+    .workflow-item.wf-item-duplicate > summary { color: var(--ink-3); }
+    .wf-reason { margin: 6px 0 0; font-size: 11px; color: #8a5b18; }
+    .workflow-item.wf-item-duplicate .wf-reason { color: var(--ink-3); }
+    .wf-fields { margin: 6px 0 0; font-size: 11px; color: var(--ink-2); }
+    .workflow-plans, .workflow-lint, .workflow-review-result { margin-top: 8px; font-size: 11px; }
+    .workflow-plans summary, .workflow-lint summary, .workflow-review-result summary { cursor: pointer; color: var(--ink-2); }
+    .workflow-plans ol, .workflow-lint ul, .workflow-review-result ol { margin: 6px 0 0; padding-left: 18px; }
+    .workflow-plans li, .workflow-lint li, .workflow-review-result li { margin: 4px 0; line-height: 1.5; }
+    .workflow-plans span, .workflow-review-result li span { color: var(--ink-3); }
+    .workflow-review-result .agent-review-fix { margin-top: 8px; }

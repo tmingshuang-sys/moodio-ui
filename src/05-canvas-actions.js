@@ -812,6 +812,7 @@
       if (event.target.matches('[data-shot-description]')) {
         const shot = state.shots.find(item => item.id === Number(event.target.dataset.shotDescription));
         shot.description = event.target.value;
+        recordShotStyleSample(shot);   // Agent 写的镜头被用户改过 → 记成风格样例（src/16）
         markSaving();
       }
       const editable = event.target.closest('[contenteditable="true"]');
