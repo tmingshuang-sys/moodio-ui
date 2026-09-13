@@ -3716,3 +3716,11 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .export-dialog-tools { padding: 12px 22px; }
     .export-file-list { padding: 10px 14px; }
     .export-dialog-foot { padding: 14px 22px; }
+
+    /* 「新建空白页面」弹窗调整：去掉白色描边；水彩图只铺标题栏，标题栏下一条分割线，下方正文与底栏纯白 */
+    #flow-dialog[data-kind="blank-page"] { background: #fff; border: 0; }
+    #flow-dialog[data-kind="blank-page"] header { background: #dfe0ee url(../assets/dialog-bg-watercolor.jpg) center / cover no-repeat; border-bottom: 1px solid var(--line); padding-bottom: 18px; }
+    #flow-dialog[data-kind="blank-page"] .close-dialog { background: transparent; }
+    #flow-dialog[data-kind="blank-page"] .import-target { background: #fff; border-color: var(--line-strong); backdrop-filter: none; }
+    #flow-dialog[data-kind="blank-page"] footer { padding-top: 14px; }
+    #flow-dialog[data-kind="blank-page"] footer .canvas-action { background: #fff; }
