@@ -518,7 +518,8 @@
     const createBlankPageBase = createBlankPage;
     createBlankPage = function (kind) {
       if (!kind) {
-        openFlowDialog('新建空白页面', `<div class="blank-kind-grid">${BLANK_KINDS.map(k => `<button class="import-target" data-blank-kind="${k.id}"><span class="writing-doc-icon">${BK[k.icon]}</span><span><strong>${k.name}</strong><small>${k.hint}</small></span></button>`).join('')}</div>`, flowButton('close-dialog', '取消'));
+        openFlowDialog('新建空白页面', `<div class="blank-kind-grid">${BLANK_KINDS.map(k => `<button class="import-target" data-blank-kind="${k.id}"><span class="writing-doc-icon">${BK[k.icon]}</span><span><strong>${k.name}</strong></span></button>`).join('')}</div>`, flowButton('close-dialog', '取消'));
+        $('#flow-dialog').dataset.kind = 'blank-page';   // 该弹窗只列名称、不要上下分割线（样式见 styles.css 末尾）
         return;
       }
       captureVisibleEdits?.();

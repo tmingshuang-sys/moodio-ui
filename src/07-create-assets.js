@@ -217,7 +217,7 @@
       if (event.target.closest?.('[data-asset-search-clear]')) { event.preventDefault(); event.stopImmediatePropagation(); clearAssetSearch(); }
     }, true);
     let dialogReturnFocus=null;
-    function openFlowDialog(title,body,footer){const dialog=$('#flow-dialog');dialogReturnFocus=document.activeElement;dialog.innerHTML=`<header><h2>${title}</h2><button class="close-dialog" data-flow="close-dialog" aria-label="关闭窗口">${flowIcon('close')}</button></header><div class="flow-dialog-body">${body}</div><footer>${footer}</footer>`;if(!dialog.open)dialog.showModal();}
+    function openFlowDialog(title,body,footer){const dialog=$('#flow-dialog');delete dialog.dataset.kind;dialogReturnFocus=document.activeElement;dialog.innerHTML=`<header><h2>${title}</h2><button class="close-dialog" data-flow="close-dialog" aria-label="关闭窗口">${flowIcon('close')}</button></header><div class="flow-dialog-body">${body}</div><footer>${footer}</footer>`;if(!dialog.open)dialog.showModal();}
     function closeFlowDialog(){const dialog=$('#flow-dialog');dialog.close();dialogReturnFocus?.focus?.();}
     let editingAssetId=null;
     function editAsset(id){

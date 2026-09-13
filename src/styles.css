@@ -3596,22 +3596,40 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #agent-model-writer-thinking { margin-top: 8px; }
 
 
-    /* 剧集 / 项目下拉菜单动效（仿 CardNav）：容器高度 0.4s power3.out 展开，各行从下方 50px 错开 80ms 淡入；关闭反向 */
-    .episode-menu { will-change: height; transition: height 400ms cubic-bezier(.215, .61, .355, 1); }
-    .episode-menu.entering > * { animation: episode-menu-row-in 400ms cubic-bezier(.215, .61, .355, 1) both; }
-    .episode-menu.entering > :nth-child(1) { animation-delay: 300ms; }
-    .episode-menu.entering > :nth-child(2) { animation-delay: 380ms; }
-    .episode-menu.entering > :nth-child(3) { animation-delay: 460ms; }
-    .episode-menu.entering > :nth-child(4) { animation-delay: 540ms; }
-    .episode-menu.entering > :nth-child(5) { animation-delay: 620ms; }
-    .episode-menu.entering > :nth-child(6) { animation-delay: 700ms; }
-    .episode-menu.entering > :nth-child(7) { animation-delay: 780ms; }
-    .episode-menu.entering > :nth-child(8) { animation-delay: 860ms; }
-    .episode-menu.entering > :nth-child(n+9) { animation-delay: 940ms; }
-    @keyframes episode-menu-row-in { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: none; } }
-    .episode-menu.closing { transition-duration: 320ms; pointer-events: none; }
-    .episode-menu.closing > * { opacity: 0; transform: translateY(24px); transition: opacity 200ms ease, transform 260ms cubic-bezier(.215, .61, .355, 1); }
+    /* 下拉菜单动效（仿 CardNav，助手在 src/00-menu-motion.js）：容器高度 0.4s power3.out 展开，各行从下方 50px 错开 80ms 淡入；关闭反向 */
+    .fx-menu { will-change: height; transition: height 400ms cubic-bezier(.215, .61, .355, 1); }
+    .fx-menu.fx-entering > * { animation: fx-menu-row-in 400ms cubic-bezier(.215, .61, .355, 1) both; }
+    .fx-menu.fx-entering > :nth-child(1) { animation-delay: 300ms; }
+    .fx-menu.fx-entering > :nth-child(2) { animation-delay: 380ms; }
+    .fx-menu.fx-entering > :nth-child(3) { animation-delay: 460ms; }
+    .fx-menu.fx-entering > :nth-child(4) { animation-delay: 540ms; }
+    .fx-menu.fx-entering > :nth-child(5) { animation-delay: 620ms; }
+    .fx-menu.fx-entering > :nth-child(6) { animation-delay: 700ms; }
+    .fx-menu.fx-entering > :nth-child(7) { animation-delay: 780ms; }
+    .fx-menu.fx-entering > :nth-child(8) { animation-delay: 860ms; }
+    .fx-menu.fx-entering > :nth-child(n+9) { animation-delay: 940ms; }
+    @keyframes fx-menu-row-in { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: none; } }
+    .fx-menu.fx-closing { transition-duration: 320ms; pointer-events: none; }
+    .fx-menu.fx-closing > * { opacity: 0; transform: translateY(24px); transition: opacity 200ms ease, transform 260ms cubic-bezier(.215, .61, .355, 1); }
+    /* 渲染驱动、每次重绘都重建的菜单：改用关键帧入场（clip-path 由上/下展开 + 各行错开淡入），关闭随重绘瞬时消失 */
+    .tag-menu:not(.hidden), .canvas-menu[open] > .canvas-menu-popover, #cdoc-palette-pop:not(.hidden), #cdoc-media-pop:not(.hidden), .cdoc-float-pop:not(.hidden) { animation: fx-menu-grow-down 400ms cubic-bezier(.215, .61, .355, 1); }
+    .media-menu:not(.hidden), .stack-create-menu:not(.hidden) { animation: fx-menu-grow-up 400ms cubic-bezier(.215, .61, .355, 1); }
+    .tag-menu:not(.hidden) > *, .canvas-menu[open] > .canvas-menu-popover > *, #cdoc-palette-pop:not(.hidden) > *, #cdoc-media-pop:not(.hidden) > *, .cdoc-float-pop:not(.hidden) > *,
+    .media-menu:not(.hidden) > *, .stack-create-menu:not(.hidden) > * { animation: fx-menu-row-in 400ms cubic-bezier(.215, .61, .355, 1) both; animation-delay: 300ms; }
+    .tag-menu:not(.hidden) > :nth-child(2), .canvas-menu[open] > .canvas-menu-popover > :nth-child(2), #cdoc-palette-pop:not(.hidden) > :nth-child(2), #cdoc-media-pop:not(.hidden) > :nth-child(2), .cdoc-float-pop:not(.hidden) > :nth-child(2), .media-menu:not(.hidden) > :nth-child(2), .stack-create-menu:not(.hidden) > :nth-child(2) { animation-delay: 380ms; }
+    .tag-menu:not(.hidden) > :nth-child(3), .canvas-menu[open] > .canvas-menu-popover > :nth-child(3), #cdoc-palette-pop:not(.hidden) > :nth-child(3), #cdoc-media-pop:not(.hidden) > :nth-child(3), .cdoc-float-pop:not(.hidden) > :nth-child(3), .media-menu:not(.hidden) > :nth-child(3), .stack-create-menu:not(.hidden) > :nth-child(3) { animation-delay: 460ms; }
+    .tag-menu:not(.hidden) > :nth-child(4), .canvas-menu[open] > .canvas-menu-popover > :nth-child(4), #cdoc-palette-pop:not(.hidden) > :nth-child(4), #cdoc-media-pop:not(.hidden) > :nth-child(4), .cdoc-float-pop:not(.hidden) > :nth-child(4), .media-menu:not(.hidden) > :nth-child(4), .stack-create-menu:not(.hidden) > :nth-child(4) { animation-delay: 540ms; }
+    .tag-menu:not(.hidden) > :nth-child(5), .canvas-menu[open] > .canvas-menu-popover > :nth-child(5), #cdoc-palette-pop:not(.hidden) > :nth-child(5), #cdoc-media-pop:not(.hidden) > :nth-child(5), .cdoc-float-pop:not(.hidden) > :nth-child(5), .media-menu:not(.hidden) > :nth-child(5), .stack-create-menu:not(.hidden) > :nth-child(5) { animation-delay: 620ms; }
+    .tag-menu:not(.hidden) > :nth-child(n+6), .canvas-menu[open] > .canvas-menu-popover > :nth-child(n+6), #cdoc-palette-pop:not(.hidden) > :nth-child(n+6), #cdoc-media-pop:not(.hidden) > :nth-child(n+6), .cdoc-float-pop:not(.hidden) > :nth-child(n+6), .media-menu:not(.hidden) > :nth-child(n+6), .stack-create-menu:not(.hidden) > :nth-child(n+6) { animation-delay: 700ms; }
+    @keyframes fx-menu-grow-down { from { clip-path: inset(-40px -40px 100% -40px); } to { clip-path: inset(-40px -40px -40px -40px); } }
+    @keyframes fx-menu-grow-up { from { clip-path: inset(100% -40px -40px -40px); } to { clip-path: inset(-40px -40px -40px -40px); } }
     @media (prefers-reduced-motion: reduce) {
-      .episode-menu, .episode-menu.closing > * { transition: none !important; }
-      .episode-menu.entering > * { animation: none !important; }
+      .fx-menu, .fx-menu.fx-closing > * { transition: none !important; }
+      .fx-menu.fx-entering > *, .tag-menu, .tag-menu > *, .media-menu, .media-menu > *, .stack-create-menu, .stack-create-menu > *, .canvas-menu-popover, .canvas-menu-popover > *, #cdoc-palette-pop, #cdoc-palette-pop > *, #cdoc-media-pop, #cdoc-media-pop > *, .cdoc-float-pop, .cdoc-float-pop > * { animation: none !important; }
     }
+
+    /* 「新建空白页面」弹窗：只列文档名称，去掉标题栏与底栏的分割线 */
+    #flow-dialog[data-kind="blank-page"] header { border-bottom: 0; padding-bottom: 6px; }
+    #flow-dialog[data-kind="blank-page"] footer { border-top: 0; padding-top: 4px; }
+    #flow-dialog[data-kind="blank-page"] .import-target { align-items: center; }
+    #flow-dialog[data-kind="blank-page"] .import-target strong { font-size: 14px; }

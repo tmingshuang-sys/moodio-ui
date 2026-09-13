@@ -384,7 +384,7 @@
       function renderEpisodeMenu(){
         const menu = $('#episode-menu');
         if (!menu) return;
-        if (menu.classList.contains('entering')) settleEpisodeMenu(menu);   // 入场动画未完就重绘（如点了重命名）时直接定格，避免行再次淡入
+        if (menu.classList.contains('fx-entering')) moodioMenuFx.settle(menu);   // 入场动画未完就重绘（如点了重命名）时直接定格，避免行再次淡入
         const projects = moodioProjects.list(), activeProject = moodioProjects.active();
         const folderIcon = `<svg class="icon sm" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>`;
         const projectHtml = `<div class="project-section-title">项目</div>` + projects.map(p => `<div class="episode-row project-row ${p.id === activeProject?.id ? 'active' : ''}" role="menuitem" data-project-switch="${p.id}">${folderIcon}<span class="episode-name">${escapeHtml(p.title)}</span>${p.id === activeProject?.id ? `<button class="episode-tool" data-project-rename="${p.id}" aria-label="重命名项目 ${escapeHtml(p.title)}"><svg class="icon sm" viewBox="0 0 24 24"><path d="m4 20 4-1 11-11-3-3L5 16zM14 7l3 3"/></svg></button>` : ''}${projects.length > 1 ? `<button class="episode-tool" data-project-delete="${p.id}" aria-label="删除项目 ${escapeHtml(p.title)}">${icons.trash}</button>` : ''}</div>`).join('')
@@ -396,44 +396,25 @@
         if (renamingEpisodeId) { const input = $('[data-episode-rename]', menu); input?.focus(); input?.select(); }
       }
       function syncEpisodeTitle(){ const el = $('#episode-title'); if (el) el.textContent = activeEpisode().title; }
-      // 剧集菜单开合动效（仿 CardNav）：容器高度先展开，各行再从下方错开淡入；关闭时反向。纯 CSS 过渡，不依赖动画库
-      const menuMotion = { timer: 0, token: 0, reduced: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches };
-      function settleEpisodeMenu(menu){ clearTimeout(menuMotion.timer); menu.classList.remove('entering', 'closing'); menu.style.height = ''; menu.style.overflow = ''; }
       function openEpisodeMenu(){
         const button = $('#episode-switch'), menu = $('#episode-menu');
         renamingEpisodeId = null; renderEpisodeMenu();
         const rect = button.getBoundingClientRect();
         menu.style.left = rect.left + 'px'; menu.style.top = rect.bottom + 6 + 'px';
-        const wasClosing = menu.classList.contains('closing');
-        settleEpisodeMenu(menu);
         menu.classList.remove('hidden'); button.setAttribute('aria-expanded', 'true'); button.classList.add('open');
-        if (menuMotion.reduced() || wasClosing) return;
-        const token = ++menuMotion.token;
-        const target = menu.offsetHeight;                              // 先量出自然高度，再从 0 展开
-        menu.style.overflow = 'hidden'; menu.style.height = '0px';
-        menu.classList.add('entering'); void menu.offsetHeight;
-        menu.style.height = target + 'px';
-        const rows = menu.children.length;
-        menuMotion.timer = setTimeout(() => { if (token === menuMotion.token) settleEpisodeMenu(menu); }, 300 + rows * 80 + 420);
+        moodioMenuFx.open(menu);
       }
       function closeEpisodeMenu(){
         renamingEpisodeId = null;
         const menu = $('#episode-menu'), button = $('#episode-switch');
         button?.setAttribute('aria-expanded', 'false'); button?.classList.remove('open');
-        if (!menu || menu.classList.contains('hidden') || menu.classList.contains('closing')) return;
-        if (menuMotion.reduced()) { settleEpisodeMenu(menu); menu.classList.add('hidden'); return; }
-        const token = ++menuMotion.token;
-        const from = menu.offsetHeight;
-        settleEpisodeMenu(menu);
-        menu.style.overflow = 'hidden'; menu.style.height = from + 'px'; void menu.offsetHeight;
-        menu.classList.add('closing'); menu.style.height = '0px';
-        menuMotion.timer = setTimeout(() => { if (token !== menuMotion.token) return; settleEpisodeMenu(menu); menu.classList.add('hidden'); }, 340);
+        if (menu) moodioMenuFx.close(menu, () => menu.classList.add('hidden'));
       }
       document.addEventListener('click', event => {
         const switchButton = event.target.closest('#episode-switch');
-        if (switchButton) { event.preventDefault(); event.stopImmediatePropagation(); const m = $('#episode-menu'); return m.classList.contains('hidden') || m.classList.contains('closing') ? openEpisodeMenu() : closeEpisodeMenu(); }
+        if (switchButton) { event.preventDefault(); event.stopImmediatePropagation(); return moodioMenuFx.isOpen($('#episode-menu')) ? closeEpisodeMenu() : openEpisodeMenu(); }
         const inMenu = event.target.closest('#episode-menu');
-        if (!inMenu) { if (!$('#episode-menu')?.classList.contains('hidden')) closeEpisodeMenu(); return; }
+        if (!inMenu) { if (moodioMenuFx.isOpen($('#episode-menu'))) closeEpisodeMenu(); return; }
         event.preventDefault(); event.stopImmediatePropagation();
         // 项目区
         const pRename = event.target.closest('[data-project-rename]'), pDel = event.target.closest('[data-project-delete]'), pNew = event.target.closest('[data-project-new]'), pSwitch = event.target.closest('[data-project-switch]');
@@ -460,7 +441,7 @@
         if (event.key === 'Enter' && event.target.id === 'project-name-input') { event.preventDefault(); $('[data-project-dialog]')?.click(); return; }
         const input = event.target.closest?.('[data-episode-rename]');
         if (input) { if (event.key === 'Enter') { event.preventDefault(); renameEpisode(input.dataset.episodeRename, input.value); renamingEpisodeId = null; renderEpisodeMenu(); } else if (event.key === 'Escape') { event.stopPropagation(); renamingEpisodeId = null; renderEpisodeMenu(); } return; }
-        if (event.key === 'Escape' && !$('#episode-menu')?.classList.contains('hidden')) closeEpisodeMenu();
+        if (event.key === 'Escape' && moodioMenuFx.isOpen($('#episode-menu'))) closeEpisodeMenu();
       }, true);
       document.addEventListener('focusout', event => {
         const input = event.target.closest?.('[data-episode-rename]');
@@ -836,8 +817,8 @@
         return menu;
       }
       function closeMenu() {
-        const menu = $('#script-format-menu'); if (!menu || menu.classList.contains('hidden')) return;
-        menu.classList.add('hidden');
+        const menu = $('#script-format-menu'); if (!moodioMenuFx.isOpen(menu)) return;
+        moodioMenuFx.close(menu, () => menu.classList.add('hidden'));
         $$('[data-script-format-menu][aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
       }
       function openMenu(anchor) {
@@ -848,6 +829,7 @@
         menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
         menu.style.top = (r.bottom + 6 + h > window.innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
         anchor.setAttribute('aria-expanded', 'true');
+        moodioMenuFx.open(menu);
       }
       document.addEventListener('click', event => {
         const trigger = event.target.closest('[data-script-format-menu]');

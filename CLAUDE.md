@@ -50,6 +50,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 - **格式硬规则**：`src/15-script-rules.js` 的 `MOODIO_SCRIPT_RULES`（两种排版的场景标题正则、虚写 / 不可拍 / 镜头术语词表），`formatRulesText()` 注入提示，`lintScriptBlocks()` 校验。Agent 的 write_script / rewrite_scene / insert_scene 写入前经 `lintAndFix()`：不合规就把问题清单发回模型修正，最多两轮，剩余问题写进结果。侧栏「格式检查」区（`scriptLintSection()`）对当前剧本实时校验、点击定位。词表调整只改 15 文件。
 - **写作规范**：`src/14-writing-guides.js` 的 `MOODIO_WRITING_GUIDES` 按类型（series / film / short / ad / other）给出结构、格式、对白与节奏、自查清单，`writingGuideText()` 只注入当前纲领类型那一份。多场内容分两轮：先大纲后逐场。
 - **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染问题卡片（`questionsHtml()`，消息字段 `questions` / `answers` / `questionsUsed`），不执行其他动作；用户点选后自动发送回答。用户给出的纲领信息由 `save_brief` 记录。
+- **下拉菜单动效**：由 JS 开合的菜单（剧集 / 剧本格式 / 资产切换 / 文件右键 / 云文档块菜单）统一走 `moodioMenuFx`（src/00-menu-motion.js）：先摆位、移除 hidden，再 `open(menu)`；关闭用 `close(menu, () => menu.classList.add('hidden'))`，判断是否打开用 `isOpen(menu)`（收起中途视为已关闭）。随 render 重建的菜单（标签、媒体、画布操作、云文档小弹层）只用 styles.css 末尾的关键帧入场。新增下拉菜单沿用同一套。
 - **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。
 - **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
 - **密钥**：任何 API key 不得进入仓库、备份文件或对话；页面里的 key 只存 localStorage `moodio-agent-model`（备份时跳过）。

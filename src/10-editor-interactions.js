@@ -219,7 +219,7 @@
     });
     document.addEventListener('scroll', () => { $('#cdoc-block-handle')?.classList.add('hidden'); cdocHoverBlock = null; cdocCloseBlockMenu(); cdocSlashClose(); cdocFloatHide(); }, true);
     function cdocMenuEl() { let el = $('#cdoc-block-menu'); if (!el) { document.body.insertAdjacentHTML('beforeend', '<div class="cdoc-block-menu hidden" id="cdoc-block-menu" role="menu"></div>'); el = $('#cdoc-block-menu'); } return el; }
-    function cdocCloseBlockMenu() { const m = $('#cdoc-block-menu'); if (m) m.classList.add('hidden'); if (cdocMenuBlock) { cdocMenuBlock.classList.remove('cdoc-block-active'); cdocMenuBlock = null; } }
+    function cdocCloseBlockMenu() { const m = $('#cdoc-block-menu'); if (m) moodioMenuFx.close(m, () => m.classList.add('hidden')); if (cdocMenuBlock) { cdocMenuBlock.classList.remove('cdoc-block-active'); cdocMenuBlock = null; } }
     function cdocOpenBlockMenu(block, anchorRect) {
       const el = cdocMenuEl(), type = cdocBlockType(block), convertible = block.classList.contains('script-block') ? true : cdocBlockInner(block) !== null;
       cdocMenuBlock = block; block.classList.add('cdoc-block-active');
@@ -235,6 +235,7 @@
         const w = el.offsetWidth, h = el.offsetHeight, left = anchorRect.left - w - 8 >= 8 ? anchorRect.left - w - 8 : anchorRect.right + 8;
         el.style.left = Math.max(8, Math.min(left, window.innerWidth - w - 8)) + 'px';
         el.style.top = Math.max(8, Math.min(anchorRect.top, window.innerHeight - h - 8)) + 'px';
+        moodioMenuFx.open(el);
         return;
       }
       const colorRow = (kind, list, label) => `<div class="cdoc-bm-colors"><span>${label}</span>${list.map(([c, n]) => `<button type="button" style="background:${c || '#fff'}" data-cdoc-bm-color="${kind}" data-color="${c}" title="${n}" class="${c ? '' : 'clear'}"></button>`).join('')}</div>`;
@@ -252,6 +253,7 @@
       const w = el.offsetWidth, h = el.offsetHeight, left = anchorRect.left - w - 8 >= 8 ? anchorRect.left - w - 8 : anchorRect.right + 8;
       el.style.left = Math.max(8, Math.min(left, window.innerWidth - w - 8)) + 'px';
       el.style.top = Math.max(8, Math.min(anchorRect.top, window.innerHeight - h - 8)) + 'px';
+      moodioMenuFx.open(el);
     }
     function cdocBlockRange(block) { const r = document.createRange(); r.selectNodeContents(block); return r; }
     document.addEventListener('click', event => {

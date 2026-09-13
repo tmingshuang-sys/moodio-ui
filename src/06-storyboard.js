@@ -114,6 +114,7 @@
       const height = 148;
       menu.style.left = `${Math.min(event.clientX, window.innerWidth - width - 10)}px`;
       menu.style.top = `${Math.min(event.clientY, window.innerHeight - height - 10)}px`;
+      moodioMenuFx.open(menu);
     });
 
     document.addEventListener('dragstart', event => {

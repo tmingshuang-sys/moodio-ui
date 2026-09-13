@@ -1,5 +1,6 @@
 [
   "00-projects.js",
+  "00-menu-motion.js",
   "01-data.js",
   "02-story-canvas.js",
   "03-script-render.js",

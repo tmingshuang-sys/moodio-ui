@@ -375,7 +375,7 @@
 
     function closeAssetMenu() {
       state.activeAssetInstance = null;
-      $('#asset-dropdown-menu')?.classList.add('hidden');
+      { const menu = $('#asset-dropdown-menu'); if (menu) moodioMenuFx.close(menu, () => menu.classList.add('hidden')); }
       $$('[data-asset-token][aria-expanded="true"]').forEach(token => token.setAttribute('aria-expanded', 'false'));
       $$('[data-asset-token]').forEach(token=>{token.setAttribute('aria-haspopup','dialog');token.setAttribute('aria-controls','asset-hover-card');});
     }
@@ -396,6 +396,7 @@
         </button>`).join('')}`;
       menu.classList.remove('hidden');
       positionAssetSurface(menu, token, 246);
+      moodioMenuFx.open(menu);
     }
 
     function switchAsset(instance, assetId) {

@@ -601,7 +601,7 @@
       const fileAction = event.target.closest('[data-file-action]');
       if (fileAction) {
         const fileId = state.contextFileId;
-        $('#file-context-menu').classList.add('hidden');
+        closeFileContextMenu();
         if (fileAction.dataset.fileAction === 'rename') {
           state.renamingFileId = fileId;
           const file = findFile(fileId);
@@ -613,7 +613,7 @@
         return;
       }
 
-      if (!event.target.closest('#file-context-menu')) $('#file-context-menu').classList.add('hidden');
+      if (!event.target.closest('#file-context-menu')) closeFileContextMenu();
 
       const navDoc = event.target.closest('[data-doc]');
       if (navDoc && !event.target.closest('[data-episode-select]')) return selectDoc(navDoc.dataset.doc);
@@ -889,4 +889,4 @@
         return;
       }
     });
-
+    function closeFileContextMenu() { const menu = $('#file-context-menu'); if (menu) moodioMenuFx.close(menu, () => menu.classList.add('hidden')); }
