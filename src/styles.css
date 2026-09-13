@@ -3567,3 +3567,18 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .version-row.latest strong::after { content: ' · 最新'; color: var(--ink-3); font-weight: 400; }
     .version-row button { margin-left: auto; height: 22px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink-2); font-size: 11px; cursor: pointer; }
     .version-row button:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+
+    /* Agent 追问卡片 */
+    .agent-questions { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); white-space: normal; }
+    .agent-q { margin-bottom: 10px; }
+    .agent-q p { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--ink); }
+    .agent-q-options { display: flex; flex-wrap: wrap; gap: 6px; }
+    .agent-q-options button { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); font: 500 12px/1.4 var(--font-ui); cursor: pointer; text-align: left; max-width: 100%; }
+    .agent-q-options button:hover:not(:disabled) { background: #f3f3f1; }
+    .agent-q-options button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .agent-q-options button:disabled { opacity: .5; cursor: default; }
+    .agent-q-options .agent-q-custom { border-style: dashed; color: var(--ink-3); }
+    .agent-q-foot { display: flex; gap: 8px; margin-top: 4px; }
+    .agent-q-foot button { height: 30px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); font: 500 12px var(--font-ui); cursor: pointer; }
+    .agent-q-foot button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .agent-q-foot button:disabled { opacity: .45; cursor: default; }

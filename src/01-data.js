@@ -305,6 +305,7 @@
       folderOrder: restoredWorkspace?.folderOrder || [],
       view: 'focus',
       episode: 1,
+      brief: restoredWorkspace?.brief && typeof restoredWorkspace.brief === 'object' ? restoredWorkspace.brief : null,   // 创作纲领（项目级）
       trash: Array.isArray(restoredWorkspace?.trash) ? restoredWorkspace.trash : [],   // Agent 删除的文档先进回收站（7 天）
       fileStores: restoredWorkspace?.fileStores || JSON.parse(JSON.stringify(initialFileStores)),
       expandedStack: null,
@@ -430,6 +431,7 @@
         shots: state.shots,
         chunks: state.chunks,
         trash: state.trash || [],
+        brief: state.brief || null,
         catalog: assetCatalog,
         writingOpen: state.writingOpen,
         assetRecognition: state.assetRecognition, mediaLibrary: state.mediaLibrary, activeStoryboardId: state.activeStoryboardId
