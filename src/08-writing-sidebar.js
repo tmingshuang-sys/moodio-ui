@@ -526,7 +526,16 @@
     function renderContextSections(sceneRows){
       const base = renderContextSectionsBase(sceneRows);
       const { type } = contextDocInfo();
-      return base + (type && type !== 'cover' && typeof moodioVersions !== 'undefined' ? moodioVersions.sectionHtml() : '');
+      const lintPart = type === 'script' && typeof MOODIO_SCRIPT_RULES !== 'undefined' ? scriptLintSection(contextDocInfo().file) : '';   // 规则表在 src/15 赋值，首屏渲染时可能尚未就绪
+      return base + lintPart + (type && type !== 'cover' && typeof moodioVersions !== 'undefined' ? moodioVersions.sectionHtml() : '');
+    }
+    // 侧栏「格式检查」：按当前排版规则校验剧本，点击定位到那一行
+    function scriptLintSection(file){
+      if (!file) return '';
+      const names = new Set(allAssets().filter(a => a.type === 'character').flatMap(a => [a.name, ...(a.aliases || [])])); scriptBlocksOf(file).forEach(b => { if (b.type === 'character') names.add(String(b.text || '').replace(/[（(].*$/, '').trim()); });
+      const issues = lintScriptBlocks(scriptBlocksOf(file), { layout: state.scriptLayout, knownNames: [...names] });
+      const body = issues.length ? ctxNav(issues.slice(0, 30).map((x, i) => ({ no: x.level === 'error' ? '✕' : x.level === 'warn' ? '△' : '?', title: x.message.replace(/，请.*$/, ''), sub: x.snippet, jump: `[data-script-id="${x.blockId}"]` }))) : '<p class="writing-folders-empty">未发现格式问题</p>';
+      return ctxSection('格式检查', lintSummaryText(issues), body);
     }
     function renderContextSectionsBase(sceneRows){
       const { type, file } = contextDocInfo();
