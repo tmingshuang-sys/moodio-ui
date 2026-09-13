@@ -4,9 +4,9 @@
 
 Moodio 3.0 的剧本 / 分镜 / 资产创作原型，带内置 AI Agent。零依赖、无框架、无构建步骤的静态页面：
 `Moodio-UI-Refined-Storyboard.html` 只保留页面结构（约 220 行），样式在 `src/styles.css`，
-脚本按功能拆成 `src/01-data.js` … `src/12-effects.js` 共 12 个文件，由 `src/loader.js` 按顺序取回后拼成一段脚本执行，
+脚本按功能拆成 `src/01-data.js` … `src/12-effects.js` 共 12 个文件，开发时由 `src/loader.js` 按 `src/manifest.json` 的顺序取回后拼成一段脚本执行，发布时由 `scripts/build.mjs` 拼成 `dist/src/app.js`，
 因此它们共享同一个全局作用域，函数提升在文件之间同样有效（后面文件定义的函数，前面的文件也能在加载期调用）。
-不是 ES module，不要写 import / export；新增文件必须加进 `src/loader.js` 的列表。每个文件的职责见 `src/README.md`。
+不是 ES module，不要写 import / export；新增文件必须加进 `src/manifest.json`。每个文件的职责见 `src/README.md`。
 浏览器报错时的位置显示为 `moodio-app.js`，按错误附近的 `/* ===== src/xx.js ===== */` 分隔注释找到对应文件。
 
 目录：
