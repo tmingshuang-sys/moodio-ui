@@ -12,5 +12,6 @@
   "10-editor-interactions.js",
   "11-agent.js",
   "12-effects.js",
-  "13-versions.js"
+  "13-versions.js",
+  "14-writing-guides.js"
 ]

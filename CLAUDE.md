@@ -45,6 +45,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 - **JS**：先用 `grep -n` 在 `src/` 里定位到具体文件，再用精确字符串替换或小段插入；新增顶层函数放在相关文件里即可，不需要导出。`src/11-agent.js` 里的 `agentWindow` IIFE 内部函数在外部不可见。
 - **Agent 执行前必须确认**：`reply()` 只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。例外：`NO_CONFIRM_TOOLS`（read_doc / open_doc / locate_scene）直接执行，read_doc 的结果会交回模型再规划一轮。`DESTRUCTIVE_TOOLS`（delete_doc / delete_scene / delete_shot）在计划里标 ⚠，确认按钮显示删除计数；delete_doc 进 `state.trash`（7 天），结果里带「撤销删除」按钮。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`previewAction()`（如有内容预览）、`remotePlan()` 的系统提示，以及必要时 `NO_CONFIRM_TOOLS` / `DESTRUCTIVE_TOOLS`。
 - **Agent 上下文**：`remotePlan()` 通过 `briefText()` 注入项目级创作纲领（`state.brief`，✦ 菜单里填写），通过 `agentInventoryText()` 把文档清单（含 id）、剧本场次、镜头、资产、剧集、项目塞给模型；模型只能引用清单里的 id，找不到要反问。
+- **写作规范**：`src/14-writing-guides.js` 的 `MOODIO_WRITING_GUIDES` 按类型（series / film / short / ad / other）给出结构、格式、对白与节奏、自查清单，`writingGuideText()` 只注入当前纲领类型那一份。多场内容分两轮：先大纲后逐场。
 - **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染问题卡片（`questionsHtml()`，消息字段 `questions` / `answers` / `questionsUsed`），不执行其他动作；用户点选后自动发送回答。用户给出的纲领信息由 `save_brief` 记录。
 - **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。
 - **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
