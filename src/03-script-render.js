@@ -568,7 +568,7 @@
     function downloadDocuments(files) {
       captureVisibleEdits();
       persistWorkspace();
-      const selected = files.filter(Boolean);
+      const selected = withCovers(files);
       if (!selected.length) return;
       const blob = new Blob(['\ufeff', buildWordDocument(selected)], { type: 'application/msword;charset=utf-8' });
       const link = document.createElement('a');
@@ -670,9 +670,18 @@
       }));
     }
     const PDF_BLOCK_SELECTOR = '.script-block, .cover-title, .cover-author, .cover-logline, p, h1, h2, h3, h4, li, tr, figure, img, blockquote, pre, .cdoc-block, .story-card';
+    // 导出剧本时默认带上封面，并放在剧本前面（PDF 首页）
+    function withCovers(files) {
+      const cover = latestFile('cover'), out = [];
+      files.filter(Boolean).forEach((f, i, arr) => {
+        if (f.type === 'script' && cover && arr[i - 1] !== cover && !out.includes(cover)) out.push(cover);
+        if (!out.includes(f)) out.push(f);
+      });
+      return out;
+    }
     async function exportPdfDocuments(files, { debug = false } = {}) {
       captureVisibleEdits(); persistWorkspace();
-      const selected = files.filter(Boolean); if (!selected.length) return null;
+      const selected = withCovers(files); if (!selected.length) return null;
       showToast('正在生成 PDF…');
       try { await Promise.all(PDF_LIBS.map(loadScriptOnce)); } catch (e) { showToast('PDF 组件加载失败，请检查网络后重试'); return null; }
       const { jsPDF } = window.jspdf;
@@ -701,13 +710,15 @@
             while (y1 > limitOf(pageStart) && y0 > pageStart) { breaks.push(y0); pageStart = y0; }
             while (y1 > limitOf(pageStart)) { const cut = limitOf(pageStart); if (cut <= pageStart) break; breaks.push(cut); pageStart = cut; }   // 单块比一页还高：只能硬切
           }
-          // 内容以外的空白不分页；无块元素时按页高硬切
-          let cursor = pageStart; while (totalH - cursor > pageH - (cursor === 0 ? 0 : padTop)) { const cut = limitOf(cursor); if (cut <= cursor) break; breaks.push(cut); cursor = cut; }
+          // 最后一块以下的空白不再分页（封面这类撑满一页的稿纸不会多出空白页）；无块元素时按页高硬切
+          const contentBottom = blocks.length ? Math.max(...blocks.map(el => el.getBoundingClientRect().bottom - paperTop)) : totalH;
+          const endY = Math.min(totalH, Math.max(contentBottom + padBottom, pageStart + 1));
+          let cursor = pageStart; while (endY - cursor > pageH - (cursor === 0 ? 0 : padTop)) { const cut = limitOf(cursor); if (cut <= cursor) break; breaks.push(cut); cursor = cut; }
           const scale = Math.max(1, Math.min(2, 14000 / totalH));
           const canvas = await html2canvas(paper, { scale, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: Math.max(1200, width + 400) });
-          const edges = [0, ...breaks, totalH];
+          const edges = [0, ...breaks, endY];
           for (let i = 0; i < edges.length - 1; i++) {
-            const y0 = edges[i], y1 = Math.min(edges[i + 1], totalH); if (y1 - y0 < 1) continue;
+            const y0 = edges[i], y1 = Math.min(edges[i + 1], endY); if (y1 - y0 < 1) continue;
             const slice = document.createElement('canvas'); slice.width = canvas.width; slice.height = Math.round((y1 - y0) * scale);
             const ctx = slice.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, slice.width, slice.height);
             ctx.drawImage(canvas, 0, Math.round(y0 * scale), canvas.width, slice.height, 0, 0, slice.width, slice.height);

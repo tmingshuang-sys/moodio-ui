@@ -3738,3 +3738,12 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #flow-dialog[data-kind="import-target"] header { background: #3d6f9d url(../assets/dialog-bg-import.jpg) center 40% / cover no-repeat; border-bottom: 1px solid var(--line); }
     #flow-dialog[data-kind="import-target"] header h2, #flow-dialog[data-kind="import-target"] .close-dialog { color: #191917; }   /* 标题与关闭按钮用黑字 */
     #flow-dialog[data-kind="import-target"] .close-dialog, #flow-dialog[data-kind="blank-page"] .close-dialog { border: 0; background: transparent; box-shadow: none; }
+
+    /* 导出文档窗口：标题栏铺蓝色渐变图（assets/dialog-bg-export.jpg），黑字，下方纯白 */
+    .export-dialog-head { background: #6f97b3 url(../assets/dialog-bg-export.jpg) center 45% / cover no-repeat; }
+    .export-dialog-head > div > strong, .export-dialog-close { color: #191917; }
+    .export-dialog-close:hover { background: transparent; }
+
+    /* 场次导航：点击 / 定位到某场后，该行的场次号以品牌渐变小圆角块高亮 */
+    .writing-scene > span:first-child { align-self: start; padding: 1px 4px; border-radius: 5px; transition: color 120ms ease, background-color 120ms ease; }
+    .writing-scene.active > span:first-child { color: #fff; background: var(--brand); font-weight: 700; }
