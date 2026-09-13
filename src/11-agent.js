@@ -356,7 +356,7 @@
         const parsed=parsePlanJSON(content); return {message:typeof parsed.message==='string'?parsed.message:'',actions:Array.isArray(parsed.actions)?parsed.actions:[],followUps:normalizeFollowUps(parsed.followUps)};
       }
       // 服务商：Claude（Anthropic Messages API，浏览器直连）或 OpenAI 兼容 Chat Completions；旧配置没有 provider 字段时按 OpenAI 兼容处理
-      function modelProvider(cfg){ return cfg?.provider||(cfg?.baseUrl||cfg?.model?'openai':'claude'); }
+      function modelProvider(cfg){ return cfg?.provider||(String(cfg?.apiKey||'').startsWith('sk-ant-')?'claude':'openai'); }   // 未配置时默认走 Moodio 网关
       const PROVIDER_DEFAULTS={claude:{baseUrl:'https://api.anthropic.com',model:'claude-opus-5',placeholder:'sk-ant-...'},openai:{baseUrl:'https://moodio-gateway.moodio-ui.workers.dev/v1',model:'deepseek-flash',placeholder:'访问口令（或该服务的 API Key）'}};   // OpenAI 兼容默认指向 Moodio 网关
       async function readModelError(res){ let msg=''; try{ const j=await res.json(); msg=j.error?.message||j.error?.type||''; }catch(e){} return new Error('模型服务返回 '+res.status+(msg?'：'+msg:'')); }
       // Claude 流式：SSE 逐段返回文本，thinking 摘要单独回传给 onReasoning
