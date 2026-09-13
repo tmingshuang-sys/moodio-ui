@@ -1,0 +1,13 @@
+{
+  "name": "moodio-ui",
+  "private": true,
+  "scripts": {
+    "serve": "python3 -m http.server 8765",
+    "gateway:login": "wrangler login --config gateway/wrangler.toml",
+    "gateway:deploy": "wrangler deploy --config gateway/wrangler.toml",
+    "gateway:dev": "wrangler dev --config gateway/wrangler.toml"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

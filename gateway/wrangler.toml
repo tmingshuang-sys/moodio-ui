@@ -1,0 +1,12 @@
+name = "moodio-gateway"
+main = "worker.js"
+compatibility_date = "2026-06-01"
+
+[vars]
+UPSTREAM_BASE = "https://api.deepseek.com/v1"
+# 部署后把页面网址填进来，逗号分隔；留空 = 允许任何来源
+ALLOWED_ORIGINS = ""
+
+# 密钥不写在这里，用命令设置：
+#   npx wrangler secret put DEEPSEEK_API_KEY
+#   npx wrangler secret put ACCESS_TOKEN
