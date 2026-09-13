@@ -3744,6 +3744,6 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .export-dialog-head > div > strong, .export-dialog-close { color: #191917; }
     .export-dialog-close:hover { background: transparent; }
 
-    /* 场次导航：点击 / 定位到某场后，该行的场次号以品牌渐变小圆角块高亮 */
-    .writing-scene > span:first-child { align-self: start; padding: 1px 4px; border-radius: 5px; transition: color 120ms ease, background-color 120ms ease; }
-    .writing-scene.active > span:first-child { color: #fff; background: var(--brand); font-weight: 700; }
+    /* 场次导航定位：剧本里对应的一场整段高亮（淡蓝紫底 + 左侧渐变竖条），约 3 秒后淡出 */
+    .paper .script-block.scene-flash { background: rgba(74, 103, 169, .12) !important; box-shadow: inset 3px 0 0 #4a67a9 !important; animation: scene-flash-out 2.8s ease-in forwards; }
+    @keyframes scene-flash-out { 0%, 55% { background-color: rgba(74, 103, 169, .12); box-shadow: inset 3px 0 0 #4a67a9; } 100% { background-color: rgba(74, 103, 169, 0); box-shadow: inset 3px 0 0 rgba(74, 103, 169, 0); } }

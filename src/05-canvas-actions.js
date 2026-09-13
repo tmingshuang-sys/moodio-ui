@@ -568,7 +568,9 @@
         render();
         setTimeout(() => {
           const targets = $$(`[data-script-id="${writingScene.dataset.scene}"]`).filter(el => el.closest('[data-paper], .page-slot'));
-          (targets[0] || $(`[data-script-id="${writingScene.dataset.scene}"]`))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const target = targets[0] || $(`[data-script-id="${writingScene.dataset.scene}"]`);
+          target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          flashScene(target);
         }, 50);
         showToast('已在剧本中定位所选场次');
         return;
@@ -701,7 +703,7 @@
         state.view = 'focus';
         state.locatedScriptId = scene.dataset.scene;
         render();
-        setTimeout(() => { const target = $(`[data-script-id="${scene.dataset.scene}"]`); if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50);
+        setTimeout(() => { const target = $(`[data-script-id="${scene.dataset.scene}"]`); if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); flashScene(target); } }, 50);
       }
     });
 
@@ -890,3 +892,14 @@
       }
     });
     function closeFileContextMenu() { const menu = $('#file-context-menu'); if (menu) moodioMenuFx.close(menu, () => menu.classList.add('hidden')); }
+    // 定位到某场后，把剧本里这一场（场景标题到下一场标题之前）整段高亮几秒，便于在稿纸上找到
+    function flashScene(heading) {
+      if (!heading) return;
+      $$('.script-block.scene-flash').forEach(el => el.classList.remove('scene-flash'));
+      const all = $$('.script-block', heading.closest('[data-script-blocks]') || heading.parentElement), start = all.indexOf(heading);
+      const blocks = [heading];
+      for (let i = start + 1; i < all.length && !/^scene/.test(all[i].dataset.formatType || ''); i++) blocks.push(all[i]);   // 到下一场标题之前为止
+      blocks.forEach(b => b.classList.add('scene-flash'));
+      clearTimeout(flashScene.timer);
+      flashScene.timer = setTimeout(() => blocks.forEach(b => b.classList.remove('scene-flash')), 2800);
+    }
