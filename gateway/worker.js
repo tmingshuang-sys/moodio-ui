@@ -13,7 +13,8 @@ const DEFAULT_UPSTREAM = 'https://api.deepseek.com/v1';
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';
   const allowed = (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-  const allowOrigin = allowed.length ? (allowed.includes(origin) ? origin : 'null') : '*';
+  const isLocalDev = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);   // 本机开发：任意端口都放行
+  const allowOrigin = allowed.length ? ((allowed.includes(origin) || isLocalDev) ? origin : 'null') : '*';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
