@@ -721,6 +721,7 @@
     function openImportTargetDialog(){
       state.importTarget = null;
       openFlowDialog('导入文档到哪个板块？', `<div class="import-target-grid">${IMPORT_TARGETS.map(([id, name, hint]) => `<button class="import-target" data-import-target="${id}"><span class="writing-doc-icon">${icons[docDef(id).icon] || icons.custom}</span><span><strong>${name}</strong><small>${hint}</small></span></button>`).join('')}</div><p>导入的文档会成为该板块的最新版本；支持 TXT、Markdown、Fountain、FDX、RTF、Word、PDF。</p>`, flowButton('close-dialog', '取消'));
+      $('#flow-dialog').dataset.kind = 'import-target';   // 标题栏铺蓝色渐变图，下方纯白（样式见 styles.css 末尾）
     }
     document.addEventListener('click', event => {
       const target = event.target.closest('[data-import-target]');

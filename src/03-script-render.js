@@ -495,10 +495,16 @@
     }
 
     function exportMarkupForFile(file) {
+      const def = docDef(file.type), body = exportPaperMarkup(file);
+      if (!body) return '';
+      return `<section class="export-page"><div class="export-file-heading"><strong>${escapeHtml(file.title)}</strong><span>${escapeHtml(file.type === 'storyboard' ? '分镜表 · STORYBOARD' : def.name + ' · ' + def.en)}</span></div>${body}</section>`;
+    }
+    // 单份文档的稿纸 HTML（去掉编辑控件），Word / PDF 共用；分镜表给一张表格
+    function exportPaperMarkup(file) {
       if (file.type === 'storyboard') {
         const shots = state.shots.filter(sh => sh.boardFileId === file.id);
         const rows = shots.map(sh => `<tr><td>${escapeHtml(shotLabel(sh))}</td><td>场 ${escapeHtml(sh.scene || '')}</td><td>${escapeHtml(sh.description || '')}</td><td>${escapeHtml((state.chunks || []).filter(c => c.shotIds.includes(sh.id)).map(c => c.title).join('、'))}</td></tr>`).join('');
-        return `<section class="export-page"><div class="export-file-heading"><strong>${escapeHtml(file.title)}</strong><span>分镜表 · STORYBOARD</span></div><table><thead><tr><th>镜号</th><th>场次</th><th>画面内容</th><th>生成单元</th></tr></thead><tbody>${rows || '<tr><td colspan="4">（暂无镜头）</td></tr>'}</tbody></table></section>`;
+        return `<table class="export-table"><thead><tr><th>镜号</th><th>场次</th><th>画面内容</th><th>生成单元</th></tr></thead><tbody>${rows || '<tr><td colspan="4">（暂无镜头）</td></tr>'}</tbody></table>`;
       }
       const holder = document.createElement('div');
       holder.innerHTML = renderDocument(file.type, { compare: false, slot: 'left', fileId: file.id });
@@ -523,8 +529,7 @@
       $$('[contenteditable], [draggable], [tabindex], [role], [aria-label], [aria-expanded]', paper).forEach(element => {
         ['contenteditable', 'draggable', 'tabindex', 'role', 'aria-label', 'aria-expanded'].forEach(attribute => element.removeAttribute(attribute));
       });
-      const def = docDef(file.type);
-      return `<section class="export-page"><div class="export-file-heading"><strong>${escapeHtml(file.title)}</strong><span>${escapeHtml(def.name)} · ${escapeHtml(def.en)}</span></div>${paper.outerHTML}</section>`;
+      return paper.outerHTML;
     }
 
     function buildWordDocument(files) {
@@ -653,13 +658,73 @@
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); const stamp = new Date().toISOString().slice(0, 10);
       a.download = (files.length === 1 ? safeFileName(files[0].title) : `Moodio-导出-${stamp}`) + (fmt === 'md' ? '.md' : '.txt'); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
     }
-    function printDocuments(files) {
+    /* ===== PDF 导出：把稿纸按页面里同一套样式离屏渲染，按段落分页（不切断任何一行）后逐页栅格化写进 A4 PDF。
+       两个库（html2canvas、jsPDF）只在第一次导出 PDF 时从 CDN 加载，平时不影响页面 ===== */
+    const PDF_LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'];
+    function loadScriptOnce(url) {
+      loadScriptOnce.cache = loadScriptOnce.cache || {};
+      return loadScriptOnce.cache[url] || (loadScriptOnce.cache[url] = new Promise((ok, bad) => {
+        const el = document.createElement('script'); el.src = url; el.async = true;
+        el.onload = ok; el.onerror = () => { delete loadScriptOnce.cache[url]; bad(new Error('无法加载 ' + url)); };
+        document.head.appendChild(el);
+      }));
+    }
+    const PDF_BLOCK_SELECTOR = '.script-block, .cover-title, .cover-author, .cover-logline, p, h1, h2, h3, h4, li, tr, figure, img, blockquote, pre, .cdoc-block, .story-card';
+    async function exportPdfDocuments(files, { debug = false } = {}) {
       captureVisibleEdits(); persistWorkspace();
-      const html = buildWordDocument(files);
-      const frame = document.createElement('iframe'); frame.setAttribute('aria-hidden', 'true'); frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
-      document.body.appendChild(frame);
-      frame.onload = () => { setTimeout(() => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (_) { showToast('浏览器阻止了打印，请改用 Word 导出'); } setTimeout(() => frame.remove(), 60000); }, 250); };
-      frame.srcdoc = html;
+      const selected = files.filter(Boolean); if (!selected.length) return null;
+      showToast('正在生成 PDF…');
+      try { await Promise.all(PDF_LIBS.map(loadScriptOnce)); } catch (e) { showToast('PDF 组件加载失败，请检查网络后重试'); return null; }
+      const { jsPDF } = window.jspdf;
+      const PW = 210, PH = 297;
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+      const stage = document.createElement('div'); stage.className = 'pdf-export-stage'; stage.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(stage);
+      const report = [];
+      try {
+        let firstPage = true;
+        for (const file of selected) {
+          const markup = exportPaperMarkup(file); if (!markup) continue;
+          stage.innerHTML = file.type === 'storyboard' ? `<div class="paper pdf-table-paper">${markup}</div>` : markup;
+          const paper = stage.firstElementChild; if (!paper) continue;
+          await (document.fonts?.ready || Promise.resolve());
+          await new Promise(r => requestAnimationFrame(() => setTimeout(r, 40)));
+          const width = paper.offsetWidth, totalH = paper.offsetHeight, pxPerMm = width / PW, pageH = PH * pxPerMm;
+          const cs = getComputedStyle(paper), padTop = parseFloat(cs.paddingTop) || 0, padBottom = parseFloat(cs.paddingBottom) || 0;
+          const paperTop = paper.getBoundingClientRect().top;
+          // 分页：以「叶子块」为单位，一块放不下就整块挪到下一页；页首留出与稿纸相同的上边距
+          const blocks = $$(PDF_BLOCK_SELECTOR, paper).filter(el => el.offsetHeight && !el.querySelector(PDF_BLOCK_SELECTOR));
+          const breaks = []; let pageStart = 0;
+          const limitOf = start => start + pageH - padBottom - (start === 0 ? 0 : padTop);
+          for (const el of blocks) {
+            const r = el.getBoundingClientRect(), y0 = r.top - paperTop, y1 = r.bottom - paperTop;
+            while (y1 > limitOf(pageStart) && y0 > pageStart) { breaks.push(y0); pageStart = y0; }
+            while (y1 > limitOf(pageStart)) { const cut = limitOf(pageStart); if (cut <= pageStart) break; breaks.push(cut); pageStart = cut; }   // 单块比一页还高：只能硬切
+          }
+          // 内容以外的空白不分页；无块元素时按页高硬切
+          let cursor = pageStart; while (totalH - cursor > pageH - (cursor === 0 ? 0 : padTop)) { const cut = limitOf(cursor); if (cut <= cursor) break; breaks.push(cut); cursor = cut; }
+          const scale = Math.max(1, Math.min(2, 14000 / totalH));
+          const canvas = await html2canvas(paper, { scale, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: Math.max(1200, width + 400) });
+          const edges = [0, ...breaks, totalH];
+          for (let i = 0; i < edges.length - 1; i++) {
+            const y0 = edges[i], y1 = Math.min(edges[i + 1], totalH); if (y1 - y0 < 1) continue;
+            const slice = document.createElement('canvas'); slice.width = canvas.width; slice.height = Math.round((y1 - y0) * scale);
+            const ctx = slice.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, slice.width, slice.height);
+            ctx.drawImage(canvas, 0, Math.round(y0 * scale), canvas.width, slice.height, 0, 0, slice.width, slice.height);
+            if (!firstPage) pdf.addPage(); firstPage = false;
+            const yMm = i === 0 ? 0 : padTop / pxPerMm, hMm = (y1 - y0) / pxPerMm;
+            pdf.addImage(slice.toDataURL('image/jpeg', .92), 'JPEG', 0, yMm, PW, hMm);
+            report.push({ file: file.title, page: i + 1, heightMm: Math.round(hMm) });
+          }
+        }
+      } catch (e) { showToast('生成 PDF 失败：' + e.message); stage.remove(); return null; }
+      stage.remove();
+      const stamp = new Date().toISOString().slice(0, 10);
+      const name = (selected.length === 1 ? safeFileName(selected[0].title) : `Moodio-导出-${stamp}`) + '.pdf';
+      if (debug) return { pages: pdf.getNumberOfPages(), report, size: pdf.output('blob').size, firstPage: pdf.output('datauristring').slice(0, 40) };
+      pdf.save(name);
+      showToast(selected.length === 1 ? `已导出“${selected[0].title}”PDF` : `已合并导出 ${selected.length} 份 PDF`);
+      return name;
     }
 
     function closeExportDialog() {

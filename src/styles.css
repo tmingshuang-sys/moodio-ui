@@ -3724,3 +3724,17 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #flow-dialog[data-kind="blank-page"] .import-target { background: #fff; border-color: var(--line-strong); backdrop-filter: none; }
     #flow-dialog[data-kind="blank-page"] footer { padding-top: 14px; }
     #flow-dialog[data-kind="blank-page"] footer .canvas-action { background: #fff; }
+
+    /* PDF 导出的离屏舞台：稿纸固定 A4 宽（794px）、固定边距，其余样式与页面完全一致 */
+    .pdf-export-stage { position: absolute; left: -20000px; top: 0; width: 794px; pointer-events: none; }
+    .pdf-export-stage .paper { width: 794px; height: auto; min-height: 1123px; aspect-ratio: auto; overflow: visible; margin: 0; padding: 62px 80px 88px; border: 0; border-radius: 0; box-shadow: none; animation: none !important; background-image: none; background-color: #fff; }
+    .pdf-export-stage .paper.wide { padding-left: 62px; padding-right: 62px; }
+    .pdf-export-stage .export-table { width: 100%; border-collapse: collapse; font-family: Georgia, "Songti SC", serif; }
+    .pdf-export-stage .export-table th, .pdf-export-stage .export-table td { padding: 10px 6px; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; font-size: 13px; line-height: 1.6; }
+    .pdf-export-stage svg.icon, .pdf-export-stage .view-dock, .pdf-export-stage input { display: none !important; }
+
+    /* 「导入文档到哪个板块」弹窗：标题栏铺蓝色渐变图（assets/dialog-bg-import.jpg），标题与关闭按钮改白色，下方纯白 */
+    #flow-dialog[data-kind="import-target"] { border: 0; }
+    #flow-dialog[data-kind="import-target"] header { background: #3d6f9d url(../assets/dialog-bg-import.jpg) center 40% / cover no-repeat; border-bottom: 1px solid var(--line); }
+    #flow-dialog[data-kind="import-target"] header h2, #flow-dialog[data-kind="import-target"] .close-dialog { color: #fff; }
+    #flow-dialog[data-kind="import-target"] .close-dialog, #flow-dialog[data-kind="blank-page"] .close-dialog { border: 0; background: transparent; box-shadow: none; }

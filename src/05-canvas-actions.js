@@ -505,7 +505,7 @@
         const files = cats.flatMap(exportFilesFor).filter(Boolean);
         if (!files.length) return;
         const fmt = state.exportFormat || 'doc';
-        if (fmt === 'doc') downloadDocuments(files); else if (fmt === 'pdf') printDocuments(files); else downloadTextDocuments(files, fmt);
+        if (fmt === 'doc') downloadDocuments(files); else if (fmt === 'pdf') exportPdfDocuments(files); else downloadTextDocuments(files, fmt);
         closeExportDialog();
         return;
       }
