@@ -289,7 +289,7 @@
           <li><strong>再次确认后逐项创建</strong>。${assets?'Agent 会逐张创建或更新资产卡片，同步到资产板块，并保留手工填写的信息':'Agent 会逐条写入分镜表，并保留每个镜头的剧本来源'}；对话中会显示执行进度，随时可以停止。</li>
         </ol></div>
         <p id="agent-recognition-intro-error" role="alert"></p>
-      </section>`,flowButton('close-dialog','取消')+flowButton('begin-agent-recognition','确认并开始分析','',true));
+      </section>`,flowButton('close-dialog','取消')+flowButton('begin-agent-recognition','确认并开始分析','',true));$('#flow-dialog').dataset.kind=assets?'recognize-assets':'recognize';   // 标题栏铺蓝色渐变图，分镜 / 资产各一张（样式见 styles.css 末尾）
       $('#agent-recognition-intro').recognitionContext={kind,...context};
     }
     function beginAgentRecognition(){

@@ -3751,3 +3751,15 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     /* 分镜表「合并创建 生成单元」按钮：蓝紫渐变背景（覆盖早先的纯黑） */
     .canvas-action.primary[data-flow="combine-chunk"] { background: var(--brand); border-color: transparent; color: #fff; }
     .canvas-action.primary[data-flow="combine-chunk"]:disabled { opacity: .45; }
+
+    /* 「识别剧本分镜 / 资产」弹窗：标题栏铺蓝色渐变图（assets/dialog-bg-recognize.jpg），黑字，下方纯白 */
+    #flow-dialog[data-kind="recognize"] { border: 0; }
+    #flow-dialog[data-kind="recognize"] header { background: #4c7ea8 url(../assets/dialog-bg-recognize.jpg) center 60% / cover no-repeat; border-bottom: 1px solid var(--line); }
+    #flow-dialog[data-kind="recognize"] header h2, #flow-dialog[data-kind="recognize"] .close-dialog { color: #191917; }
+    #flow-dialog[data-kind="recognize"] .close-dialog { border: 0; background: transparent; box-shadow: none; }
+
+    /* 「识别剧本资产」弹窗：标题栏铺另一张蓝色渐变图（assets/dialog-bg-recognize-assets.jpg，上浅下深） */
+    #flow-dialog[data-kind="recognize-assets"] { border: 0; }
+    #flow-dialog[data-kind="recognize-assets"] header { background: #6d9bb6 url(../assets/dialog-bg-recognize-assets.jpg) center 30% / cover no-repeat; border-bottom: 1px solid var(--line); }
+    #flow-dialog[data-kind="recognize-assets"] header h2, #flow-dialog[data-kind="recognize-assets"] .close-dialog { color: #191917; }
+    #flow-dialog[data-kind="recognize-assets"] .close-dialog { border: 0; background: transparent; box-shadow: none; }
