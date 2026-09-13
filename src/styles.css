@@ -3645,10 +3645,11 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .paper-readonly-bar button:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
     .paper-readonly [contenteditable="false"] { caret-color: transparent; cursor: default; }
     .flow-note { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.7; }
-    .writing-doc-history.fx-open { animation: fx-menu-grow-down 400ms cubic-bezier(.215, .61, .355, 1); }
-    .writing-doc-history.fx-open > * { animation: fx-menu-row-in 400ms cubic-bezier(.215, .61, .355, 1) both; animation-delay: 300ms; }
-    .writing-doc-history.fx-open > :nth-child(2) { animation-delay: 380ms; }
-    .writing-doc-history.fx-open > :nth-child(3) { animation-delay: 460ms; }
-    .writing-doc-history.fx-open > :nth-child(4) { animation-delay: 540ms; }
-    .writing-doc-history.fx-open > :nth-child(n+5) { animation-delay: 620ms; }
+    /* 版本列表比菜单更轻：容器 220ms 展开，行 60ms 起、每行错开 40ms */
+    .writing-doc-history.fx-open { animation: fx-menu-grow-down 220ms cubic-bezier(.215, .61, .355, 1); }
+    .writing-doc-history.fx-open > * { animation: fx-menu-row-in 260ms cubic-bezier(.215, .61, .355, 1) both; animation-delay: 60ms; }
+    .writing-doc-history.fx-open > :nth-child(2) { animation-delay: 100ms; }
+    .writing-doc-history.fx-open > :nth-child(3) { animation-delay: 140ms; }
+    .writing-doc-history.fx-open > :nth-child(4) { animation-delay: 180ms; }
+    .writing-doc-history.fx-open > :nth-child(n+5) { animation-delay: 220ms; }
     @media (prefers-reduced-motion: reduce) { .writing-doc-history.fx-open, .writing-doc-history.fx-open > * { animation: none !important; } }
