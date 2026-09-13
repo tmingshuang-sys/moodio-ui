@@ -384,7 +384,11 @@
       function renderEpisodeMenu(){
         const menu = $('#episode-menu');
         if (!menu) return;
-        menu.innerHTML = state.episodes.map(ep => `<div class="episode-row ${ep.id === state.activeEpisodeId ? 'active' : ''}" role="menuitem" data-episode="${ep.id}">${clapper}${renamingEpisodeId === ep.id
+        const projects = moodioProjects.list(), activeProject = moodioProjects.active();
+        const folderIcon = `<svg class="icon sm" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>`;
+        const projectHtml = `<div class="project-section-title">项目</div>` + projects.map(p => `<div class="episode-row project-row ${p.id === activeProject?.id ? 'active' : ''}" role="menuitem" data-project-switch="${p.id}">${folderIcon}<span class="episode-name">${escapeHtml(p.title)}</span>${p.id === activeProject?.id ? `<button class="episode-tool" data-project-rename="${p.id}" aria-label="重命名项目 ${escapeHtml(p.title)}"><svg class="icon sm" viewBox="0 0 24 24"><path d="m4 20 4-1 11-11-3-3L5 16zM14 7l3 3"/></svg></button>` : ''}${projects.length > 1 ? `<button class="episode-tool" data-project-delete="${p.id}" aria-label="删除项目 ${escapeHtml(p.title)}">${icons.trash}</button>` : ''}</div>`).join('')
+          + `<button class="episode-new" data-project-new>${flowIcon('plus')}新建项目</button><div class="project-section-title">剧集</div>`;
+        menu.innerHTML = projectHtml + state.episodes.map(ep => `<div class="episode-row ${ep.id === state.activeEpisodeId ? 'active' : ''}" role="menuitem" data-episode="${ep.id}">${clapper}${renamingEpisodeId === ep.id
           ? `<input class="episode-rename" data-episode-rename="${ep.id}" value="${escapeHtml(ep.title)}" maxlength="30" aria-label="重命名剧集">`
           : `<span class="episode-name">${escapeHtml(ep.title)}</span><small>${shotCount(ep)} 个镜头</small><button class="episode-tool" data-episode-edit="${ep.id}" aria-label="重命名 ${escapeHtml(ep.title)}"><svg class="icon sm" viewBox="0 0 24 24"><path d="m4 20 4-1 11-11-3-3L5 16zM14 7l3 3"/></svg></button><button class="episode-tool danger" data-episode-delete="${ep.id}" aria-label="删除 ${escapeHtml(ep.title)}" ${state.episodes.length <= 1 ? 'disabled' : ''}><svg class="icon sm" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/></svg></button>`}</div>`).join('')
           + `<button class="episode-new" data-episode-new>${flowIcon('plus')}新建剧集</button>`;
@@ -408,6 +412,12 @@
         const inMenu = event.target.closest('#episode-menu');
         if (!inMenu) { if (!$('#episode-menu')?.classList.contains('hidden')) closeEpisodeMenu(); return; }
         event.preventDefault(); event.stopImmediatePropagation();
+        // 项目区
+        const pRename = event.target.closest('[data-project-rename]'), pDel = event.target.closest('[data-project-delete]'), pNew = event.target.closest('[data-project-new]'), pSwitch = event.target.closest('[data-project-switch]');
+        if (pRename) { const p = moodioProjects.active(); const t = window.prompt('项目名称', p?.title || ''); if (t !== null && t.trim()) { moodioProjects.rename(pRename.dataset.projectRename, t); renderEpisodeMenu(); } return; }
+        if (pDel) { const id = pDel.dataset.projectDelete; const p = moodioProjects.list().find(x => x.id === id); if (p && window.confirm(`删除项目「${p.title}」？它的全部剧集、文档、分镜、资产和对话会被删除，无法恢复。`)) { moodioProjects.remove(id); renderEpisodeMenu(); showToast(`已删除项目「${p.title}」`); } return; }
+        if (pNew) { const t = window.prompt('新项目名称', '新项目'); if (t !== null) { captureVisibleEdits(); persistWorkspace(); closeEpisodeMenu(); showToast('正在创建项目…'); moodioProjects.create(t); } return; }
+        if (pSwitch) { const id = pSwitch.dataset.projectSwitch; if (id !== moodioProjects.active()?.id) { captureVisibleEdits(); closeEpisodeMenu(); showToast('正在切换项目…'); moodioProjects.switchTo(id); } return; }
         const edit = event.target.closest('[data-episode-edit]'), del = event.target.closest('[data-episode-delete]'), create = event.target.closest('[data-episode-new]'), row = event.target.closest('[data-episode]');
         if (edit) { renamingEpisodeId = edit.dataset.episodeEdit; return renderEpisodeMenu(); }
         if (del) return deleteEpisode(del.dataset.episodeDelete);
@@ -427,6 +437,18 @@
       const renderBeforeEpisodes = render;
       render = () => { renderBeforeEpisodes(); syncEpisodeTitle(); };
       syncEpisodeTitle();
+      // 新建项目后的第一次加载：把示例数据重置为空白工作区
+      if (moodioProjects.consumeFresh()) {
+        state.episodes = [{ id: nextEpisodeId(), title: '第 1 集', workspace: null }];
+        state.activeEpisodeId = state.episodes[0].id;
+        applyEpisode(freshWorkspace());
+        Object.keys(assetCatalog).forEach(k => { assetCatalog[k] = []; });
+        state.storyBeats = []; state.storyEdges = []; state.ideaNodes = []; state.ideaEdges = []; state.ideaLayoutGroups = []; state.trash = [];
+        resetTransient();
+        $$('[data-paper], .board-shell').forEach(el => el.remove());
+        persistWorkspace(); render(); syncEpisodeTitle(); moodioProjects.syncTitle();
+        showToast(`已创建空白项目「${moodioProjects.active()?.title || ''}」`);
+      }
     })();
 
 

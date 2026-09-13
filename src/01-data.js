@@ -155,7 +155,7 @@
       }
     };
 
-    const WORKSPACE_STORAGE_KEY = 'moodio-ui-refined-storyboard-v1';
+    const WORKSPACE_STORAGE_KEY = moodioProjects.key('moodio-ui-refined-storyboard-v1');   // 按当前项目隔离
     const restoredWorkspace = (() => {
       try {
         const saved = localStorage.getItem(WORKSPACE_STORAGE_KEY);
@@ -436,6 +436,7 @@
       };
       try {
         localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(payload));
+        moodioProjects.touch();
         document.dispatchEvent(new CustomEvent('moodio:assets-updated'));
         return true;
       } catch (error) {
