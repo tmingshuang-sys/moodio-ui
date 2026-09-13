@@ -3736,5 +3736,5 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     /* 「导入文档到哪个板块」弹窗：标题栏铺蓝色渐变图（assets/dialog-bg-import.jpg），标题与关闭按钮改白色，下方纯白 */
     #flow-dialog[data-kind="import-target"] { border: 0; }
     #flow-dialog[data-kind="import-target"] header { background: #3d6f9d url(../assets/dialog-bg-import.jpg) center 40% / cover no-repeat; border-bottom: 1px solid var(--line); }
-    #flow-dialog[data-kind="import-target"] header h2, #flow-dialog[data-kind="import-target"] .close-dialog { color: #fff; }
+    #flow-dialog[data-kind="import-target"] header h2, #flow-dialog[data-kind="import-target"] .close-dialog { color: #191917; }   /* 标题与关闭按钮用黑字 */
     #flow-dialog[data-kind="import-target"] .close-dialog, #flow-dialog[data-kind="blank-page"] .close-dialog { border: 0; background: transparent; box-shadow: none; }
