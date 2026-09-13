@@ -3594,3 +3594,24 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .agent-review-fix:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
     .agent-model-note + #agent-model-writer { margin-top: 6px; }
     #agent-model-writer-thinking { margin-top: 8px; }
+
+
+    /* 剧集 / 项目下拉菜单动效（仿 CardNav）：容器高度 0.4s power3.out 展开，各行从下方 50px 错开 80ms 淡入；关闭反向 */
+    .episode-menu { will-change: height; transition: height 400ms cubic-bezier(.215, .61, .355, 1); }
+    .episode-menu.entering > * { animation: episode-menu-row-in 400ms cubic-bezier(.215, .61, .355, 1) both; }
+    .episode-menu.entering > :nth-child(1) { animation-delay: 300ms; }
+    .episode-menu.entering > :nth-child(2) { animation-delay: 380ms; }
+    .episode-menu.entering > :nth-child(3) { animation-delay: 460ms; }
+    .episode-menu.entering > :nth-child(4) { animation-delay: 540ms; }
+    .episode-menu.entering > :nth-child(5) { animation-delay: 620ms; }
+    .episode-menu.entering > :nth-child(6) { animation-delay: 700ms; }
+    .episode-menu.entering > :nth-child(7) { animation-delay: 780ms; }
+    .episode-menu.entering > :nth-child(8) { animation-delay: 860ms; }
+    .episode-menu.entering > :nth-child(n+9) { animation-delay: 940ms; }
+    @keyframes episode-menu-row-in { from { opacity: 0; transform: translateY(50px); } to { opacity: 1; transform: none; } }
+    .episode-menu.closing { transition-duration: 320ms; pointer-events: none; }
+    .episode-menu.closing > * { opacity: 0; transform: translateY(24px); transition: opacity 200ms ease, transform 260ms cubic-bezier(.215, .61, .355, 1); }
+    @media (prefers-reduced-motion: reduce) {
+      .episode-menu, .episode-menu.closing > * { transition: none !important; }
+      .episode-menu.entering > * { animation: none !important; }
+    }
