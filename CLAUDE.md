@@ -2,13 +2,16 @@
 
 ## 这是什么
 
-Moodio 3.0 的剧本 / 分镜 / 资产创作原型，带内置 AI Agent。整个应用是一个零依赖的单文件：
-`Moodio-UI-Refined-Storyboard.html`（约 1.3 万行：第 8–3560 行 CSS，第 3760 行起 JS）。
-没有框架、没有构建步骤、没有外部脚本。
+Moodio 3.0 的剧本 / 分镜 / 资产创作原型，带内置 AI Agent。零依赖、无框架、无构建步骤的静态页面：
+`Moodio-UI-Refined-Storyboard.html` 只保留页面结构（约 220 行），样式在 `src/styles.css`，
+脚本按功能拆成 `src/01-data.js` … `src/12-effects.js` 共 12 个文件，由 `src/loader.js` 按顺序取回后拼成一段脚本执行，
+因此它们共享同一个全局作用域，函数提升在文件之间同样有效（后面文件定义的函数，前面的文件也能在加载期调用）。
+不是 ES module，不要写 import / export；新增文件必须加进 `src/loader.js` 的列表。每个文件的职责见 `src/README.md`。
+浏览器报错时的位置显示为 `moodio-app.js`，按错误附近的 `/* ===== src/xx.js ===== */` 分隔注释找到对应文件。
 
 目录：
 
-- `Moodio-UI-Refined-Storyboard.html` 应用本体，唯一需要编辑的前端文件
+- `Moodio-UI-Refined-Storyboard.html` 页面结构；`src/styles.css` 样式；`src/*.js` 脚本（见 src/README.md）
 - `gateway/` Cloudflare Worker 模型网关（持有模型 API key，对外 OpenAI 兼容接口）
 - `site/` 页面发布配置（静态资源 Worker）
 - `dist/` 发布时临时生成，已 gitignore
@@ -24,10 +27,10 @@ python3 -m http.server 8765        # 本地预览，访问 http://127.0.0.1:8765
 
 不要用 file:// 直接打开，浏览器会拦截模型请求。
 
-每次改完 JS 必须做语法检查（把 <script> 内容抽出来交给 node）：
+每次改完 JS 必须做语法检查：
 
 ```bash
-python3 -c "import re;s=open('Moodio-UI-Refined-Storyboard.html',encoding='utf-8').read();m=re.search(r'<script>\n(.*)\n  </script>\n</body>',s,re.S);open('/tmp/moodio-main.js','w',encoding='utf-8').write(m.group(1))" && node --check /tmp/moodio-main.js
+npm run check          # 对 src/*.js 逐个 node --check
 ```
 
 改 UI 后在浏览器里实际看一眼再交付；改 Agent 逻辑后用真实模型发一条消息验证。
@@ -37,8 +40,8 @@ python3 -c "import re;s=open('Moodio-UI-Refined-Storyboard.html',encoding='utf-8
 
 ## 修改约定
 
-- **样式**：不要改动早期规则，新的覆盖规则追加到 `</style>` 之前、带一行中文注释说明用途。品牌渐变用 `var(--brand)`；SVG 线条渐变引用 `#moodio-brand-gradient`。
-- **JS**：用 Python 精确字符串替换或小段插入，改前先读上下文；文件里有多个 IIFE 闭包，`agentWindow` 里的函数在外部不可见。
+- **样式**：都在 `src/styles.css`。不要改动早期规则，新的覆盖规则追加到文件末尾、带一行中文注释说明用途。品牌渐变用 `var(--brand)`；SVG 线条渐变引用 `#moodio-brand-gradient`。
+- **JS**：先用 `grep -n` 在 `src/` 里定位到具体文件，再用精确字符串替换或小段插入；新增顶层函数放在相关文件里即可，不需要导出。`src/11-agent.js` 里的 `agentWindow` IIFE 内部函数在外部不可见。
 - **Agent 执行前必须确认**：`reply()` 只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`localPlan()`、`remotePlan()` 的系统提示。
 - **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。
 - **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
@@ -47,7 +50,7 @@ python3 -c "import re;s=open('Moodio-UI-Refined-Storyboard.html',encoding='utf-8
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`。
 - **不要编辑** `~/Downloads` 里的旧副本；不要把 `dist/`、`node_modules/`、`.wrangler/` 提交进仓库。
 
-## 代码地标（按函数名搜索，行号会变）
+## 代码地标（在 src/ 里 grep 函数名）
 
 | 功能 | 入口 |
 |---|---|

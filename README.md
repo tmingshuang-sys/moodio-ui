@@ -1,6 +1,8 @@
 # Moodio UI · Storyboard 原型
 
-单文件 HTML 原型：`Moodio-UI-Refined-Storyboard.html`。
+静态页面原型：`Moodio-UI-Refined-Storyboard.html`（结构）+ `src/styles.css`（样式）+ `src/*.js`（脚本，见 `src/README.md`）。
+
+配套：`gateway/` 模型网关（Cloudflare Worker），`site/` 页面发布配置。线上地址 https://moodio-ui.moodio-ui.workers.dev
 
 ## 本地运行
 
