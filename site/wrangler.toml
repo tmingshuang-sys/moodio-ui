@@ -1,0 +1,7 @@
+# 页面本身：作为静态资源 Worker 发布（Cloudflare Pages 已并入 Workers）
+name = "moodio-ui"
+compatibility_date = "2026-06-01"
+
+[assets]
+directory = "../dist"
+not_found_handling = "single-page-application"

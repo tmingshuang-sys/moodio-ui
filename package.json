@@ -5,9 +5,13 @@
     "serve": "python3 -m http.server 8765",
     "gateway:login": "wrangler login --config gateway/wrangler.toml",
     "gateway:deploy": "wrangler deploy --config gateway/wrangler.toml",
-    "gateway:dev": "wrangler dev --config gateway/wrangler.toml"
+    "gateway:dev": "wrangler dev --config gateway/wrangler.toml",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev",
+    "site:build": "rm -rf dist && mkdir dist && cp Moodio-UI-Refined-Storyboard.html dist/index.html && cp Moodio-UI-Refined-Storyboard.html dist/",
+    "site:deploy": "npm run site:build && wrangler deploy --config site/wrangler.toml"
   },
   "devDependencies": {
-    "wrangler": "^4"
+    "wrangler": "^4.131.1"
   }
 }
