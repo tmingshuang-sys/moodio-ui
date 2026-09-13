@@ -759,8 +759,10 @@
       const workflowPending=w=>w.items.filter(i=>i.selected&&!i.result);
       function showWorkflow(w){
         const entry=findWorkflow(w.id);if(entry)store.active=entry.c.id;
-        panel.classList.remove('hidden');$('#agent-back').setAttribute('aria-pressed','false');
-        renderAgent();agentScrollToLatest();
+        const executing=$('#agent-live')?.classList.contains('as-bubble');   // 显式化执行中面板保持收起，结束后由 agentEnd() 恢复
+        if(!executing) panel.classList.remove('hidden');
+        $('#agent-back').setAttribute('aria-pressed','false');
+        renderAgent();if(!executing)agentScrollToLatest();
       }
       function publishWorkflow(w,text){
         if(text){w.statusText=text;w.log.push({text,at:Date.now()});}
