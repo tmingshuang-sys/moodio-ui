@@ -137,9 +137,10 @@
       function agentUI(){
         if($('#agent-cursor')) return;
         document.body.insertAdjacentHTML('beforeend',`<div id="agent-glow" aria-hidden="true"></div><div id="agent-cursor" class="hidden" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5 19 11l-6.2 1.6L9.6 19z"/></svg><span class="agent-cursor-tag">Agent</span></div><div id="agent-live" class="hidden" role="status"><span class="agent-live-dot"></span><span id="agent-live-text"></span><button type="button" id="agent-live-stop" data-no-tip>停止</button></div>`);
+        window.addEventListener('resize',positionLiveBubble);
         $('#agent-live-stop').addEventListener('click',()=>{ if(runningWorkflow){const w=findWorkflow(runningWorkflow.id)?.w;if(w)stopWorkflow(w);return;} agentAbort=true; agentStatus('正在停止…'); });
       }
-      function agentStatus(text){ agentUI(); const el=$('#agent-live'); el.classList.remove('hidden'); $('#agent-live-text').textContent=text; }
+      function agentStatus(text){ agentUI(); const el=$('#agent-live'); el.classList.remove('hidden'); $('#agent-live-text').textContent=text; positionLiveBubble(); }
       function agentLog(text,done){
         if(done&&agentLogLines.length) agentLogLines[agentLogLines.length-1]=agentLogLines[agentLogLines.length-1].replace(/^◦/,'✓');
         if(text) agentLogLines.push('◦ '+text);
@@ -168,7 +169,31 @@
         for(const ch of text){ if(agentAbort) break; cur+=ch; set(cur); await sleep(/[，。！？；：…—]/.test(ch)?per*5:per); }
         set(text); el?.classList?.remove('agent-typing');
       }
-      function agentGlow(on){ agentUI(); $('#agent-glow')?.classList.toggle('on',!!on); }   // 显式化执行期间工作区表面的一层淡蓝紫流光
+      // 显式化执行期间：工作区表面一层淡蓝紫流光；对话面板收起、状态胶囊变成吉祥物旁的气泡；结束后面板恢复原状
+      let execPanelWasOpen=false;
+      function agentGlow(on){ agentUI(); $('#agent-glow')?.classList.toggle('on',!!on); agentExecMode(!!on); }
+      function agentExecMode(on){
+        const live=$('#agent-live'); if(!live) return;
+        if(on){
+          if(live.classList.contains('as-bubble')) return;
+          execPanelWasOpen=!panel.classList.contains('hidden');
+          if(execPanelWasOpen) panel.classList.add('hidden');
+          live.classList.add('as-bubble'); positionLiveBubble();
+        } else {
+          if(!live.classList.contains('as-bubble')) return;
+          live.classList.remove('as-bubble'); live.style.left=''; live.style.top=''; delete live.dataset.side;
+          if(execPanelWasOpen){ execPanelWasOpen=false; panel.classList.remove('hidden'); }
+        }
+      }
+      function positionLiveBubble(){
+        const live=$('#agent-live'), fab=$('#agent-fab'); if(!live||!fab||!live.classList.contains('as-bubble')||live.classList.contains('hidden')) return;
+        const r=fab.getBoundingClientRect(), w=live.offsetWidth, h=live.offsetHeight, margin=12, gap=10; if(!r.width||!w) return;
+        const cx=r.left+r.width/2;
+        const left=Math.max(margin,Math.min(cx-w/2,innerWidth-w-margin));
+        let top, side; if(r.top-h-gap>=margin){ top=r.top-h-gap; side='bottom'; } else { top=r.bottom+gap; side='top'; }
+        live.style.left=left+'px'; live.style.top=top+'px'; live.dataset.side=side;
+        live.style.setProperty('--tail-x',Math.max(18,Math.min(cx-left,w-18))+'px');
+      }
       function agentEnd(){ agentGlow(false); $('#agent-cursor')?.classList.add('hidden'); $('#agent-live')?.classList.add('hidden'); document.querySelectorAll('.agent-focus,.agent-typing').forEach(e=>e.classList.remove('agent-focus','agent-typing')); }
       async function agentGoPage(page){
         if(state.projectPage===page) return;

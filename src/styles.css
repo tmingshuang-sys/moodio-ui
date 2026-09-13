@@ -3687,3 +3687,9 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     /* Agent 状态胶囊移到底部「专注 / 对照」按钮上方，水平对齐同一中心 */
     #agent-live { top: auto; bottom: calc(var(--stack-tray) + 14px + 42px + 10px); left: calc(var(--sidebar) + (100vw - var(--sidebar)) / 2); }
     @media (max-width: 600px) { #agent-live { left: 50%; bottom: calc(12px + 42px + 10px); } }
+
+    /* 执行中的状态胶囊改成吉祥物旁的气泡：带小三角指向吉祥物，沿用蓝紫流动背景 */
+    #agent-live.as-bubble { transform: none; bottom: auto; max-width: min(80vw, 420px); border-radius: 14px; padding: 9px 10px 9px 14px; box-shadow: 0 10px 26px rgba(74, 103, 169, .32), 0 2px 6px rgba(31, 38, 35, .16); z-index: 2147483646; }
+    #agent-live.as-bubble::after { content: ''; position: absolute; width: 12px; height: 12px; left: calc(var(--tail-x, 50%) - 6px); background: inherit; background-size: inherit; background-position: inherit; transform: rotate(45deg); z-index: -1; }
+    #agent-live.as-bubble[data-side="bottom"]::after { bottom: -5px; }
+    #agent-live.as-bubble[data-side="top"]::after { top: -5px; }
