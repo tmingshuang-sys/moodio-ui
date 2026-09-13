@@ -12,6 +12,7 @@ Moodio 3.0 的剧本 / 分镜 / 资产创作原型，带内置 AI Agent。零依
 目录：
 
 - `Moodio-UI-Refined-Storyboard.html` 页面结构；`src/styles.css` 样式；`src/*.js` 脚本（见 src/README.md）
+- `assets/` 图片等静态资源（样式里用 `../assets/` 引用，构建时整目录复制到 dist/assets）
 - `gateway/` Cloudflare Worker 模型网关（持有模型 API key，对外 OpenAI 兼容接口）
 - `site/` 页面发布配置（静态资源 Worker）
 - `dist/` 发布时临时生成，已 gitignore

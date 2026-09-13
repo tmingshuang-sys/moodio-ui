@@ -3693,3 +3693,11 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #agent-live.as-bubble::after { content: ''; position: absolute; width: 12px; height: 12px; left: calc(var(--tail-x, 50%) - 6px); background: inherit; background-size: inherit; background-position: inherit; transform: rotate(45deg); z-index: -1; }
     #agent-live.as-bubble[data-side="bottom"]::after { bottom: -5px; }
     #agent-live.as-bubble[data-side="top"]::after { top: -5px; }
+
+    /* 「新建空白页面」弹窗：水彩蓝紫背景图（assets/dialog-bg-watercolor.jpg），选项卡片改半透明白以保证可读 */
+    #flow-dialog[data-kind="blank-page"] { background: #dfe0ee url(../assets/dialog-bg-watercolor.jpg) center / cover no-repeat; border-color: rgba(255,255,255,.6); }
+    #flow-dialog[data-kind="blank-page"] header h2 { color: #2b2f4a; }
+    #flow-dialog[data-kind="blank-page"] .close-dialog { background: rgba(255,255,255,.55); }
+    #flow-dialog[data-kind="blank-page"] .import-target { background: rgba(255,255,255,.88); border-color: rgba(255,255,255,.9); backdrop-filter: blur(6px); }
+    #flow-dialog[data-kind="blank-page"] .import-target:hover { background: #fff; }
+    #flow-dialog[data-kind="blank-page"] footer .canvas-action { background: rgba(255,255,255,.85); }

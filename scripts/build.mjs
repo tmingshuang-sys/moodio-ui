@@ -1,5 +1,5 @@
 // 构建发布目录 dist/：HTML + styles.css + 拼接后的 app.js（保持与开发时相同的执行语义）
-import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, cpSync, existsSync } from 'node:fs';
 const html = readFileSync('Moodio-UI-Refined-Storyboard.html', 'utf8');
 const files = JSON.parse(readFileSync('src/manifest.json', 'utf8'));
 rmSync('dist', { recursive: true, force: true });
@@ -7,6 +7,7 @@ mkdirSync('dist/src', { recursive: true });
 const app = files.map(f => `/* ===== src/${f} ===== */\n` + readFileSync(`src/${f}`, 'utf8')).join('\n');
 writeFileSync('dist/src/app.js', app);
 copyFileSync('src/styles.css', 'dist/src/styles.css');
+if (existsSync('assets')) cpSync('assets', 'dist/assets', { recursive: true });   // 图片等静态资源，样式里用 ../assets/ 引用
 const tag = '<script src="src/loader.js"></script>';
 if (!html.includes(tag)) throw new Error('页面里找不到 loader 标签');
 const out = html.replace(tag, '<script src="src/app.js"></script>');
