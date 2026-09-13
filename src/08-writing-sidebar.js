@@ -414,9 +414,9 @@
         event.preventDefault(); event.stopImmediatePropagation();
         // 项目区
         const pRename = event.target.closest('[data-project-rename]'), pDel = event.target.closest('[data-project-delete]'), pNew = event.target.closest('[data-project-new]'), pSwitch = event.target.closest('[data-project-switch]');
-        if (pRename) { const p = moodioProjects.active(); const t = window.prompt('项目名称', p?.title || ''); if (t !== null && t.trim()) { moodioProjects.rename(pRename.dataset.projectRename, t); renderEpisodeMenu(); } return; }
-        if (pDel) { const id = pDel.dataset.projectDelete; const p = moodioProjects.list().find(x => x.id === id); if (p && window.confirm(`删除项目「${p.title}」？它的全部剧集、文档、分镜、资产和对话会被删除，无法恢复。`)) { moodioProjects.remove(id); renderEpisodeMenu(); showToast(`已删除项目「${p.title}」`); } return; }
-        if (pNew) { const t = window.prompt('新项目名称', '新项目'); if (t !== null) { captureVisibleEdits(); persistWorkspace(); closeEpisodeMenu(); showToast('正在创建项目…'); moodioProjects.create(t); } return; }
+        if (pRename) { const p = moodioProjects.active(); closeEpisodeMenu(); openFlowDialog('重命名项目', `<label>项目名称<input id="project-name-input" value="${escapeHtml(p?.title || '')}" maxlength="40"></label>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="rename" data-project-id="${p?.id || ''}">保存</button>`); setTimeout(() => $('#project-name-input')?.select(), 30); return; }
+        if (pDel) { const id = pDel.dataset.projectDelete; const p = moodioProjects.list().find(x => x.id === id); if (!p) return; closeEpisodeMenu(); openFlowDialog('删除项目', `<p>删除项目 <strong>${escapeHtml(p.title)}</strong>？它的全部剧集、文档、分镜、资产和对话会被删除，<strong>无法恢复</strong>。建议先在「导出文档」里导出项目备份。</p>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="delete" data-project-id="${p.id}">删除项目</button>`); return; }
+        if (pNew) { closeEpisodeMenu(); openFlowDialog('新建项目', `<p>新项目从空白开始：一集、空白封面与剧本、无资产。当前项目会先自动保存。</p><label>项目名称<input id="project-name-input" value="新项目" maxlength="40"></label>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="create">创建并切换</button>`); setTimeout(() => $('#project-name-input')?.select(), 30); return; }
         if (pSwitch) { const id = pSwitch.dataset.projectSwitch; if (id !== moodioProjects.active()?.id) { captureVisibleEdits(); closeEpisodeMenu(); showToast('正在切换项目…'); moodioProjects.switchTo(id); } return; }
         const edit = event.target.closest('[data-episode-edit]'), del = event.target.closest('[data-episode-delete]'), create = event.target.closest('[data-episode-new]'), row = event.target.closest('[data-episode]');
         if (edit) { renamingEpisodeId = edit.dataset.episodeEdit; return renderEpisodeMenu(); }
@@ -425,7 +425,16 @@
         if (event.target.closest('[data-episode-rename]')) return;
         if (row) { switchEpisode(row.dataset.episode); closeEpisodeMenu(); }
       }, true);
+      document.addEventListener('click', event => {
+        const btn = event.target.closest('[data-project-dialog]'); if (!btn) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        const action = btn.dataset.projectDialog, id = btn.dataset.projectId, name = $('#project-name-input')?.value?.trim();
+        if (action === 'rename') { if (!name) return; moodioProjects.rename(id, name); closeFlowDialog(); showToast(`项目已重命名为「${name}」`); return; }
+        if (action === 'delete') { const p = moodioProjects.list().find(x => x.id === id); closeFlowDialog(); if (p && moodioProjects.remove(id)) showToast(`已删除项目「${p.title}」`); return; }
+        if (action === 'create') { captureVisibleEdits(); persistWorkspace(); closeFlowDialog(); showToast('正在创建项目…'); moodioProjects.create(name || '新项目'); }
+      }, true);
       document.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && event.target.id === 'project-name-input') { event.preventDefault(); $('[data-project-dialog]')?.click(); return; }
         const input = event.target.closest?.('[data-episode-rename]');
         if (input) { if (event.key === 'Enter') { event.preventDefault(); renameEpisode(input.dataset.episodeRename, input.value); renamingEpisodeId = null; renderEpisodeMenu(); } else if (event.key === 'Escape') { event.stopPropagation(); renamingEpisodeId = null; renderEpisodeMenu(); } return; }
         if (event.key === 'Escape' && !$('#episode-menu')?.classList.contains('hidden')) closeEpisodeMenu();
@@ -515,6 +524,11 @@
     // 各板块导航共用的表头右侧：定位输入框 + 计数
     function navHead(placeholder, count){ return `<span class="scene-locate"><input type="text" inputmode="numeric" data-nav-locate placeholder="${placeholder}" aria-label="输入${placeholder}定位" maxlength="3"><small>/ ${count}</small></span>`; }
     function renderContextSections(sceneRows){
+      const base = renderContextSectionsBase(sceneRows);
+      const { type } = contextDocInfo();
+      return base + (type && type !== 'cover' && typeof moodioVersions !== 'undefined' ? moodioVersions.sectionHtml() : '');
+    }
+    function renderContextSectionsBase(sceneRows){
       const { type, file } = contextDocInfo();
       if (type === 'script' || !type) {
         const blocks = file ? scriptBlocksOf(file) : [];
@@ -561,6 +575,7 @@
       const text = el => (el?.innerText || '').replace(/\s+/g, '');
       panel.querySelectorAll('[data-context-fill]').forEach(slot => {
         const kind = slot.dataset.contextFill;
+        if (kind === 'versions') { moodioVersions.fillSlot(slot); return; }
         if (!paper) { slot.innerHTML = '<p class="writing-folders-empty">稿纸未打开</p>'; return; }
         if (kind === 'text-stats') {
           const paras = $$('p', paper), chars = paras.reduce((n, el) => n + text(el).length, 0);

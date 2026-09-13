@@ -3554,3 +3554,16 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .project-section-title { padding: 8px 12px 4px; font-size: 10px; letter-spacing: .06em; color: var(--ink-3); }
     .project-section-title + .episode-row { margin-top: 0; }
     .episode-row.project-row .episode-name { font-weight: 600; }
+
+    /* 侧栏「历史版本」 */
+    .version-save { height: 22px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink-2); font-size: 11px; cursor: pointer; }
+    .version-save:hover { background: #f3f3f1; color: var(--ink); }
+    .version-list { display: flex; flex-direction: column; }
+    .version-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .version-row:last-child { border-bottom: 0; }
+    .version-row > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .version-row strong { font-weight: 500; color: var(--ink); }
+    .version-row small { color: var(--ink-3); font-size: 10px; }
+    .version-row.latest strong::after { content: ' · 最新'; color: var(--ink-3); font-weight: 400; }
+    .version-row button { margin-left: auto; height: 22px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink-2); font-size: 11px; cursor: pointer; }
+    .version-row button:hover { background: var(--ink); border-color: var(--ink); color: #fff; }

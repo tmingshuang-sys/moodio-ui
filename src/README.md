@@ -15,4 +15,5 @@
 - `10-editor-interactions.js` 云文档交互、剧本撤销与格式、剧本行手柄、资产详情抽屉
 - `11-agent.js` Moodio Agent 浮窗：对话、规划与确认执行、识别工作流、模型调用
 - `12-effects.js` 工作区背景（已停用）、渐变光标、渐变聚焦光圈、主动提示气泡
+- `13-versions.js` 版本层：文档快照（IndexedDB）、侧栏历史版本面板、恢复
 - `styles.css` 全部样式；新增覆盖规则追加到文件末尾
