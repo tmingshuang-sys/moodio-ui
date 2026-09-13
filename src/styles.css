@@ -3744,9 +3744,9 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .export-dialog-head > div > strong, .export-dialog-close { color: #191917; }
     .export-dialog-close:hover { background: transparent; }
 
-    /* 场次导航定位：剧本里对应的一场整段高亮（淡蓝紫底 + 左侧渐变竖条），约 3 秒后淡出 */
-    .paper .script-block.scene-flash { background: rgba(74, 103, 169, .12) !important; box-shadow: inset 3px 0 0 #4a67a9 !important; animation: scene-flash-out 2.8s ease-in forwards; }
-    @keyframes scene-flash-out { 0%, 55% { background-color: rgba(74, 103, 169, .12); box-shadow: inset 3px 0 0 #4a67a9; } 100% { background-color: rgba(74, 103, 169, 0); box-shadow: inset 3px 0 0 rgba(74, 103, 169, 0); } }
+    /* 场次导航定位：剧本里该场的标题行短暂高亮（浅灰底 + 左侧深灰竖条，无彩色），约 1.6 秒后消失 */
+    .paper .script-block.scene-flash { background: rgba(25, 25, 23, .09) !important; box-shadow: inset 3px 0 0 #191917 !important; animation: scene-flash-out 1.6s ease-in forwards; }
+    @keyframes scene-flash-out { 0%, 50% { background-color: rgba(25, 25, 23, .09); box-shadow: inset 3px 0 0 #191917; } 100% { background-color: rgba(25, 25, 23, 0); box-shadow: inset 3px 0 0 rgba(25, 25, 23, 0); } }
 
     /* 分镜表「合并创建 生成单元」按钮：蓝紫渐变背景（覆盖早先的纯黑） */
     .canvas-action.primary[data-flow="combine-chunk"] { background: var(--brand); border-color: transparent; color: #fff; }

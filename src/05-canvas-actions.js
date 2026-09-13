@@ -892,14 +892,12 @@
       }
     });
     function closeFileContextMenu() { const menu = $('#file-context-menu'); if (menu) moodioMenuFx.close(menu, () => menu.classList.add('hidden')); }
-    // 定位到某场后，把剧本里这一场（场景标题到下一场标题之前）整段高亮几秒，便于在稿纸上找到
+    // 定位到某场后，剧本里该场的标题行短暂高亮（黑白灰），便于在稿纸上找到
     function flashScene(heading) {
       if (!heading) return;
       $$('.script-block.scene-flash').forEach(el => el.classList.remove('scene-flash'));
-      const all = $$('.script-block', heading.closest('[data-script-blocks]') || heading.parentElement), start = all.indexOf(heading);
-      const blocks = [heading];
-      for (let i = start + 1; i < all.length && !/^scene/.test(all[i].dataset.formatType || ''); i++) blocks.push(all[i]);   // 到下一场标题之前为止
+      const blocks = [heading];   // 只高亮场景标题这一行，定位完成后即消失
       blocks.forEach(b => b.classList.add('scene-flash'));
       clearTimeout(flashScene.timer);
-      flashScene.timer = setTimeout(() => blocks.forEach(b => b.classList.remove('scene-flash')), 2800);
+      flashScene.timer = setTimeout(() => blocks.forEach(b => b.classList.remove('scene-flash')), 1600);
     }
