@@ -289,6 +289,7 @@
 
 
     /* ===== 剧集：每一集拥有独立的剧本 / 分镜 / 大纲等文稿、镜头与生成单元画布 ===== */
+    let episodesApi = null;   // 供 Agent 工具调用：switchEpisode / createEpisode / renameEpisode
     (function episodes(){
       // 属于单集的状态字段；切换剧集时整体换入换出
       const EPISODE_KEYS = ['fileStores','shots','chunks','recentShotId','currentDoc','currentFileId','compareDoc','compareFileId','compareMemo','activeStoryboardId','selectedChunk',
@@ -376,6 +377,7 @@
         if (!ep || !next || next === ep.title) return renderEpisodeMenu();
         ep.title = next; persistWorkspace(); renderEpisodeMenu(); syncEpisodeTitle();
       }
+      episodesApi = { switchEpisode, createEpisode, renameEpisode };
       const shotCount = ep => ep.id === state.activeEpisodeId ? state.shots.length : (ep.workspace?.shots?.length || 0);
       const clapper = `<svg class="icon sm" viewBox="0 0 24 24"><path d="M3 9h18v11H3zM3 9l2-5h14l2 5M8 4l2 5M13 4l2 5"/></svg>`;
       let renamingEpisodeId = null;

@@ -61,8 +61,8 @@ npm run check          # 对 src/*.js 逐个 node --check
 | 资产侧栏 | `.project-rail`，`alignAssetsRail()` 已改为固定内边距 |
 | Agent 面板 | `(function agentWindow(){ ... })()` |
 | 聊天规划 | `remotePlan()`（模型）、`localPlan()`（本地回退）、`partialPlanMessage()`（流式取 message） |
-| 执行工具 | `AGENT_TOOLS`：读取 read_doc / open_doc / locate_scene；文档 create_doc / rename_doc / duplicate_doc / delete_doc；剧本 write_cover / write_script / rewrite_scene / insert_scene / delete_scene / move_scene；镜头 create_shots / update_shot / delete_shot / move_shot / create_chunk；资产 create_asset |
-| 回收站 | `state.trash`、`trashPut()`、`trashRestore()`，恢复入口是消息里的 `restore-trash:` 按钮 |
+| 执行工具 | `AGENT_TOOLS`：读取 read_doc / open_doc / locate_scene；文档 create_doc / rename_doc / duplicate_doc / delete_doc；剧本 write_cover / write_script / rewrite_scene / insert_scene / delete_scene / move_scene；镜头 create_shots / update_shot / delete_shot / move_shot / create_chunk；资产 create_asset / update_asset / merge_assets / delete_asset；剧集 create_episode / switch_episode / rename_episode（通过 `episodesApi`，定义在 src/08）；导出 export_docs / export_backup |
+| 回收站 | `state.trash`，文档用 `trashPut()`、资产用 `trashPutAsset()`，`trashRestore()` 统一恢复；入口是消息里的 `restore-trash:` 按钮 |
 | 识别分镜 / 资产工作流 | `agentWorkflowClient`、`analyzeWorkflow()`、`executeWorkflow()` |
 | 模型设置对话框 | `[data-agent-model-settings]` 处理器，`PROVIDER_DEFAULTS` |
 | 吉祥物气泡 | `agentHintController`（约 10 秒一轮） |
