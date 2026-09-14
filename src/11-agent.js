@@ -69,6 +69,18 @@
         const note=m.followUpUsed?'已选择下一步':!latest?'历史建议':!followUpContextMatches(m.followUpContext)?'上下文已变化，请重新提问':'你可能还想';
         return `<div class="agent-next-steps" aria-label="建议下一步"><p class="agent-next-title">${note}</p><div class="agent-next-options">${options.map((option,i)=>`<button type="button" data-agent-next-message="${index}" data-agent-next-index="${i}" data-agent-next-chat="${escapeHtml(c.id)}" ${available?'':'disabled'} title="${escapeHtml(option.prompt)}">${escapeHtml(option.label)}</button>`).join('')}</div></div>`;
       }
+      // 点选答案只更新原卡片，避免重建聊天记录后自动滚到底部，也保留按钮焦点。
+      function refreshQuestionSelection(card,m){
+        if(!card)return;
+        card.querySelectorAll('[data-q-option]').forEach(button=>{
+          const [,qi,oi]=button.dataset.qOption.split(':').map(Number);
+          const selected=(m.answers?.[qi]||[]).includes(oi);
+          button.classList.toggle('on',selected);
+          button.setAttribute('aria-pressed',String(selected));
+        });
+        const sendButton=card.querySelector('[data-q-send]');
+        if(sendButton)sendButton.disabled=!m.questions.some((q,qi)=>(m.answers?.[qi]||[]).length);
+      }
       // 流式更新时按帧合并渲染
       let agentRenderFrame=0;
       function renderAgentSoon(){ if(agentRenderFrame) return; agentRenderFrame=requestAnimationFrame(()=>{ agentRenderFrame=0; renderAgent(); }); }
@@ -1352,7 +1364,7 @@
         const ref=opt?opt.dataset.qOption:custom?custom.dataset.qCustom:sendBtn?sendBtn.dataset.qSend:decide.dataset.qDecide;
         const idx=parseInt(String(ref).split(':')[0],10); const c=chat(); const m=c.messages[idx]; if(!m||!m.questions) return;
         m.answers=m.answers||{};
-        if(opt){ const [,qi,oi]=opt.dataset.qOption.split(':').map(Number); const q=m.questions[qi]; const cur=m.answers[qi]||[]; m.answers[qi]=q.multi?(cur.includes(oi)?cur.filter(x=>x!==oi):[...cur,oi]):(cur.includes(oi)?[]:[oi]); save(); renderAgent(); return; }
+        if(opt){ const [,qi,oi]=opt.dataset.qOption.split(':').map(Number); const q=m.questions[qi]; const cur=m.answers[qi]||[]; m.answers[qi]=q.multi?(cur.includes(oi)?cur.filter(x=>x!==oi):[...cur,oi]):(cur.includes(oi)?[]:[oi]); save(); refreshQuestionSelection(opt.closest('[data-q-msg]'),m); return; }
         if(custom){ const [,qi]=custom.dataset.qCustom.split(':').map(Number); const ta=$('#agent-input'); ta.value=(ta.value?ta.value+'\n':'')+`${m.questions[qi].text}：`; ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); return; }
         const compose=()=>m.questions.map((q,qi)=>{ const picks=(m.answers[qi]||[]).map(oi=>q.options[oi]); return picks.length?`${q.text}：${picks.join('、')}`:null; }).filter(Boolean).join('\n');
         const text=decide?'这些问题由你来定，按专业判断处理，之后不必再问。':compose(); if(!text) return;
