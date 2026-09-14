@@ -3802,3 +3802,6 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .agent-format-notice button:hover,.agent-format-notice button:focus-visible { background:#f3ecdf; border-radius:4px; }
     .agent-format-notice button span { color:var(--ink-3); font-size:11px; }
     .agent-format-notice button strong { font-weight:500; }
+
+    /* Agent 逐字写入的段落暂未包进 script-body，编辑根节点也使用最终稿的宋体字族。 */
+    .script-paper .script-blocks { font-family: Georgia, "Songti SC", serif; }
