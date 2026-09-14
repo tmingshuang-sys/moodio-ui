@@ -10,9 +10,26 @@
           scroll: { left: scrollOf('left'), right: scrollOf('right') }
         };
       }
-      // 每次在对照视图下渲染都记一笔；两页各自滚动时同步记录滚动位置
+      // 重绘会替换稿纸 DOM；同一份稿纸先同步恢复位置，再记忆，避免 Agent 每建一镜就跳回顶部。
       const renderBeforeMemo = render;
-      render = () => { renderBeforeMemo(); snapshot(); };
+      render = () => {
+        const positions = ['left', 'right'].map(side => {
+          const page = slotEl(side)?.firstElementChild;
+          return { side, fileId: page?.dataset.pageFile, top: page?.scrollTop || 0, left: page?.scrollLeft || 0 };
+        });
+        renderBeforeMemo();
+        if (state.projectPage === 'scripts' && state.workspaceMode === 'document' && state.view === 'compare') {
+          positions.forEach(pos => {
+            const page = slotEl(pos.side)?.firstElementChild;
+            // 按实际渲染的文档 id 核对；切换到另一份文档时不套用旧位置。
+            if (pos.fileId && page?.dataset.pageFile === pos.fileId) {
+              page.scrollTop = pos.top;
+              page.scrollLeft = pos.left;
+            }
+          });
+        }
+        snapshot();
+      };
       $('#canvas-viewport').addEventListener('scroll', event => {
         if (state.view !== 'compare' || !state.compareMemo) return;
         const slot = event.target.closest?.('.compare-layout .page-slot');

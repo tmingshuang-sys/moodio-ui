@@ -96,6 +96,35 @@ test('creation writes both shots, source links, camera fields and persistent rec
   assert.equal(shots[0].camera.size,'全景 (FS)');assert.equal(shots[0].camera.movement,'推镜');assert.equal(shots[0].duration,4);
   assert.equal(shots[1].dialogueCue,'我们到了。');assert.equal(h.ctx.saved.length,2);
 });
+test('visible Agent creation keeps the script at its source when each new shot redraws the comparison',async()=>{
+  const h=harness(),source=fs.readFileSync(path.join(root,'src/08-writing-sidebar.js'),'utf8');
+  const init=acorn.parse(source,{ecmaVersion:'latest'}).body[0];
+  const slots={left:{firstElementChild:null},right:{firstElementChild:null}},seen=[];
+  const node={classList:{add:()=>{},remove:()=>{}},getAttribute:()=> 'false',addEventListener:()=>{}};
+  Object.assign(h.ctx,{
+    setView:()=>{},setTimeout:()=>{},
+    $:selector=>selector==='#compare-script'?slots.left:selector==='#compare-secondary'?slots.right:node,
+    document:{querySelector:selector=>({...node,kind:selector.includes('data-script-id')?'source':'record',selector})},
+    render:()=>{
+      slots.left.firstElementChild={dataset:{pageFile:h.ctx.state.currentFileId},scrollTop:0,scrollLeft:0};
+      slots.right.firstElementChild={dataset:{},scrollTop:0};
+    },
+    agentScroll:el=>{
+      if(el.kind==='source'){
+        seen.push({phase:'before-source',top:slots.left.firstElementChild.scrollTop});
+        slots.left.firstElementChild.scrollTop=el.selector.includes('para-a')?1500:1900;
+      }else seen.push({phase:'new-record',top:slots.left.firstElementChild.scrollTop});
+    }
+  });
+  h.run(source.slice(init.start,init.end));
+  h.run('var prepared=prepareChatShotAction(action,context);');
+  await h.run('AGENT_TOOLS.create_shots(prepared.args,"创建两镜",prepared.shotContext)');
+  assert.deepEqual(seen,[
+    {phase:'before-source',top:0},{phase:'new-record',top:1500},
+    {phase:'before-source',top:1500},{phase:'new-record',top:1900}
+  ]);
+  assert.equal(h.ctx.state.shots.length,2);assert.equal(h.ctx.state.compareMemo.scroll.left,1900);
+});
 for(const [name,change,pattern] of [
   ['missing ID','action.args.shots[1].sourceId="nonexistent"',/来源无效/],
   ['text used as ID','action.args.shots[1].sourceId="我们到了。"',/来源无效/],
