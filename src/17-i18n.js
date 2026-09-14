@@ -54,7 +54,17 @@
       '模型回复格式不正确，自动重试后仍未得到有效操作计划。未执行任何项目操作，请重试。': 'The model response is still invalid after a retry. No project changes were made. Please try again.',
       '分镜计划尚未校验，请重新发送请求并确认。': 'The shot plan has not been validated. Send the request again and confirm.',
     });
+    Object.assign(MOODIO_I18N_EN, {
+      '删除分镜': 'Delete shot', '撤销删除': 'Undo deletion',
+      '撤销最近一次分镜删除（刷新页面前可用）': 'Undo the last shot deletion (available until page reload)',
+      '删除此分镜及生成单元中对应的关联节点和连线。剧本原文、其他分镜和已生成的结果不会删除。': 'Delete this shot and its linked nodes and connections in generation units. The script, other shots and generated results will be kept.',
+      '删除后可在分镜表顶部撤销，刷新页面前有效。': 'Undo is available at the top of the storyboard until you reload the page.',
+      '保存失败，未删除分镜，请重试。': 'Could not save. The shot was not deleted. Please try again.',
+      '无法撤销删除': 'Unable to undo deletion',
+      '保存失败，分镜尚未恢复。请重试撤销。': 'Could not save. The shot has not been restored. Please try undo again.'
+    });
     var MOODIO_I18N_PATTERNS = [
+      [/^删除 (SHOT \d+)？$/, 'Delete $1?'], [/^删除 (SHOT \d+)$/, 'Delete $1'],
       [/^(\d+) 处待检查$/, '$1 issues to check'], [/^第 (\d+) 段$/, 'Paragraph $1'],
       [/^(\d+) 个版本$/, (m, n) => `${n} ${n === '1' ? 'version' : 'versions'}`], [/^\/ (\d+) 场$/, '/ $1 scenes'], [/^\/ (\d+) 节$/, '/ $1 sections'], [/^\/ — 节$/, '/ — sections'], [/^\/ (\d+) 个镜头$/, '/ $1 shots'],
       [/^(\d+) 个镜头$/, '$1 shots'], [/^(\d+) 份$/, '$1 files'], [/^(\d+) 个变体$/, '$1 variants'], [/^(\d+) 个文件夹$/, '$1 folders'], [/^(\d+) 个生成单元$/, '$1 units'], [/^([\d,]+) 字$/, '$1 chars'], [/^— 字$/, '— chars'],

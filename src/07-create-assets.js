@@ -556,12 +556,86 @@
     }
     renderShotRecord=shot=>{
       const selected=state.selectedShots.has(shot.id);
-      return `<article class="shot-record compact-shot ${selected?'is-selected':''} ${state.recentShotId===shot.id?'is-new':''}" data-record="${shot.id}"><header class="shot-record-head"><button class="shot-grip" draggable="true" data-drag-shot="${shot.id}" aria-label="拖拽调整 ${shotLabel(shot)} 顺序">${flowIcon('grip')}</button><label class="shot-select"><input type="checkbox" data-shot-select="${shot.id}" ${selected?'checked':''} aria-label="选择 ${shotLabel(shot)}"><strong>${shotLabel(shot)}</strong></label><span class="shot-scene">场 ${escapeHtml(shot.scene)}</span><span class="chunk-badges">${state.chunks.filter(c=>c.shotIds.includes(shot.id)).map(c=>escapeHtml(c.title)).join(' · ')||'未编入 生成单元'}</span><button class="source-link" data-flow="locate-shot" data-id="${shot.id}" ${!shot.sourceText?'disabled':''}>${flowIcon('link')}定位剧本</button>${flowButton('single-chunk','创建 生成单元',`data-id="${shot.id}"`)}</header>
+      return `<article class="shot-record compact-shot ${selected?'is-selected':''} ${state.recentShotId===shot.id?'is-new':''}" data-record="${shot.id}"><header class="shot-record-head"><button class="shot-grip" draggable="true" data-drag-shot="${shot.id}" aria-label="拖拽调整 ${shotLabel(shot)} 顺序">${flowIcon('grip')}</button><label class="shot-select"><input type="checkbox" data-shot-select="${shot.id}" ${selected?'checked':''} aria-label="选择 ${shotLabel(shot)}"><strong>${shotLabel(shot)}</strong></label><span class="shot-scene">场 ${escapeHtml(shot.scene)}</span><span class="chunk-badges">${state.chunks.filter(c=>c.shotIds.includes(shot.id)).map(c=>escapeHtml(c.title)).join(' · ')||'未编入 生成单元'}</span><button class="source-link" data-flow="locate-shot" data-id="${shot.id}" ${!shot.sourceText?'disabled':''}>${flowIcon('link')}定位剧本</button>${flowButton('single-chunk','创建 生成单元',`data-id="${shot.id}"`)}<button type="button" class="shot-delete" data-shot-delete="${shot.id}" title="删除 ${shotLabel(shot)}" aria-label="删除 ${shotLabel(shot)}">${icons.trash}</button></header>
       <div class="compact-shot-body">${compactMedia(shot)}<div class="compact-shot-editor">
       <textarea class="shot-text" data-shot-field="description" data-id="${shot.id}" aria-label="${shotLabel(shot)} 画面描述">${escapeHtml(shot.description)}</textarea></div></div>
       </article>`;
     };
-    renderStoryboard=(options={})=>`<section class="board-shell${state.paginationMode==='continuous'?' continuous-paper':''}" data-board-slot="${options.slot||'left'}" aria-label="分镜表"><div class="board-selection">${flowButton('combine-chunk','创建 生成单元',state.selectedShots.size?'':'disabled',true)}</div><div class="shot-list">${state.shots.map(renderShotRecord).join('')||`<div class="board-empty">选中剧本正文，创建第一个分镜。</div>`}</div></section>`;
+    renderStoryboard=(options={})=>`<section class="board-shell${state.paginationMode==='continuous'?' continuous-paper':''}" data-board-slot="${options.slot||'left'}" aria-label="分镜表"><div class="board-selection">${renderShotDeletionUndo(options.fileId||activeStoryboardId())}${flowButton('combine-chunk','创建 生成单元',state.selectedShots.size?'':'disabled',true)}</div><div class="shot-list">${state.shots.map(renderShotRecord).join('')||`<div class="board-empty">选中剧本正文，创建第一个分镜。</div>`}</div></section>`;
+
+    // 分镜删除只影响对应卡片与关联节点；会话内按分镜表提供逐次撤销。
+    var shotDeletionHistory=[], pendingShotDeletion=null;
+    function latestShotDeletion(boardId){return (shotDeletionHistory||[]).filter(entry=>entry.episodeId===state.activeEpisodeId&&entry.shot.boardFileId===boardId).at(-1);}
+    function renderShotDeletionUndo(boardId){
+      return latestShotDeletion(boardId)?`<button type="button" class="shot-delete-undo" data-shot-undo="${escapeHtml(boardId)}" title="撤销最近一次分镜删除（刷新页面前可用）">撤销删除</button>`:'';
+    }
+    function editableShotBoard(boardId){const file=findFile(boardId);return file?.type==='storyboard'&&!isHistoricalFile(file);}
+    function requestShotDeletion(id){
+      const shot=state.shots.find(s=>s.id===id);if(!shot||!editableShotBoard(shot.boardFileId))return;
+      captureVisibleEdits();pendingShotDeletion={shot,episodeId:state.activeEpisodeId};
+      openFlowDialog(`删除 ${shotLabel(shot)}？`,'<p>删除此分镜及生成单元中对应的关联节点和连线。剧本原文、其他分镜和已生成的结果不会删除。</p><p>删除后可在分镜表顶部撤销，刷新页面前有效。</p><p class="shot-delete-error" role="alert"></p>',flowButton('close-dialog','取消')+'<button type="button" class="canvas-action shot-delete-confirm" data-shot-delete-confirm>删除分镜</button>');
+    }
+    function shotDeletionFailed(){
+      const error=$('.shot-delete-error');if(error)error.textContent='保存失败，未删除分镜，请重试。';
+    }
+    function confirmShotDeletion(){
+      const pending=pendingShotDeletion;
+      if(!pending||pending.episodeId!==state.activeEpisodeId||!state.shots.includes(pending.shot)||!editableShotBoard(pending.shot.boardFileId)){closeFlowDialog();pendingShotDeletion=null;return;}
+      captureVisibleEdits();
+      const shot=pending.shot,previousShots=state.shots,previousSelected=state.selectedShots;
+      const entry={shot,index:state.shots.indexOf(shot),episodeId:state.activeEpisodeId,selected:state.selectedShots.has(shot.id),chunks:[]};
+      state.chunks.forEach(chunk=>{
+        const nodes=chunk.nodes||[],ids=new Set(nodes.filter(n=>n.shotId===shot.id&&n.kind!=='gen').map(n=>n.id));
+        if(!chunk.shotIds.includes(shot.id)&&!ids.size)return;
+        entry.chunks.push({chunk,shotIds:chunk.shotIds,nodes:chunk.nodes,edges:chunk.edges,removedIds:ids});
+        chunk.shotIds=chunk.shotIds.filter(id=>id!==shot.id);
+        chunk.nodes=nodes.filter(n=>!ids.has(n.id));
+        chunk.edges=(chunk.edges||[]).filter(e=>!ids.has(e.from)&&!ids.has(e.to));
+      });
+      state.shots=state.shots.filter(s=>s!==shot);state.selectedShots=new Set([...state.selectedShots].filter(id=>id!==shot.id));
+      if(!persistWorkspace()){
+        state.shots=previousShots;state.selectedShots=previousSelected;
+        entry.chunks.forEach(({chunk,shotIds,nodes,edges})=>Object.assign(chunk,{shotIds,nodes,edges}));
+        shotDeletionFailed();return;
+      }
+      shotDeletionHistory.push(entry);pendingShotDeletion=null;closeFlowDialog();render();
+    }
+    function undoShotDeletion(boardId){
+      const entry=latestShotDeletion(boardId);if(!entry||!editableShotBoard(boardId))return;
+      captureVisibleEdits();
+      const previousShots=state.shots,previousSelected=state.selectedShots,rollback=[];
+      // 删除末尾镜头后新建的镜头可能复用编号；撤销时分配新 id，绝不覆盖它。
+      const oldId=entry.shot.id,id=state.shots.some(s=>s.id===oldId)?Math.max(0,...state.shots.map(s=>s.id))+1:oldId;
+      const restored={...entry.shot,id};state.shots=[...state.shots];state.shots.splice(Math.min(entry.index,state.shots.length),0,restored);
+      state.selectedShots=new Set(state.selectedShots);if(entry.selected)state.selectedShots.add(id);
+      const insertRemoved=(current,original,keep,transform=x=>x)=>{
+        const result=[...current];original.forEach((item,index)=>{if(keep(item))result.splice(Math.min(index,result.length),0,transform(item));});return result;
+      };
+      entry.chunks.forEach(saved=>{
+        const chunk=state.chunks.find(c=>c.id===saved.chunk.id);if(!chunk)return; // 已删除的画布不复活。
+        rollback.push({chunk,shotIds:chunk.shotIds,nodes:chunk.nodes,edges:chunk.edges});
+        const nodeIds=new Set((chunk.nodes||[]).map(n=>n.id)),remap=new Map();
+        saved.removedIds.forEach(nodeId=>{let next=nodeId;while(nodeIds.has(next))next+='-restored';nodeIds.add(next);remap.set(nodeId,next);});
+        chunk.shotIds=insertRemoved(chunk.shotIds,saved.shotIds,sid=>sid===oldId,()=>id);
+        chunk.nodes=insertRemoved(chunk.nodes||[],saved.nodes||[],n=>saved.removedIds.has(n.id),n=>({...n,id:remap.get(n.id),shotId:id}));
+        const edgeIds=new Set((chunk.edges||[]).map(e=>e.id));
+        chunk.edges=insertRemoved(chunk.edges||[],saved.edges||[],e=>(saved.removedIds.has(e.from)||saved.removedIds.has(e.to))&&nodeIds.has(remap.get(e.from)||e.from)&&nodeIds.has(remap.get(e.to)||e.to),e=>{
+          let edgeId=e.id;while(edgeIds.has(edgeId))edgeId+='-restored';edgeIds.add(edgeId);return {...e,id:edgeId,from:remap.get(e.from)||e.from,to:remap.get(e.to)||e.to};
+        });
+      });
+      if(!persistWorkspace()){
+        state.shots=previousShots;state.selectedShots=previousSelected;rollback.forEach(({chunk,shotIds,nodes,edges})=>Object.assign(chunk,{shotIds,nodes,edges}));
+        openFlowDialog('无法撤销删除','<p>保存失败，分镜尚未恢复。请重试撤销。</p>',flowButton('close-dialog','关闭'));return;
+      }
+      shotDeletionHistory.splice(shotDeletionHistory.indexOf(entry),1);render();
+    }
+    document.addEventListener('click',event=>{
+      const button=event.target.closest('[data-shot-delete], [data-shot-delete-confirm], [data-shot-undo]');if(!button)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      if(button.hasAttribute('data-shot-delete'))requestShotDeletion(Number(button.dataset.shotDelete));
+      else if(button.hasAttribute('data-shot-undo'))undoShotDeletion(button.dataset.shotUndo);
+      else confirmShotDeletion();
+    },true);
 
     function refreshShot(shot){$$(`[data-record="${shot.id}"]`).forEach(row=>row.outerHTML=renderShotRecord(shot));}
     const createPageBeforeAudio=renderCreatePage;

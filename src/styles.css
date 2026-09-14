@@ -3805,3 +3805,13 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
 
     /* Agent 逐字写入的段落暂未包进 script-body，编辑根节点也使用最终稿的宋体字族。 */
     .script-paper .script-blocks { font-family: Georgia, "Songti SC", serif; }
+
+    /* 分镜卡右上角常驻删除入口；确认后提供会话内撤销，不挤占画面描述区。 */
+    .compact-shot .shot-delete { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; padding: 5px; border: 0; border-radius: 6px; color: var(--ink-2); background: transparent; cursor: pointer; }
+    .compact-shot .shot-delete:hover { color: #b83a3a; background: #fbebeb; }
+    .compact-shot .shot-delete:focus-visible, .shot-delete-undo:focus-visible { outline: 2px solid #4f79c4; outline-offset: 2px; }
+    .shot-delete-undo { margin-right: auto; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink); font-size: 12px; cursor: pointer; }
+    .shot-delete-undo:hover { background: var(--active); }
+    .canvas-action.shot-delete-confirm { color: #fff; background: #b83a3a; border-color: #b83a3a; }
+    .shot-delete-error { color: #b83a3a; }
+    .shot-delete-error:empty { display: none; }
