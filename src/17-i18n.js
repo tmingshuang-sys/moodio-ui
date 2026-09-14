@@ -87,7 +87,7 @@
         const raw = node.nodeValue; if (!raw || !/[一-鿿]/.test(raw)) return;
         const out = translate(raw); if (out == null) return;
         const lead = raw.match(/^\s*/)[0], trail = raw.match(/\s*$/)[0];
-        textOrig.set(node, raw); node.nodeValue = lead + out + trail;
+        const en = lead + out + trail; textOrig.set(node, { zh: raw, en }); node.nodeValue = en;
       }
       function applyAttrs(el) {
         if (el.closest && el.closest('script, style, .pdf-export-stage, [data-i18n-skip]')) return;   // 属性（占位符、提示）在可编辑区里也是系统文案，照翻
@@ -111,7 +111,7 @@
         applying = true;
         try {
           const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
-          while ((n = walker.nextNode())) { if (textOrig.has(n)) { n.nodeValue = textOrig.get(n); textOrig.delete(n); } }
+          while ((n = walker.nextNode())) { const rec = textOrig.get(n); if (rec && n.nodeValue === rec.en) n.nodeValue = rec.zh; textOrig.delete(n); }
           document.querySelectorAll('[placeholder],[aria-label],[title],[data-tooltip],[data-placeholder]').forEach(el => { const rec = attrOrig.get(el); if (!rec) return; Object.entries(rec).forEach(([a, v]) => el.setAttribute(a, v)); attrOrig.delete(el); });
         } finally { applying = false; }
       }
@@ -119,7 +119,13 @@
         if (lang !== 'en' || applying) return;
         muts.forEach(m => {
           if (m.type === 'childList') m.addedNodes.forEach(node => applyTo(node));
-          else if (m.type === 'characterData') { const node = m.target; if (textOrig.get(node) !== node.nodeValue && node.nodeValue !== undefined) { textOrig.delete(node); applyText(node); } }
+          else if (m.type === 'characterData') {
+            const node = m.target, rec = textOrig.get(node);
+            // applyText() 自己写入英文后也会触发观察器；保留中文原文，切回中文时才能恢复。
+            if (rec && node.nodeValue === rec.en) return;
+            textOrig.delete(node);
+            applyText(node);
+          }
           else if (m.type === 'attributes' && m.target.nodeType === 1) { const rec = attrOrig.get(m.target) || {}; if (rec[m.attributeName] !== undefined && m.target.getAttribute(m.attributeName) === translate(rec[m.attributeName])) return; delete rec[m.attributeName]; applyAttrs(m.target); }
         });
       });
