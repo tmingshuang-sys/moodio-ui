@@ -22,7 +22,8 @@
       const angle = MOODIO_SHOT_FIELDS.angle.find(a => angleRaw.includes(a)) || (/仰/.test(angleRaw) ? '低位仰拍' : /俯/.test(angleRaw) ? '高位俯拍' : '平视');
       const moveRaw = String(d.movement || '');
       const movement = MOODIO_SHOT_FIELDS.movement.find(m => moveRaw.includes(m)) || (/推/.test(moveRaw) ? '推镜' : /拉/.test(moveRaw) ? '拉镜' : /摇|移/.test(moveRaw) ? '横摇' : /跟|手持/.test(moveRaw) ? '跟拍' : '固定');
-      const duration = Math.max(0.5, Math.min(120, parseFloat(d.duration) || 0)) || null;
+      const seconds = parseFloat(d.duration);
+      const duration = Number.isFinite(seconds) && seconds > 0 ? Math.max(0.5, Math.min(120, seconds)) : null;
       const tagSize = sizeKey ? (['大远景', '远景'].includes(sizeKey) ? '大全景' : sizeKey === '大特写' ? '特写' : sizeKey) : null;
       const tagAngle = { '平视': '平视', '低位仰拍': '低角度', '高位俯拍': '高角度', '俯视': '鸟瞰', '荷兰角': '荷兰角', 'POV': '平视' }[angle];
       const tagMove = { '固定': '固定', '推拉': '推镜', '推镜': '推镜', '拉镜': '拉镜', '横摇': '横移', '俯仰': '固定', '跟拍': '跟拍', '手持': '跟拍', '环绕': '环绕' }[movement];
@@ -43,14 +44,15 @@
       return drafts.map(d => {
         const reasons = []; let status = 'new';
         const ids = d.sourceIds || [], src = ids.map(id => byId.get(id)).filter(Boolean);
-        if (!src.length) return { status: 'suspect', reasons: ['没有有效的剧本依据段落，不能确定对应哪一段'] };
-        const shared = (existingShots || []).filter(s => (s.sourceIds || []).some(id => ids.includes(id)));
+        if (!src.length || src.length !== ids.length || new Set(src.map(b=>b.scene)).size > 1) return { status: 'suspect', reasons: ['没有有效的同场剧本依据段落，不能确定对应哪一段'] };
+        const shared = (existingShots || []).filter(s => (!d.sourceFileId || !s.sourceFileId || s.sourceFileId === d.sourceFileId) && (s.sourceIds || [s.sourceId]).some(id => ids.includes(id)));
         const twin = shared.find(s => textSimilarity(s.description, d.description) >= 0.5);
         if (twin) { status = 'duplicate'; reasons.push(`与已有 ${label(twin)} 描述相近，属于重复`); }
         else if (shared.length && ids.every(id => shared.some(s => (s.sourceIds || []).includes(id)))) { status = 'duplicate'; reasons.push(`这段正文已有镜头（${shared.slice(0, 3).map(label).join('、')}），默认跳过；要重拆请勾选`); }
         else {
           const overlap = textOverlap(d.description, src.map(b => b.text).join('\n'));
-          if (overlap < 0.12 && String(d.description || '').length >= 12) { status = 'suspect'; reasons.push('画面描述与依据段落重合度低，可能对错了段落，请核对'); }
+          // 镜头语言通常不是原文复述；词面相似度只能提醒，不能作为拒绝写入的依据。
+          if (overlap < 0.12 && String(d.description || '').length >= 12) reasons.push('画面描述与原文字面差异较大，请在确认前核对剧情是否一致');
         }
         return { status, reasons };
       });
