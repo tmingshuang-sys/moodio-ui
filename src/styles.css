@@ -3786,3 +3786,19 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     /* 右上角语言切换按钮：与其他顶栏图标按钮同尺寸，文字 EN / 中 */
     .lang-toggle { font-size: 12px; font-weight: 600; letter-spacing: .02em; min-width: 36px; color: var(--ink-2); }
     .lang-toggle:hover { color: var(--ink); }
+
+    /* 格式提醒移入 Agent：只在有问题时显示，可展开并定位正文。 */
+    .agent-format-notice { margin-top:12px; padding:10px 12px; border-left:2px solid #c4a16c; border-radius:0 8px 8px 0; background:#fbf8f2; font-size:12px; line-height:1.6; }
+    .agent-format-notice[hidden] { display:none; }
+    .agent-format-notice summary { display:flex; align-items:center; gap:8px; cursor:pointer; }
+    .agent-format-notice summary::before { content:'▸'; color:var(--ink-3); }
+    .agent-format-notice details[open] summary::before { content:'▾'; }
+    .agent-format-notice summary span { flex:1; font-weight:600; }
+    .agent-format-notice small,.agent-format-notice p { color:var(--ink-3); }
+    .agent-format-notice p { margin:8px 0 0; }
+    .agent-format-notice ul { list-style:none; margin:8px 0; padding:0; max-height:240px; overflow:auto; }
+    .agent-format-notice li+li { border-top:1px solid var(--line); }
+    .agent-format-notice button { width:100%; display:flex; flex-direction:column; gap:3px; padding:8px 4px; border:0; background:transparent; text-align:left; color:var(--ink-2); cursor:pointer; overflow-wrap:anywhere; }
+    .agent-format-notice button:hover,.agent-format-notice button:focus-visible { background:#f3ecdf; border-radius:4px; }
+    .agent-format-notice button span { color:var(--ink-3); font-size:11px; }
+    .agent-format-notice button strong { font-weight:500; }

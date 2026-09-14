@@ -7,7 +7,7 @@
       const panel=$('#agent-panel'); if(!panel) return;
       // 面板从隐藏变为显示时滚到最新消息（隐藏状态下 scrollHeight 为 0，渲染时的滚动不生效）
       function agentScrollToLatest(){ requestAnimationFrame(()=>{ const body=$('#agent-body'), msgs=$('#agent-messages'); if(msgs) msgs.scrollTop=msgs.scrollHeight; if(body) body.scrollTop=body.scrollHeight; }); }
-      new MutationObserver(()=>{ if(!panel.classList.contains('hidden')) agentScrollToLatest(); }).observe(panel,{attributes:true,attributeFilter:['class']});
+      new MutationObserver(()=>{ if(!panel.classList.contains('hidden')) { refreshAgentFormatNotice(); agentScrollToLatest(); } }).observe(panel,{attributes:true,attributeFilter:['class']});
       const chat=()=>store.chats.find(c=>c.id===store.active);
       const fmt=ts=>{const d=new Date(ts),n=new Date();const hm=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;return d.toDateString()===n.toDateString()?hm:`${d.getMonth()+1}/${d.getDate()}`;};
       // 模型建议只接受短标签和用户可见的请求文本，不接受命令、工具名或可执行代码。
@@ -72,6 +72,51 @@
       // 流式更新时按帧合并渲染
       let agentRenderFrame=0;
       function renderAgentSoon(){ if(agentRenderFrame) return; agentRenderFrame=requestAnimationFrame(()=>{ agentRenderFrame=0; renderAgent(); }); }
+      // 格式提醒不写入历史、不请求模型；只展示当前稿纸的问题，不弹开 Agent。
+      function agentFormatReport(){
+        if(typeof MOODIO_SCRIPT_RULES==='undefined'||!MOODIO_SCRIPT_RULES||state.projectPage!=='scripts')return null;
+        const {type,file}=contextDocInfo();if(type!=='script'||!file)return null;
+        const blocks=scriptBlocksOf(file);
+        const names=new Set(allAssets().filter(a=>a.type==='character').flatMap(a=>[a.name,...(a.aliases||[])]));
+        blocks.forEach(b=>{if(b.type==='character')names.add(String(b.text||'').replace(/[（(].*$/,'').trim());});
+        const issues=lintScriptBlocks(blocks,{layout:state.scriptLayout,knownNames:[...names]});
+        return issues.length?{fileId:file.id,title:file.title,issues}:null;
+      }
+      function agentFormatNoticeHtml(report){
+        if(!report?.issues.length)return '';
+        const items=report.issues.slice(0,30).map(issue=>
+          '<li><button type="button" data-agent-format-file="'+escapeHtml(report.fileId)+'" data-agent-format-block="'+escapeHtml(issue.blockId)+'">'+
+          '<span>第 '+(issue.index+1)+' 段</span><strong>'+escapeHtml(issue.message)+'</strong><small data-i18n-skip>'+escapeHtml(issue.snippet)+'</small></button></li>').join('');
+        return '<details><summary><span>剧本格式提示</span><small>'+report.issues.length+' 处待检查</small></summary>'+
+          '<p class="agent-format-document" data-i18n-skip>'+escapeHtml(report.title)+'</p><ul>'+items+'</ul>'+
+          (report.issues.length>30?'<p>仅展示前 30 条问题</p>':'')+'<p>点击问题定位原文，不会自动修改剧本。</p></details>';
+      }
+      function refreshAgentFormatNotice(){
+        const notice=$('#agent-format-notice');if(!notice)return;
+        const showHist=$('#agent-back').getAttribute('aria-pressed')==='true';
+        const html=showHist?'':agentFormatNoticeHtml(agentFormatReport());
+        if(notice._formatHtml!==html){
+          const opened=notice.querySelector('details')?.open;
+          notice.innerHTML=html;notice._formatHtml=html;
+          if(opened&&notice.querySelector('details'))notice.querySelector('details').open=true;
+        }
+        notice.hidden=!html;
+        $('#agent-empty').hidden=showHist||chat().messages.length>0||!!html;
+      }
+      var formatNoticeTimer;
+      document.addEventListener('moodio:script-context-updated',()=>{
+        clearTimeout(formatNoticeTimer);
+        formatNoticeTimer=setTimeout(()=>{if(!panel.classList.contains('hidden'))refreshAgentFormatNotice();},0);
+      });
+      panel.addEventListener('click',event=>{
+        const button=event.target.closest('[data-agent-format-block]');if(!button)return;
+        event.preventDefault();
+        const report=agentFormatReport();
+        if(!report||report.fileId!==button.dataset.agentFormatFile||!report.issues.some(x=>x.blockId===button.dataset.agentFormatBlock)){refreshAgentFormatNotice();return;}
+        const target=document.querySelector('[data-page-file="'+CSS.escape(report.fileId)+'"] [data-script-id="'+CSS.escape(button.dataset.agentFormatBlock)+'"]');
+        if(!target)return;
+        agentScroll(target,'center');target.classList.add('context-flash');setTimeout(()=>target.classList.remove('context-flash'),1200);
+      });
       // 从尚未结束的 JSON 文本里取出 "message" 字段已生成的部分
       function partialPlanMessage(text){
         const m=String(text||'').match(/"message"\s*:\s*"/); if(!m) return '';
@@ -91,6 +136,7 @@
         hist.classList.toggle('hidden',!showHist); empty.hidden=showHist||c.messages.length>0; msgs.hidden=showHist||!c.messages.length;
         msgs.innerHTML=c.messages.map((m,index)=>`<div class="agent-msg ${m.role}${m.streaming?' is-streaming':''}">${m.quote?`<div class="agent-msg-quote"><span>${escapeHtml(m.quote.text)}</span><small>${escapeHtml(m.quote.source||'')}</small></div>`:''}${m.thinking?`<details class="agent-thinking"${m.streaming?' open':''}><summary>思考过程</summary><div>${escapeHtml(m.thinking)}</div></details>`:''}${m.workflow?workflowHtml(m.workflow):escapeHtml(m.text||(m.streaming?'正在生成…':''))}${questionsHtml(m,index,c)}${reviewHtml(m)}${m.streaming?'<span class="agent-stream-cursor" aria-hidden="true"></span>':''}${m.actions?`<div class="agent-msg-actions">${m.actions.map(a=>`<button type="button" data-agent-action="${escapeHtml(a.id)}">${escapeHtml(a.label)}</button>`).join('')}</div>`:''}${messageFollowUpsHtml(m,index,c)}</div>`).join('');
         hist.innerHTML=store.chats.slice().sort((a,b)=>b.at-a.at).map(x=>`<button type="button" class="agent-history-item ${x.id===store.active?'active':''}" data-agent-chat="${x.id}"><svg viewBox="0 0 24 24" class="icon sm"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${escapeHtml(x.title)}</span><small>${fmt(x.at)}</small></button>`).join('');
+        refreshAgentFormatNotice();
         msgs.scrollTop=msgs.scrollHeight; $('#agent-body').scrollTop=$('#agent-body').scrollHeight;
         $$('.workflow-log[open] ol',msgs).forEach(log=>{log.scrollTop=log.scrollHeight;});
         $('#agent-pin').setAttribute('aria-pressed',String(!!store.pinned)); panel.classList.toggle('pinned',!!store.pinned);

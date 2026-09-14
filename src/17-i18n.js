@@ -45,6 +45,9 @@
       '还没有思路？点击 Ask agent，让 Agent 帮你构思故事、塑造角色，或一起创作第一场戏。': 'No idea yet? Click Ask agent to brainstorm the story, shape characters, or write the first scene together.', '从左侧连接其他节点': 'Connect from the left', '从右侧连接其他节点': 'Connect from the right', '拖到其他节点建立连线': 'Drag to another node to link', '分镜节点文本': 'Shot node text', '拖动卡片边框移动；点击标题或正文编辑。': 'Drag the border to move; click the title or body to edit.', '选择卡片；拖动边框调整位置': 'Select card; drag the border to move', '选择卡片；拖动边框或媒体画面移动': 'Select card; drag the border or media to move', '点击进入画布继续创作': 'Open the canvas to continue',
     };
     Object.assign(MOODIO_I18N_EN, {
+      '剧本格式提示': 'Script format notes',
+      '点击问题定位原文，不会自动修改剧本。': 'Click an issue to locate the text. The script will not be changed automatically.',
+      '仅展示前 30 条问题': 'Showing the first 30 issues',
       '正在修正模型回复格式…': 'Correcting the model response format…',
       '画面描述与原文字面差异较大，请在确认前核对剧情是否一致': 'The wording differs from the script. Check story consistency before confirming.',
       '没有有效的同场剧本依据段落，不能确定对应哪一段': 'Valid source paragraphs from the same scene are missing.',
@@ -52,6 +55,7 @@
       '分镜计划尚未校验，请重新发送请求并确认。': 'The shot plan has not been validated. Send the request again and confirm.',
     });
     var MOODIO_I18N_PATTERNS = [
+      [/^(\d+) 处待检查$/, '$1 issues to check'], [/^第 (\d+) 段$/, 'Paragraph $1'],
       [/^(\d+) 个版本$/, (m, n) => `${n} ${n === '1' ? 'version' : 'versions'}`], [/^\/ (\d+) 场$/, '/ $1 scenes'], [/^\/ (\d+) 节$/, '/ $1 sections'], [/^\/ — 节$/, '/ — sections'], [/^\/ (\d+) 个镜头$/, '/ $1 shots'],
       [/^(\d+) 个镜头$/, '$1 shots'], [/^(\d+) 份$/, '$1 files'], [/^(\d+) 个变体$/, '$1 variants'], [/^(\d+) 个文件夹$/, '$1 folders'], [/^(\d+) 个生成单元$/, '$1 units'], [/^([\d,]+) 字$/, '$1 chars'], [/^— 字$/, '— chars'],
       [/^场 (\d+)$/, 'Scene $1'], [/^第 (\d+) 集$/, 'Episode $1'], [/^镜头 (\d+)$/, 'Shot $1'], [/^✓ 镜头 (\d+)$/, '✓ Shot $1'], [/^已选 (\d+) 份$/, '$1 selected'], [/^已选 (\d+) 个板块$/, '$1 sections selected'],
