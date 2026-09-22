@@ -34,7 +34,7 @@ export function patchStep(ref: TaskRef, status: PlanStep['status'], result: stri
     const s = typeof ref.stepIndex === 'number' ? m.plan.steps[ref.stepIndex] : undefined;
     if (s) { s.status = status; s.result = result; }
     if (artifact) { m.artifacts = m.artifacts || []; if (!m.artifacts.some(a => a.id === artifact.id)) m.artifacts.push(artifact); }
-    if (!m.plan.steps.some(x => x.status === 'running' || x.status === 'pending')) { m.plan.state = m.plan.steps.some(x => x.status === 'failed') ? 'error' : m.plan.steps.some(x => x.status === 'skipped') ? 'stopped' : 'done'; if (!m.text) m.text = '（页面关闭期间的任务已在后台完成）'; }
+    if (!m.plan.steps.some(x => x.status === 'running' || x.status === 'pending')) { m.plan.state = m.plan.steps.some(x => x.status === 'failed') ? 'error' : m.plan.steps.some(x => x.status === 'skipped') ? 'stopped' : 'done'; if (!m.text) m.text = m.plan.state === 'done' ? '（页面关闭期间的任务已在后台完成）' : '（页面关闭期间的后台任务已结束，有步骤没有完成）'; }
   });
 }
 
