@@ -10,11 +10,11 @@ Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局�
 目录：
 
 - `index.html` 入口；`src/main.tsx` 挂载；`src/App.tsx` 布局（侧栏 | 对话 | 可拖拽分栏的工作区）
-- `src/lib/` 逻辑层：`types.ts` 数据模型；`projects.ts` 项目层（索引 `moodio-projects-v1`，数据键 = 基础键 `::` 项目id）；`store.ts` 状态仓库（`useFiles` 文稿 / 媒体 / 回收站 / 纲领 / 界面偏好，`useChats` 对话，`useAgent` 运行态）；`storage.ts` localStorage / IndexedDB / 下载；`markdown.ts` 章节切分、按标题替换、纯文本、文件名；`guides.ts` 写作规范 / 剧本格式硬规则 / 分镜规范 / 提示词规范；`model.ts` 模型调用（Claude 直连 / OpenAI 兼容，流式）；`migrate.ts` 旧版数据迁移；`sample.ts` 新项目示例文稿；`upload.ts` 上传；`i18n.ts` 中 / EN；`time.ts`
+- `src/lib/` 逻辑层：`types.ts` 数据模型；`projects.ts` 项目层（索引 `moodio-projects-v1`，数据键 = 基础键 `::` 项目id）；`store.ts` 状态仓库（`useFiles` 文稿 / 媒体 / 回收站 / 纲领 / 界面偏好，`useChats` 对话，`useAgent` 运行态）；`storage.ts` localStorage / IndexedDB / 下载；`markdown.ts` 章节切分、按标题替换、纯文本、文件名；`guides.ts` 写作规范 / 剧本格式硬规则 / 分镜规范 / 提示词规范；`model.ts` 文本模型调用（Claude 直连 / OpenAI 兼容，流式）；`mediagen.ts` 图片 / 视频生成（经网关调 fal.ai）；`migrate.ts` 旧版数据迁移；`sample.ts` 新项目示例文稿；`upload.ts` 上传；`i18n.ts` 中 / EN；`time.ts`
 - `src/lib/agent/`：`tools.ts` 工具层与计划卡步骤；`prompt.ts` 系统提示（MD 约定、文件清单、相关文稿上下文）；`planner.ts` 模型规划、追问、下一步建议；`runner.ts` 回复流程、确认执行、逐步状态、逐行写入、自审
 - `src/components/`：`Sidebar` `ChatPane` `MessageList`（消息、计划卡、追问卡、自审卡、下一步）`Composer` `ResourcePane`（分区网格 / 列表、文稿预览与编辑、媒体预览、拖拽上传）`Dialogs`（确认 / 输入 / 模型设置 / 创作纲领）`Menu` `Toast` `AgentLive`（流光与状态胶囊）
 - `src/styles.css` 全部样式；`public/moodio-logo.png` logo；`*.test.ts` 与源码同目录（Vitest）
-- `gateway/` Cloudflare Worker 模型网关（持有模型 API key，对外 OpenAI 兼容接口）；`site/` 页面发布配置（静态资源 Worker，目录 `dist`）
+- `gateway/` Cloudflare Worker 模型网关（持有真实 API key）：文本走 OpenAI 兼容的 `/v1/chat/completions`，图片 / 视频走 `/fal/*` 透传到 fal.ai 队列接口、`/media?url=` 代下载结果；`site/` 页面发布配置（静态资源 Worker，目录 `dist`）
 - `dist/` 构建产物，已 gitignore；`scripts/postbuild.mjs` 构建后把 index.html 复制一份为旧链接的文件名
 
 线上地址：页面 https://moodio-ui.moodio-ui.workers.dev ，网关 https://moodio-gateway.moodio-ui.workers.dev
@@ -41,11 +41,12 @@ npm run build          # vite build → dist/
 - **文稿约定**（模型与工具都遵守，见 prompt.ts）：剧本每场一个 `## INT./EXT. 地点 - 时间`，对白 `**人物**` 独占一行；分镜表是固定列的 Markdown 表格；提示词一镜一份 `视频生成Prompt-01.md`；人物在 `人物小传.md` 每人一个二级标题。改已有文稿优先 `replace_section` / `append_doc`，整份重写才 `write_doc` + `overwrite`。`docRole(name)` 按文件名判断类别，剧本类写完会用写作模型自审（`selfReview`），结果渲染成自审卡。
 - **上下文注入**：`buildSystemPrompt()` 注入文件清单（含 id）、`relevantDocs()`（打开中的文稿、请求里提到的文件名、按请求类型自动补的剧本 / 分镜 / 人物文稿，总量约 16k 字）、创作纲领、当前类型的写作规范；提到分镜 / 提示词 / 剧本时分别加分镜规范 / 提示词规范 / 格式硬规则。模型只能引用清单里的 id，找不到要反问。
 - **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染追问卡（消息字段 `questions` / `answers` / `questionsUsed`），点选答案只改选中态，点「发送回答」才提交。纲领信息由 `save_brief` 记录。
+- **图片 / 视频生成**：只经过 `mediagen.ts`，它把请求发给网关的 `/fal/<模型id>`（提交）→ 轮询 `status_url` / `response_url`（都改写成走网关）→ `/media?url=` 代下载 → 存进媒体库。真实的 fal key 是网关的 Worker secret `FAL_KEY`，页面只带访问口令（同对话用的那个）。模型 id 在设置里可改（默认见 `MEDIA_DEFAULTS`），换模型不用改代码。Agent 工具 `generate_image` / `generate_video` 与输入框「+」菜单的手动生成共用这一层；生成按次计费，所以不放进 `NO_CONFIRM_TOOLS`。
 - **模型调用**只经过 `model.ts` 的 `callModel()`（内部按 provider 走 `callClaude` / `callOpenAI`），支持 `{signal,onText,onReasoning}`。密钥只存 localStorage `moodio-agent-model`，任何 API key 不得进入仓库或对话。创意类请求（`isCreativeRequest`）用写作模型 `writerCfg()`。
 - **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，品牌渐变 `var(--brand)`；新规则追加到对应区块或文件末尾并加中文注释。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
 - **界面语言**：系统文案用 `useT()` / `t()`（i18n.ts 的 `EN` 词典），用户内容与模型正文不翻译。新增系统文案时在词典里补一条。
 - **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；由「新建项目」建的项目（`moodio-project-fresh::<id>` 标记）为空白。
-- **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`。
+- **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude <当前模型名> <noreply@anthropic.com>`。
 - **不要提交** `dist/`、`node_modules/`、`.wrangler/`；不要编辑 `~/Downloads` 里的旧副本。
 
 ## 代码地标
@@ -54,7 +55,8 @@ npm run build          # vite build → dist/
 |---|---|
 | 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle` |
 | 发送 / 回复 / 确认执行 | `runner.ts`：`send()` → `reply()`；`executePlan()` / `cancelPlan()`；`runActions()` 逐步标状态；`stopAgent()` |
-| 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / create_project / switch_project / rename_project）、`planSteps()` |
+| 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / generate_image / generate_video / create_project / switch_project / rename_project）、`planSteps()` |
+| 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `gateway/worker.js` 的 `falProxy` 与 `mediaProxy` |
 | 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
 | 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`、拖拽上传；上传逻辑 `upload.ts` |
 | 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、创作历史按今天 / 昨天 / 更早分组、底部设置菜单（模型设置 / 语言） |
@@ -64,5 +66,6 @@ npm run build          # vite build → dist/
 ## 已知限制
 
 - 数据只在浏览器本地，多端同步和登录尚未实现；分享按钮是占位。
-- 图片 / 视频只能上传，Agent 还不能生成媒体；语音输入未做。
+- 视频生成按次计费且要等几分钟，没有做排队列表或后台任务，关掉页面任务就断了（fal 那边仍会跑完，但结果不会自动入库）。
+- 语音输入未做。
 - 剧本格式校验只做轻量提示（`lintScriptMarkdown`），不再退回模型自动修正。

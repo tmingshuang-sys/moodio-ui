@@ -2,14 +2,14 @@
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks } from 'lucide-react';
+import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard } from 'lucide-react';
 import type { Chat, Message, Plan, PlanStep } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
 import { executePlan, cancelPlan, answerQuestions, toggleAnswer, useFollowUp, reviewFix, restoreTrash } from '../lib/agent/runner';
 import { toast } from './Toast';
 import { useT } from '../lib/i18n';
 
-const KIND_ICON: Record<string, ReactNode> = { write: <PenLine size={14} />, doc: <FileText size={14} />, media: <Image size={14} />, delete: <Trash2 size={14} />, project: <FolderKanban size={14} />, export: <Download size={14} />, brief: <Sparkles size={14} />, other: <Dot size={14} /> };
+const KIND_ICON: Record<string, ReactNode> = { write: <PenLine size={14} />, doc: <FileText size={14} />, media: <Image size={14} />, delete: <Trash2 size={14} />, project: <FolderKanban size={14} />, export: <Download size={14} />, brief: <Sparkles size={14} />, image: <Wand2 size={14} />, video: <Clapperboard size={14} />, other: <Dot size={14} /> };
 
 function PlanCard({ plan }: { plan: Plan }) {
   const t = useT();

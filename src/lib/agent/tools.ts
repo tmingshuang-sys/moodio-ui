@@ -1,16 +1,19 @@
 // ===== Agent 的「手」：能对工作区里的文件做的操作。执行前必须确认（NO_CONFIRM_TOOLS 除外），删除类进回收站可撤销 =====
-import type { Action, MessageAction, PlanStep } from '../types';
+import type { Action, MediaItem, MessageAction, PlanStep } from '../types';
 import { useFiles, findDoc, findMedia } from '../store';
 import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
+import { generateImage, generateVideo, IMAGE_SIZES, VIDEO_RATIOS, mediaReadyReason } from '../mediagen';
 
 export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; }
 export interface ToolContext {
   request: string; chatId: string;
   typeInto: (docId: string, from: string, to: string) => Promise<void>;   // 在工作区里逐行写入（执行器提供）
   step: (label: string, fn?: () => Promise<void> | void) => Promise<void>;   // 子步骤记录
+  live: (text: string) => void;   // 状态胶囊文案（生成图片 / 视频时报进度）
+  signal?: AbortSignal;
 }
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
@@ -76,6 +79,25 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   async rename_media(args) { const m = requireMedia(args.id); const name = sanitizeName(String(args.name || '')); if (!name) throw new Error('缺少新名称'); const ext = m.name.includes('.') ? m.name.slice(m.name.lastIndexOf('.')) : ''; const finalName = /\.[a-z0-9]{2,5}$/i.test(name) ? name : name + ext; useFiles.getState().updateMedia(m.id, { name: finalName }); return { summary: `已把「${m.name}」重命名为「${finalName}」`, actions: [{ id: 'open-media:' + m.id, label: '查看' }] }; },
   async tag_media(args) { const m = requireMedia(args.id); const group = sanitizeName(String(args.group || '其他')); useFiles.getState().updateMedia(m.id, { group }); return `已把「${m.name}」归入「${group}」分区`; },
   async delete_media(args) { const m = requireMedia(args.id); const entry = useFiles.getState().removeMedia(m.id); return { summary: `已删除「${m.name}」，已放入回收站，7 天内可恢复`, actions: entry ? [{ id: 'restore-trash:' + entry.trashId, label: '撤销删除' }] : [] }; },
+  // ---- 生成图片 / 视频（经网关调用 fal，结果直接进媒体库）----
+  async generate_image(args, ctx) {
+    const reason = mediaReadyReason(); if (reason) throw new Error(reason);
+    let item!: MediaItem;
+    await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
+      item = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, size: args.size ? String(args.size) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+    });
+    useFiles.getState().openInPane(item.id);
+    return { summary: `已生成图片「${item.name}」并存入媒体库`, actions: [{ id: 'open-media:' + item.id, label: '查看' }] };
+  },
+  async generate_video(args, ctx) {
+    const reason = mediaReadyReason(); if (reason) throw new Error(reason);
+    let item!: MediaItem;
+    await ctx.step(`生成视频「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
+      item = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: args.ratio ? String(args.ratio) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+    });
+    useFiles.getState().openInPane(item.id);
+    return { summary: `已生成视频「${item.name}」并存入媒体库`, actions: [{ id: 'open-media:' + item.id, label: '查看' }] };
+  },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
   async switch_project(args) { const p = projects.list().find(x => x.id === String(args.id || '')); if (!p) throw new Error(`找不到 id 为「${args.id}」的项目`); projects.switchTo(p.id); return `正在切换到项目「${p.title}」`; },
@@ -83,7 +105,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
 };
 
 // ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
-const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief' };
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief' };
 export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
 
 export function describeAction(a: Action): string {
@@ -102,6 +124,8 @@ export function describeAction(a: Action): string {
     case 'rename_media': return `把「${mediaName(g.id)}」重命名为「${g.name || ''}」`;
     case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
     case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;
+    case 'generate_image': return `生成图片「${String(g.name || g.prompt || '').slice(0, 20)}」` + (IMAGE_SIZES[String(g.size || '')] ? `（${IMAGE_SIZES[String(g.size)]}）` : '');
+    case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS[String(g.ratio || '')] || ''); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${[from, `${String(g.duration || 5).replace(/[^0-9]/g, '') || 5} 秒`].filter(Boolean).join(' · ')}）`; }
     case 'save_brief': return '记录创作纲领';
     case 'ask_user': return '向你确认几个问题';
     case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;
@@ -113,6 +137,7 @@ export function describeAction(a: Action): string {
 
 export function previewAction(a: Action): string {
   const g = a?.args || {};
+  if (['generate_image', 'generate_video'].includes(a?.tool) && g.prompt) return String(g.prompt).slice(0, 400);
   if (['write_doc', 'append_doc', 'replace_section'].includes(a?.tool) && g.content) {
     const lines = String(g.content).split('\n').map(l => l.trim()).filter(Boolean);
     const shown = lines.slice(0, 6).map(l => l.slice(0, 60)); if (lines.length > 6) shown.push(`…（共 ${lines.length} 行）`);

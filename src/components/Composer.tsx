@@ -1,6 +1,6 @@
 // ===== 输入框：+（上传 / 新建文档）、@ 引用文件、发送 / 停止；Enter 发送、Shift+Enter 换行 =====
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, ArrowUp, Square, Image, FilePlus2, Film, FileText } from 'lucide-react';
+import { Plus, AtSign, ArrowUp, Square, Image, FilePlus2, Film, FileText, Wand2, Clapperboard } from 'lucide-react';
 import { useAgent, useFiles } from '../lib/store';
 import { send, stopAgent } from '../lib/agent/runner';
 import { openMenuAt } from './Menu';
@@ -8,6 +8,8 @@ import { pickFiles, uploadFiles } from '../lib/upload';
 import { useT } from '../lib/i18n';
 import { baseName } from '../lib/markdown';
 import { toast } from './Toast';
+import { promptDialog } from './Dialogs';
+import { manualGenerate, mediaReadyReason } from '../lib/mediagen';
 
 export default function Composer() {
   const t = useT();
@@ -30,7 +32,18 @@ export default function Composer() {
   const plusMenu = (el: Element) => openMenuAt(el, [
     { label: t('上传图片 / 视频'), icon: <Image size={14} />, onClick: async () => { const files = await pickFiles(); if (files.length) { await uploadFiles(files); useFiles.getState().setUi({ paneOpen: true }); } } },
     { label: t('新建文档'), icon: <FilePlus2 size={14} />, onClick: () => { const doc = addDoc({ name: '未命名.md', content: '', by: 'user' }); openInPane(doc.id); toast('已新建文稿，可在右侧编辑'); } },
+    { label: t('生成图片'), icon: <Wand2 size={14} />, onClick: () => void generate('image') },
+    { label: t('生成视频'), icon: <Clapperboard size={14} />, onClick: () => void generate('video') },
   ], { width: 200 });
+  // 手动生成：给一句画面描述就开始，进度显示在顶部状态胶囊上，完成后在工作区打开
+  const generate = async (kind: 'image' | 'video') => {
+    const reason = mediaReadyReason(); if (reason) { toast(reason); return; }
+    const prompt = await promptDialog({ title: kind === 'image' ? t('生成图片') : t('生成视频'), label: '画面描述（建议用英文写具体）', placeholder: kind === 'image' ? 'Night, rain on a car windshield, neon reflections, cinematic' : 'Slow push in on a rainy car window at night, cinematic', okLabel: '开始生成' });
+    if (!prompt) return;
+    useFiles.getState().setUi({ paneOpen: true });
+    try { const item = await manualGenerate(kind, { prompt }); toast(`已生成「${item.name}」`); }
+    catch (e: any) { if (e?.name !== 'AbortError') toast('生成失败：' + (e?.message || e)); }
+  };
   const atMenu = (el: Element) => {
     const items = [
       ...docs.slice(0, 12).map(d => ({ label: baseName(d.name), icon: <FileText size={14} />, hint: d.kind.toUpperCase(), onClick: () => insert('@' + d.name) })),

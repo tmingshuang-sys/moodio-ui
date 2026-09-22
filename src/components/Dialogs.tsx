@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 import { useFiles } from '../lib/store';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../lib/guides';
 import { modelCfg, saveModelCfg, modelProvider, PROVIDER_DEFAULTS, probeModel, explainModelError } from '../lib/model';
+import { MEDIA_DEFAULTS, mediaEndpoint } from '../lib/mediagen';
 import type { ModelConfig } from '../lib/types';
 import { toast } from './Toast';
 
@@ -57,7 +58,7 @@ function PromptDialog({ d }: { d: Extract<DialogSpec, { kind: 'prompt' }> }) {
 
 function ModelDialog() {
   const close = useDialog(s => s.close);
-  const [cfg, setCfg] = useState<ModelConfig>(() => { const c = modelCfg() || {}; const prov = modelProvider(c); return { provider: prov, baseUrl: c.baseUrl || PROVIDER_DEFAULTS[prov].baseUrl, apiKey: c.apiKey || '', model: c.model || PROVIDER_DEFAULTS[prov].model, thinking: c.thinking || '', writerModel: c.writerModel || '', writerThinking: c.writerThinking || '' }; });
+  const [cfg, setCfg] = useState<ModelConfig>(() => { const c = modelCfg() || {}; const prov = modelProvider(c); return { provider: prov, baseUrl: c.baseUrl || PROVIDER_DEFAULTS[prov].baseUrl, apiKey: c.apiKey || '', model: c.model || PROVIDER_DEFAULTS[prov].model, thinking: c.thinking || '', writerModel: c.writerModel || '', writerThinking: c.writerThinking || '', mediaBaseUrl: c.mediaBaseUrl || '', mediaToken: c.mediaToken || '', imageModel: c.imageModel || '', videoModel: c.videoModel || '', videoImageModel: c.videoImageModel || '' }; });
   const [test, setTest] = useState<{ state: 'pending' | 'ok' | 'fail'; text: string } | null>(null);
   const prov = cfg.provider || 'openai'; const pd = PROVIDER_DEFAULTS[prov];
   const setProvider = (p: 'claude' | 'openai') => { const other = PROVIDER_DEFAULTS[p === 'claude' ? 'openai' : 'claude']; const next = { ...cfg, provider: p }; if (!cfg.baseUrl || cfg.baseUrl === other.baseUrl) next.baseUrl = PROVIDER_DEFAULTS[p].baseUrl; if (!cfg.model || cfg.model === other.model) next.model = PROVIDER_DEFAULTS[p].model; setCfg(next); };
@@ -67,7 +68,8 @@ function ModelDialog() {
     try { const r = await probeModel(cfg); setTest({ state: 'ok', text: `连接成功（${Date.now() - t0} ms）。模型回复：${r}` }); }
     catch (e) { setTest({ state: 'fail', text: '连接失败：' + explainModelError(e).message }); }
   };
-  const save = () => { saveModelCfg({ ...cfg, baseUrl: cfg.baseUrl?.trim(), apiKey: cfg.apiKey?.trim(), model: cfg.model?.trim(), writerModel: cfg.writerModel?.trim() }); close(); toast('模型设置已保存'); };
+  const save = () => { saveModelCfg({ ...cfg, baseUrl: cfg.baseUrl?.trim(), apiKey: cfg.apiKey?.trim(), model: cfg.model?.trim(), writerModel: cfg.writerModel?.trim(), mediaBaseUrl: cfg.mediaBaseUrl?.trim(), mediaToken: cfg.mediaToken?.trim(), imageModel: cfg.imageModel?.trim(), videoModel: cfg.videoModel?.trim(), videoImageModel: cfg.videoImageModel?.trim() }); close(); toast('模型设置已保存'); };
+  const mediaOn = !!mediaEndpoint(cfg);
   return (
     <Frame title="Agent 模型设置" onClose={close} footer={<><button type="button" className="btn" onClick={close}>取消</button><button type="button" className="btn" onClick={runTest} disabled={test?.state === 'pending'}>测试连接</button>{modelCfg()?.apiKey && <button type="button" className="btn" onClick={() => { saveModelCfg(null); close(); toast('已断开模型'); }}>断开</button>}<button type="button" className="btn primary" onClick={save}>保存</button></>}>
       <p>对话与写作都用这里的模型。密钥仅保存在当前浏览器中。</p>
@@ -81,6 +83,14 @@ function ModelDialog() {
       <label>写作思考模式<select value={cfg.writerThinking || ''} onChange={e => setCfg({ ...cfg, writerThinking: e.target.value })}><option value="">同上</option><option value="off">关闭</option><option value="low">开启 · low</option><option value="high">开启 · high</option><option value="max">开启 · max</option></select></label>
       <small className="note">写剧本、分镜、提示词等创意请求和自审改用写作模型，留空则沿用上面的模型。思考模式对 DeepSeek 等支持 thinking 参数的 OpenAI 兼容服务生效；Claude 会自动开启思考并返回摘要。</small>
       {test && <p className={`model-test ${test.state}`}>{test.text}</p>}
+      <h3 className="dialog-section">图片 / 视频生成</h3>
+      <p>经 Moodio 网关调用 fal.ai；真实的 fal key 存在网关的 Worker 密钥里，页面只带访问口令。留空则沿用上面的网关地址与 API Key。{mediaOn ? '' : ' 当前还不可用。'}</p>
+      <label>网关地址<input value={cfg.mediaBaseUrl || ''} placeholder={MEDIA_DEFAULTS.baseUrl} onChange={e => setCfg({ ...cfg, mediaBaseUrl: e.target.value })} /></label>
+      <label>访问口令<input type="password" value={cfg.mediaToken || ''} placeholder="留空 = 同上面的 API Key" onChange={e => setCfg({ ...cfg, mediaToken: e.target.value })} /></label>
+      <label>图片模型<input value={cfg.imageModel || ''} placeholder={MEDIA_DEFAULTS.imageModel} onChange={e => setCfg({ ...cfg, imageModel: e.target.value })} /></label>
+      <label>视频模型（文生视频）<input value={cfg.videoModel || ''} placeholder={MEDIA_DEFAULTS.videoModel} onChange={e => setCfg({ ...cfg, videoModel: e.target.value })} /></label>
+      <label>视频模型（图生视频）<input value={cfg.videoImageModel || ''} placeholder={MEDIA_DEFAULTS.videoImageModel} onChange={e => setCfg({ ...cfg, videoImageModel: e.target.value })} /></label>
+      <small className="note">模型 id 用 fal.ai 上的写法，例如 fal-ai/flux/dev。换模型只改这里，不用改代码。</small>
     </Frame>
   );
 }

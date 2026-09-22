@@ -45,7 +45,7 @@ describe('plan steps and tools', () => {
   });
   it('write_doc creates a document through the typing hook, append and replace edit it', async () => {
     const typed: string[] = [];
-    const ctx = { request: 'x', chatId: 'c', typeInto: async (id: string, _from: string, to: string) => { typed.push(to); store.useFiles.getState().updateDoc(id, { content: to }); }, step: async (_l: string, fn?: () => any) => { await fn?.(); } };
+    const ctx = { request: 'x', chatId: 'c', live: () => {}, typeInto: async (id: string, _from: string, to: string) => { typed.push(to); store.useFiles.getState().updateDoc(id, { content: to }); }, step: async (_l: string, fn?: () => any) => { await fn?.(); } };
     const r1 = await tools.AGENT_TOOLS.write_doc({ name: '测试剧本.md', content: '# 剧本\n\n## INT. 车内 - 夜\n\n雨。' }, ctx) as any;
     const doc = store.useFiles.getState().docs.find(d => d.name === '测试剧本.md')!;
     expect(doc.content).toContain('## INT. 车内 - 夜');

@@ -87,6 +87,12 @@ export interface ModelConfig {
   thinking?: string;
   writerModel?: string;
   writerThinking?: string;
+  // 图片 / 视频生成：走 Moodio 网关的 /fal 通道（见 lib/mediagen.ts），留空则沿用上面的网关地址与口令
+  mediaBaseUrl?: string;
+  mediaToken?: string;
+  imageModel?: string;
+  videoModel?: string;
+  videoImageModel?: string;
 }
 
 export interface ProjectMeta { id: string; title: string; createdAt: number; updatedAt: number; }

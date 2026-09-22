@@ -373,3 +373,8 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
   .divider { display: none; }
   .search { width: 140px; }
 }
+/* 设置弹窗里的分节标题 */
+.dialog-section { margin: 22px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; font-weight: 600; color: var(--ink); }
+/* 生成中的媒体占位卡 */
+.file-card.pending .card-thumb { display: grid; place-items: center; border-style: dashed; background: linear-gradient(135deg, #f7f5ff, #f1f1ef); }
+.file-card.pending .card-thumb span { font-size: 12px; color: var(--accent); }

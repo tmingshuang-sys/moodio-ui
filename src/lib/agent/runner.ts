@@ -65,7 +65,7 @@ export async function runActions(actions: Action[], request: string, chatId: str
   const results: string[] = []; const buttons: { id: string; label: string }[] = []; const reviewTargets: { docId: string; title: string }[] = [];
   const mark = (i: number, status: PlanStep['status'], result?: string) => { const s = steps?.[i]; if (!s) return; s.status = status; if (result !== undefined) s.result = String(result || ''); commit(); };
   const skipRest = (from: number) => { for (let j = from; j < actions.length; j++) mark(j, 'skipped'); };
-  const ctx: ToolContext = { request, chatId, typeInto, step };
+  const ctx: ToolContext = { request, chatId, typeInto, step, live: setLive, signal: agent().controller?.signal };
   for (let i = 0; i < actions.length; i++) {
     const a = actions[i]; const fn = AGENT_TOOLS[a.tool]; if (!fn) { mark(i, 'skipped', '未知操作'); continue; }
     if (aborted()) { results.push('已按你的要求停止，后面的步骤没有执行'); skipRest(i); break; }
