@@ -645,10 +645,32 @@ button.lg-chip-btn:hover { color: var(--ink); }
 
 /* 首页（还没选类型、没有消息）：对话框放画面中间，四个类型卡排成一行缩小放在它下面，整体居中 */
 .chat-body.is-home { display: flex; flex-direction: column; justify-content: center; }
-.chat-empty.home { width: 100%; max-width: 880px; padding: 0 12px 6vh; }
+.chat-empty.home { width: 100%; max-width: 720px; padding: 0 12px 6vh; }
+.chat-empty.home .composer textarea { min-height: 112px; }   /* 首页的对话框窄一点、高一点 */
 .chat-empty.home .composer-wrap { max-width: none; padding: 0; margin-top: 44px; }   /* 问候语与对话框之间留开一点，问候语整体往上 */
 .chat-empty.home .composer-tip { text-align: left; }
 .format-picker.home { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px auto 0; max-width: none; }
 .format-picker.home button { flex: 0 0 auto; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 8px 14px; font-size: 13px; border-radius: 10px; white-space: nowrap; }
 .format-picker.home button small { font-size: 11px; }
 .format-picker.home button svg { width: 13px; height: 13px; }
+
+/* 输入框里的小技巧：盖在文本区第一行的位置，开始打字就消失；轮换时上一条淡出上移、下一条淡入上移 */
+.composer { position: relative; }
+.composer-tip-box { position: absolute; left: 18px; right: 18px; top: 16px; height: 22px; overflow: hidden; pointer-events: none; }
+.composer-tip { position: absolute; left: 0; top: 0; right: 0; margin: 0; font-size: 14px; line-height: 22px; color: #a9a9a7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-tip b { margin-right: 8px; font-weight: 500; color: var(--ink-3); }
+.composer-tip.in { animation: tip-in 420ms ease both; }
+.composer-tip.out { animation: tip-out 420ms ease both; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes tip-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .composer-tip.in, .composer-tip.out { animation: none; } .composer-tip.out { display: none; } }
+
+/* 首页对话框四周一圈淡淡的蓝紫色渐变流动光效（用户指定，与状态胶囊同一处配色例外；只在首页） */
+@property --glow-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.chat-empty.home .composer-wrap { position: relative; }
+.chat-empty.home .composer-wrap::before { content: ''; position: absolute; inset: -3px; border-radius: 20px; z-index: 0; pointer-events: none;
+  background: conic-gradient(from var(--glow-angle), rgba(96, 132, 255, 0) 0deg, rgba(96, 132, 255, .55) 70deg, rgba(168, 110, 255, .6) 140deg, rgba(96, 132, 255, 0) 210deg, rgba(168, 110, 255, .45) 290deg, rgba(96, 132, 255, 0) 360deg);
+  filter: blur(12px); opacity: .6; animation: glow-spin 7s linear infinite; }
+.chat-empty.home .composer { position: relative; z-index: 1; }
+@keyframes glow-spin { to { --glow-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .chat-empty.home .composer-wrap::before { animation: none; } }

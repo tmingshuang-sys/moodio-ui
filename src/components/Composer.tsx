@@ -12,6 +12,42 @@ import { promptDialog } from './Dialogs';
 import { manualGenerate, mediaReadyReason, fallbackNote } from '../lib/mediagen';
 import ModelPrefs from './ModelPrefs';
 
+// 输入框里的小技巧：按项目功能轮换，没打字时每 6 秒换一条（淡出上一条、淡入下一条），开始打字就消失
+const TIPS = [
+  '输入 @ 引用工作区里的文稿或图片，Agent 会接着上次的思路创作',
+  '选一个类型、回答几道题，其余交给 Agent；不想选就用推荐值',
+  '打开「一键模式」，Agent 会自动走完脚本、参考图和片段方案，只在检查点等你确认',
+  '把产品实拍图或人物照片拖进工作区，参考图就会以它为准',
+  '做 MV 时上传歌曲文件，成片会用整首歌铺满并烧上歌词字幕',
+  '输入框下方的「模型」按钮可以切换视频、图片、声音和推理模型，默认智能匹配',
+  '生成过程中关掉页面也没关系，回来会接着轮询并把结果入库',
+  '点对话上方的阶段条查看台账：每一步的答案、实体、参考图和片段',
+  '对结果不满意直接说：「重新生成第 2 张参考图」「第 3 段改成夜景」',
+  '有对白的角色会先设计音色样本，旁白会自动合成配音',
+  '写好的文稿在「对话文件」里可以直接编辑，Agent 下一轮就能看到你的修改',
+];
+const TIP_INTERVAL = 6000, TIP_FADE = 420;
+function RotatingTip({ hidden }: { hidden: boolean }) {
+  const t = useT();
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * TIPS.length));
+  const [leaving, setLeaving] = useState<number | null>(null);
+  useEffect(() => {
+    if (hidden) return;
+    const timer = setInterval(() => {
+      setIndex(i => { setLeaving(i); return (i + 1) % TIPS.length; });
+      setTimeout(() => setLeaving(null), TIP_FADE + 30);
+    }, TIP_INTERVAL);
+    return () => clearInterval(timer);
+  }, [hidden]);
+  if (hidden) return null;
+  return (
+    <div className="composer-tip-box" aria-hidden="true">
+      {leaving !== null && leaving !== index && <span key={'out' + leaving} className="composer-tip out"><b>{t('小技巧')}</b>{t(TIPS[leaving])}</span>}
+      <span key={'in' + index} className="composer-tip in"><b>{t('小技巧')}</b>{t(TIPS[index])}</span>
+    </div>
+  );
+}
+
 export default function Composer() {
   const t = useT();
   const busy = useAgent(s => s.busy);
@@ -55,8 +91,8 @@ export default function Composer() {
 
   return (
     <div className="composer-wrap">
-      <p className="composer-tip">{t('小技巧 输入 @ 引用工作区里的文稿或图片，助手会接着上次的思路创作')}</p>
       <div className="composer">
+        <RotatingTip hidden={value.length > 0} />
         <textarea ref={ref} value={value} rows={2} aria-label="给 Agent 的消息"
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } if (e.key === '@' ) { /* 光标处输入 @ 时弹出引用列表 */ setTimeout(() => { if (ref.current) atMenu(ref.current); }, 0); } }} />
