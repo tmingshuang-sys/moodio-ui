@@ -95,8 +95,11 @@ export interface ModelConfig {
   videoImageModel?: string;
   imageRatio?: string;
   videoRatio?: string;
-  videoDuration?: string;
+  videoDuration?: string;        // 自定义时长（秒）
   videoResolution?: string;
+  imageResolution?: string;      // 2K / 4K（方舟图片）
+  durationMode?: 'smart' | 'custom';   // 智能时长 = 按提示词长度自动定
+  genMode?: 'manual' | 'auto';         // 自动模式：Agent 的纯生成计划不用确认直接执行
 }
 
 export interface ProjectMeta { id: string; title: string; createdAt: number; updatedAt: number; }

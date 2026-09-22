@@ -58,6 +58,31 @@ describe('per-model input', () => {
   });
 });
 
+describe('image resolution and smart duration', () => {
+  it('computes ark pixel sizes by ratio and tier, all multiples of 16 and above Seedream 5 minimum', async () => {
+    const m = await import('./mediamodels');
+    expect(m.arkImageSize('16:9', '2K')).toBe('2736x1536');
+    expect(m.arkImageSize('9:16', '2K')).toBe('1536x2736');
+    expect(m.arkImageSize('1:1', '4K')).toBe('4096x4096');
+    expect(m.arkImageSize('16:9', '4K')).toBe('5456x3072');
+    for (const r of m.IMAGE_RATIOS) for (const tier of m.IMAGE_RESOLUTIONS) { const [w, h] = m.arkImageSize(r, tier).split('x').map(Number); expect(w % 16).toBe(0); expect(h % 16).toBe(0); expect(w * h).toBeGreaterThanOrEqual(3686400); }
+  });
+  it('picks a duration from prompt length and snaps it to what the model allows', async () => {
+    const m = await import('./mediamodels');
+    expect(m.smartDuration('a red lantern in the rain')).toBe(5);
+    expect(m.smartDuration('雨'.repeat(45))).toBe(8);      // 45 个汉字
+    expect(m.smartDuration('雨'.repeat(90))).toBe(10);
+    expect(m.smartDuration('word '.repeat(200))).toBe(20);   // 200 个英文词
+    expect(m.smartDuration('a cat --ratio 16:9 --duration 5')).toBe(5);   // 已拼进去的参数不算长度
+    const kling = { id: 'k', name: 'k', hint: '', provider: 'fal' as const, duration: true, durations: [5, 10] };
+    expect(m.clampDuration(kling, 8)).toBe(10); expect(m.clampDuration(kling, 6)).toBe(5);
+    const seedance = { id: 's', name: 's', hint: '', provider: 'ark' as const, duration: true, durationRange: [2, 30] as [number, number] };
+    expect(m.resolveDuration(seedance, 'custom', '45', '')).toBe(30);
+    expect(m.resolveDuration(seedance, 'custom', 'x', '')).toBe(5);
+    expect(m.resolveDuration(seedance, 'smart', '30', 'short')).toBe(5);   // 智能模式忽略滑杆的值
+  });
+});
+
 describe('queue helpers', () => {
   it('rewrites fal queue urls onto the gateway so the browser never needs the fal key', async () => {
     const { __test } = await load();

@@ -3,8 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { ModelPreset, RatioKey } from '../lib/mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, findPreset } from '../lib/mediamodels';
-import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason } from '../lib/mediagen';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_RESOLUTIONS, IMAGE_RESOLUTIONS, DURATION_MIN, DURATION_MAX, findPreset } from '../lib/mediamodels';
+import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason, genMode as readGenMode } from '../lib/mediagen';
 import { modelCfg, saveModelCfg } from '../lib/model';
 import type { ModelConfig } from '../lib/types';
 import { useT } from '../lib/i18n';
@@ -60,8 +60,11 @@ export default function ModelPrefs() {
   const imageId = currentImageModel(cfg), videoId = currentVideoModel(cfg), videoImageId = currentVideoImageModel(cfg);
   const imageRatio = (cfg.imageRatio || MEDIA_DEFAULTS.imageRatio) as RatioKey;
   const videoRatio = (cfg.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
-  const duration = cfg.videoDuration || MEDIA_DEFAULTS.videoDuration;
+  const duration = Number(cfg.videoDuration || MEDIA_DEFAULTS.videoDuration) || 5;
+  const durationMode = cfg.durationMode === 'custom' ? 'custom' : 'smart';
   const resolution = cfg.videoResolution || MEDIA_DEFAULTS.videoResolution;
+  const imageResolution = cfg.imageResolution || MEDIA_DEFAULTS.imageResolution;
+  const mode = readGenMode(cfg);
   const videoName = findPreset(VIDEO_MODELS, videoId)?.name || '自定义';
   const imageName = findPreset(IMAGE_MODELS, imageId)?.name || '自定义';
   const videoPreset = findPreset(VIDEO_MODELS, videoId);
@@ -110,6 +113,16 @@ export default function ModelPrefs() {
                   </div>
                 ) : <p className="mp-note">{t('该模型不支持在这里设置，由模型自己决定')}</p>
               )}
+              {tab === 'image' && (
+                <>
+                  <h4>{t('图片分辨率')}</h4>
+                  {imagePreset?.resolution ? (
+                    <div className="mp-chips">
+                      {IMAGE_RESOLUTIONS.map(r => <button key={r} type="button" className={r === imageResolution ? 'active' : ''} onClick={() => patch({ imageResolution: r })}>{r}</button>)}
+                    </div>
+                  ) : <p className="mp-note">{t('该模型不支持在这里设置，由模型自己决定')}</p>}
+                </>
+              )}
               {tab === 'video' && (
                 <>
                   {(videoPreset?.resolution || videoImagePreset?.resolution) && (
@@ -122,12 +135,32 @@ export default function ModelPrefs() {
                   )}
                   <h4>{t('时长')}</h4>
                   {videoPreset?.duration || videoImagePreset?.duration ? (
-                    <div className="mp-chips">
-                      {VIDEO_DURATIONS.map(d => <button key={d} type="button" className={d === duration ? 'active' : ''} onClick={() => patch({ videoDuration: d })}>{d} 秒</button>)}
-                    </div>
+                    <>
+                      <div className="seg small" role="tablist">
+                        <button type="button" className={durationMode === 'smart' ? 'active' : ''} onClick={() => patch({ durationMode: 'smart' })}>{t('智能时长')}</button>
+                        <button type="button" className={durationMode === 'custom' ? 'active' : ''} onClick={() => patch({ durationMode: 'custom' })}>{t('自定义时长')}</button>
+                      </div>
+                      {durationMode === 'smart' ? <p className="mp-note">{t('按提示词长度自动决定：短描述约 5 秒，长描述最多 20 秒，再按模型档位取整')}</p>
+                        : (videoPreset?.durations?.length ? (
+                          <div className="mp-chips">
+                            {videoPreset.durations.map(d => <button key={d} type="button" className={d === duration ? 'active' : ''} onClick={() => patch({ videoDuration: String(d) })}>{d} {t('秒')}</button>)}
+                          </div>
+                        ) : (
+                          <label className="mp-slider">
+                            <input type="range" min={videoPreset?.durationRange?.[0] ?? DURATION_MIN} max={videoPreset?.durationRange?.[1] ?? DURATION_MAX} step={1} value={duration} onChange={e => patch({ videoDuration: e.target.value })} aria-label={t('自定义时长')} />
+                            <b>{duration} {t('秒')}</b>
+                          </label>
+                        ))}
+                    </>
                   ) : <p className="mp-note">{t('该模型不支持在这里设置，由模型自己决定')}</p>}
                 </>
               )}
+              <h4>{t('生成模式')}</h4>
+              <div className="seg small" role="tablist">
+                <button type="button" className={mode === 'manual' ? 'active' : ''} onClick={() => patch({ genMode: 'manual' })}>{t('手动模式')}</button>
+                <button type="button" className={mode === 'auto' ? 'active' : ''} onClick={() => patch({ genMode: 'auto' })}>{t('自动模式')}</button>
+              </div>
+              <p className="mp-note">{mode === 'auto' ? t('Agent 规划到生成图片 / 视频时直接执行，不再等你确认') : t('Agent 每次生成前都先列出计划，点「确认执行」才开始')}</p>
               <h4>{t('当前模型')}</h4>
               <p className="mp-id">{tab === 'video' ? videoId : imageId}</p>
               {tab === 'video' && <p className="mp-id">{videoImageId}<small>{t('图生视频')}</small></p>}

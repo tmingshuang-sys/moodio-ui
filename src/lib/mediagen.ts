@@ -7,7 +7,7 @@ import { useFiles, findMedia, useAgent } from './store';
 import { putBlob, cacheUrl, getBlob, imageSize } from './storage';
 import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue, arkImageSize } from './mediamodels';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue, arkImageSize, resolveDuration } from './mediamodels';
 
 export const MEDIA_DEFAULTS = {
   baseUrl: PROVIDER_DEFAULTS.openai.baseUrl.replace(/\/v1$/, ''),
@@ -18,7 +18,11 @@ export const MEDIA_DEFAULTS = {
   videoRatio: '16:9' as RatioKey,
   videoDuration: '5',
   videoResolution: '720p',
+  imageResolution: '2K',
+  durationMode: 'smart' as const,
+  genMode: 'manual' as const,
 };
+export const genMode = (cfg: ModelConfig | null = modelCfg()): 'manual' | 'auto' => (cfg?.genMode === 'auto' ? 'auto' : 'manual');
 
 export interface MediaEndpoint { base: string; token: string; }
 // 网关地址与口令：默认沿用对话用的那套（provider 为 OpenAI 兼容时 baseUrl 去掉 /v1），也可在设置里单独指定
@@ -176,7 +180,7 @@ export async function generateImage(req: ImageRequest, opts: GenOptions = {}): P
     const started = Date.now();   // 方舟出图是一次同步调用，自己报个计时，别让状态一直停在「提交」
     const ticking = setInterval(() => opts.onProgress?.(`生成中 · ${Math.round((Date.now() - started) / 1000)}s`), 1000);
     try {
-      const data = await arkFetch('/images/generations', { method: 'POST', body: JSON.stringify({ model, prompt, size: arkImageSize(ratio), response_format: 'url', watermark: false }), signal: opts.signal });
+      const data = await arkFetch('/images/generations', { method: 'POST', body: JSON.stringify({ model, prompt, size: arkImageSize(ratio, cfg?.imageResolution || MEDIA_DEFAULTS.imageResolution), response_format: 'url', watermark: false }), signal: opts.signal });
       url = data?.data?.[0]?.url; if (!url) throw new Error('生成结果里没有图片地址');
     } finally { clearInterval(ticking); }
   } else {
@@ -192,10 +196,13 @@ export interface VideoRequest { prompt: string; name?: string; group?: string; r
 export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): Promise<MediaItem> {
   const prompt = String(req.prompt || '').trim(); if (!prompt) throw new Error('缺少画面描述');
   const cfg = modelCfg();
-  const duration = String(req.duration || cfg?.videoDuration || MEDIA_DEFAULTS.videoDuration).replace(/[^0-9]/g, '') || '5';
   const fromImage = !!req.fromMediaId;
   const model = req.model || (fromImage ? currentVideoImageModel(cfg) : currentVideoModel(cfg));
   const preset = presetFor(fromImage ? VIDEO_IMAGE_MODELS : VIDEO_MODELS, model, fromImage ? 'videoImage' : 'video');
+  // 时长：请求里明确给了就用它；否则按设置——智能时长按提示词长度估，自定义用滑杆的值；最后收敛到模型允许的档位 / 范围
+  const explicit = String(req.duration ?? '').replace(/[^0-9]/g, '');
+  const duration = String(explicit ? resolveDuration(preset, 'custom', explicit, prompt) : resolveDuration(preset, cfg?.durationMode === 'custom' ? 'custom' : 'smart', cfg?.videoDuration || MEDIA_DEFAULTS.videoDuration, prompt));
+  opts.onProgress?.(`时长 ${duration} 秒`);
   const ratio = (req.ratio || cfg?.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
   const resolution = cfg?.videoResolution || MEDIA_DEFAULTS.videoResolution;
   let imageDataUrl = '';

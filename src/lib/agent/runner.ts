@@ -2,7 +2,8 @@
 import type { Action, Message, PlanStep, Review, ReviewItem } from '../types';
 import { useAgent, useChats, useFiles, findDoc } from '../store';
 import { modelCfg, callModel, writerCfg, partialPlanMessage, parsePlanJSON } from '../model';
-import { AGENT_TOOLS, NO_CONFIRM_TOOLS, DESTRUCTIVE_TOOLS, planSteps, saveBrief } from './tools';
+import { AGENT_TOOLS, NO_CONFIRM_TOOLS, DESTRUCTIVE_TOOLS, GENERATE_TOOLS, planSteps, saveBrief } from './tools';
+import { genMode } from '../mediagen';
 import type { ToolContext, ToolResult } from './tools';
 import { remotePlan, attachFollowUps, normalizeQuestions } from './planner';
 import { briefText } from './prompt';
@@ -110,7 +111,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
   chats().mutate(all => { all.find(x => x.id === c.id)!.messages.push(pending); });
   const controller = begin(pending);
   const out: Message = { role: 'assistant', text: '', at: Date.now() };
-  let streamedThinking = '';
+  let streamedThinking = ''; let autoKey: string | null = null;   // 自动模式：纯生成计划不用确认，回复落地后直接执行
   const hooks = {
     signal: controller.signal,
     onStatus: (status: string) => { pending.streaming = false; pending.text = status; commit(); },
@@ -149,9 +150,11 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
       const steps = planSteps(plan);
       pendingPlans.set(key, { plan, text, chatId: c.id, steps });
       const destructive = plan.filter(a => DESTRUCTIVE_TOOLS.has(a.tool)).length;
-      out.text = (autoLog.length ? autoLog.map(r => '✓ ' + r).join('\n') + '\n' : '') + (message ? message + '\n' : '') + (destructive ? `以下操作包含 ${destructive} 项删除，请确认：` : '我准备执行以下操作，确认后开始：');
+      const auto = genMode() === 'auto' && plan.every(a => GENERATE_TOOLS.has(a.tool) || NO_CONFIRM_TOOLS.has(a.tool));
+      out.text = (autoLog.length ? autoLog.map(r => '✓ ' + r).join('\n') + '\n' : '') + (message ? message + '\n' : '') + (auto ? '自动模式：直接开始生成。' : destructive ? `以下操作包含 ${destructive} 项删除，请确认：` : '我准备执行以下操作，确认后开始：');
       out.plan = { key, steps, state: 'pending', destructive };
-      out.actions = [{ id: 'plan-confirm:' + key, label: destructive ? `确认执行（含 ${destructive} 项删除）` : '确认执行' }, { id: 'plan-cancel:' + key, label: '取消' }];
+      out.actions = auto ? null : [{ id: 'plan-confirm:' + key, label: destructive ? `确认执行（含 ${destructive} 项删除）` : '确认执行' }, { id: 'plan-cancel:' + key, label: '取消' }];
+      if (auto) autoKey = key;
     } else if (autoLog.length) { out.text = autoLog.map(r => '✓ ' + r).join('\n') + (message ? '\n' + message : ''); }
     else if (message) out.text = message;
     else out.text = modelCfg()?.apiKey ? `已收到：「${t.slice(0, 60)}${t.length > 60 ? '…' : ''}」。` : `已收到：「${t.slice(0, 60)}${t.length > 60 ? '…' : ''}」。我可以帮你写剧本、拆分镜、生成视频提示词、整理人物小传，产物都会放进右侧工作区。请先在设置里连接模型，我才能开始创作。`;
@@ -159,6 +162,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
   end();
   if (logLines.length) out.text = logLines.join('\n') + '\n\n' + out.text;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, text, c.id); cc.messages.push(out); cc.at = Date.now(); });
+  if (autoKey) void executePlan(autoKey, out.at);
 }
 
 export function cancelPlan(key: string, messageAt: number) {

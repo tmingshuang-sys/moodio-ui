@@ -20,6 +20,7 @@ export interface ToolContext {
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
 export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief']);
+export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video']);   // 自动模式下不用确认
 export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
 
 function requireDoc(id: unknown) { const d = findDoc(String(id || '').trim()); if (!d) throw new Error(`找不到 id 为「${id}」的文稿，请从文件清单里选择`); return d; }
@@ -127,7 +128,7 @@ export function describeAction(a: Action): string {
     case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
     case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;
     case 'generate_image': return `生成图片「${String(g.name || g.prompt || '').slice(0, 20)}」` + (IMAGE_RATIOS.includes(g.ratio) ? `（${g.ratio}）` : '');
-    case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」` + ([from, secs ? `${secs} 秒` : ''].filter(Boolean).join(' · ') ? `（${[from, secs ? `${secs} 秒` : ''].filter(Boolean).join(' · ')}）` : ''); }
+    case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); const parts = [from, secs ? `${secs} 秒` : '智能时长'].filter(Boolean); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${parts.join(' · ')}）`; }
     case 'save_brief': return '记录创作纲领';
     case 'ask_user': return '向你确认几个问题';
     case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;
