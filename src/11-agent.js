@@ -65,7 +65,7 @@
         return `<div class="agent-questions" data-q-msg="${index}">${m.questions.map((q,qi)=>`<div class="agent-q"><p>${escapeHtml(q.text)}</p><div class="agent-q-options">${q.options.map((o,oi)=>`<button type="button" data-q-option="${index}:${qi}:${oi}" class="${(answers[qi]||[]).includes(oi)?'on':''}" ${live?'':'disabled'}>${escapeHtml(o)}</button>`).join('')}${live?`<button type="button" class="agent-q-custom" data-q-custom="${index}:${qi}">自己填写…</button>`:''}</div></div>`).join('')}${live?`<div class="agent-q-foot"><button type="button" class="primary" data-q-send="${index}" ${answered?'':'disabled'}>发送回答</button><button type="button" data-q-decide="${index}">由 Agent 决定</button></div>`:`<p class="agent-next-title">${m.questionsUsed?'已回答':'历史提问'}</p>`}</div>`;
       }
       function messageFollowUpsHtml(m,index,c){
-        if(m.role!=='assistant'||m.workflow||m.actions?.some(a=>a.id?.startsWith('plan-')))return '';
+        if(m.role!=='assistant'||m.workflow||m.actions?.some(a=>a.id?.startsWith('plan-'))||(m.plan&&['pending','confirmed'].includes(m.plan.state)))return '';
         const options=normalizeFollowUps(m.followUps);if(!options.length)return '';
         const latest=c.messages.filter(x=>x.role==='assistant').slice(-1)[0]===m;
         const available=latest&&!agentBusy&&!m.followUpUsed&&followUpContextMatches(m.followUpContext);
@@ -149,7 +149,7 @@
         const empty=$('#agent-empty'), msgs=$('#agent-messages'), hist=$('#agent-history');
         const showHist=$('#agent-back').getAttribute('aria-pressed')==='true';
         hist.classList.toggle('hidden',!showHist); empty.hidden=showHist||c.messages.length>0; msgs.hidden=showHist||!c.messages.length;
-        msgs.innerHTML=c.messages.map((m,index)=>`<div class="agent-msg ${m.role}${m.streaming?' is-streaming':''}">${m.quote?`<div class="agent-msg-quote"><span>${escapeHtml(m.quote.text)}</span><small>${escapeHtml(m.quote.source||'')}</small></div>`:''}${m.thinking?`<details class="agent-thinking"${m.streaming?' open':''}><summary>思考过程</summary><div>${escapeHtml(m.thinking)}</div></details>`:''}${m.workflow?workflowHtml(m.workflow):escapeHtml(m.text||(m.streaming?'正在生成…':''))}${questionsHtml(m,index,c)}${reviewHtml(m)}${m.streaming?'<span class="agent-stream-cursor" aria-hidden="true"></span>':''}${m.actions?`<div class="agent-msg-actions">${m.actions.map(a=>`<button type="button" data-agent-action="${escapeHtml(a.id)}">${escapeHtml(a.label)}</button>`).join('')}</div>`:''}${messageFollowUpsHtml(m,index,c)}</div>`).join('');
+        msgs.innerHTML=c.messages.map((m,index)=>`<div class="agent-msg ${m.role}${m.streaming?' is-streaming':''}">${m.quote?`<div class="agent-msg-quote"><span>${escapeHtml(m.quote.text)}</span><small>${escapeHtml(m.quote.source||'')}</small></div>`:''}${m.thinking?`<details class="agent-thinking"${m.streaming?' open':''}><summary>思考过程</summary><div>${escapeHtml(m.thinking)}</div></details>`:''}${m.workflow?workflowHtml(m.workflow):escapeHtml(m.text||(m.streaming?'正在生成…':''))}${planHtml(m)}${planLogHtml(m)}${questionsHtml(m,index,c)}${reviewHtml(m)}${m.streaming?'<span class="agent-stream-cursor" aria-hidden="true"></span>':''}${m.actions?`<div class="agent-msg-actions">${m.actions.map(a=>`<button type="button" data-agent-action="${escapeHtml(a.id)}">${escapeHtml(a.label)}</button>`).join('')}</div>`:''}${messageFollowUpsHtml(m,index,c)}</div>`).join('');
         hist.innerHTML=store.chats.slice().sort((a,b)=>b.at-a.at).map(x=>`<button type="button" class="agent-history-item ${x.id===store.active?'active':''}" data-agent-chat="${x.id}"><svg viewBox="0 0 24 24" class="icon sm"><path d="M4 5h16v11H9l-5 4z"/></svg><span>${escapeHtml(x.title)}</span><small>${fmt(x.at)}</small></button>`).join('');
         refreshAgentFormatNotice();
         msgs.scrollTop=msgs.scrollHeight; $('#agent-body').scrollTop=$('#agent-body').scrollHeight;
@@ -206,7 +206,9 @@
       function agentLog(text,done){
         if(done&&agentLogLines.length) agentLogLines[agentLogLines.length-1]=agentLogLines[agentLogLines.length-1].replace(/^◦/,'✓');
         if(text) agentLogLines.push('◦ '+text);
-        if(agentPending){ agentPending.text='Agent 正在操作…\n'+agentLogLines.join('\n'); renderAgent(); }
+        const step=agentPending?.plan?.steps?.find(s=>s.status==='running');   // 计划卡执行中：子步骤挂在当前步骤下（planHtml），不再拼进消息正文
+        if(step){ step.logs=step.logs||[]; if(done&&step.logs.length) step.logs[step.logs.length-1]=step.logs[step.logs.length-1].replace(/^◦/,'✓'); if(text) step.logs.push('◦ '+text); }
+        if(agentPending){ if(!agentPending.plan) agentPending.text='Agent 正在操作…\n'+agentLogLines.join('\n'); renderAgent(); }
       }
       const agentDone=text=>{ agentLog(text); agentLog(null,true); };
       // 显式化操作不再显示模拟鼠标：只保留元素高亮与节奏停顿
@@ -1206,11 +1208,15 @@
       }
       panel.addEventListener('input',updateWorkflowField);
       panel.addEventListener('change',updateWorkflowField);
-      async function runActions(actions,req){
+      // steps（可选）：计划卡的步骤数组，与 actions 一一对应；执行时逐步标记 running → done / failed / skipped，供 planHtml 实时渲染
+      async function runActions(actions,req,steps){
         const results=[]; const buttons=[]; const reviewTargets=[];
-        for(const a of actions){ const fn=AGENT_TOOLS[a.tool]; if(!fn) continue; if(agentAbort){ results.push('已按你的要求停止，后面的步骤没有执行'); break; }
-          try{ const r=await fn(a.args||{},req,a.shotContext); if(typeof r==='string') results.push(r); else if(r){ results.push(r.summary); if(r.review&&r.review.sceneNo>0) reviewTargets.push(r.review); if(r.content!==undefined){ const f=findFile(a.args?.id); const asset=!f&&a.tool==='read_asset'?allAssets().find(x=>x.id===String(a.args?.id||'')):null; lastToolContents.push({title:f?f.title:asset?('资产卡 '+asset.name):a.args?.id,content:r.content}); } (r.actions||[]).forEach(b=>{ if(!buttons.some(x=>x.id===b.id)) buttons.push(b); }); } }
-          catch(e){ results.push(e.message==='已停止'?'已按你的要求停止，后面的步骤没有执行':`执行 ${a.tool} 时出错：${e.message}`); if(e.message==='已停止') break; } }
+        const mark=(i,status,result)=>{ const s=steps?.[i]; if(!s) return; s.status=status; if(result!==undefined) s.result=String(result||''); renderAgentSoon(); };
+        const skipRest=from=>{ for(let j=from;j<actions.length;j++) mark(j,'skipped'); };
+        for(let i=0;i<actions.length;i++){ const a=actions[i]; const fn=AGENT_TOOLS[a.tool]; if(!fn){ mark(i,'skipped','未知操作'); continue; } if(agentAbort){ results.push('已按你的要求停止，后面的步骤没有执行'); skipRest(i); break; }
+          mark(i,'running');
+          try{ const r=await fn(a.args||{},req,a.shotContext); if(typeof r==='string'){ results.push(r); mark(i,'done',r); } else if(r){ results.push(r.summary); mark(i,'done',r.summary); if(r.review&&r.review.sceneNo>0) reviewTargets.push(r.review); if(r.content!==undefined){ const f=findFile(a.args?.id); const asset=!f&&a.tool==='read_asset'?allAssets().find(x=>x.id===String(a.args?.id||'')):null; lastToolContents.push({title:f?f.title:asset?('资产卡 '+asset.name):a.args?.id,content:r.content}); } (r.actions||[]).forEach(b=>{ if(!buttons.some(x=>x.id===b.id)) buttons.push(b); }); } else mark(i,'done'); }
+          catch(e){ const stopped=e.message==='已停止'; results.push(stopped?'已按你的要求停止，后面的步骤没有执行':`执行 ${a.tool} 时出错：${e.message}`); mark(i,stopped?'skipped':'failed',stopped?'':e.message); if(stopped){ skipRest(i+1); break; } } }
         return {results,buttons,reviewTargets};
       }
       async function reply(text,c=chat(),context=followUpContext(),fromSuggestion=false){
@@ -1259,10 +1265,11 @@
             captureVisibleEdits();
             plan=plan.map(a=>a.tool==='create_shots'?prepareChatShotAction(a,context):a);
             const key='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-            pendingPlans[key]={plan,text,chatId:c.id,context};
+            const steps=planSteps(plan);   // 结构化计划卡（planHtml）：步骤、预览与删除标记不再拼进正文
+            pendingPlans[key]={plan,text,chatId:c.id,context,steps};
             const destructive=plan.filter(a=>DESTRUCTIVE_TOOLS.has(a.tool)).length;
-            const lines=plan.map((a,i)=>{ const extra=previewAction(a); return `${i+1}. ${describeAction(a)}`+(extra?'\n'+extra:''); });
-            out.text=(autoLog.length?autoLog.map(r=>'✓ '+r).join('\n')+'\n':'')+(message?message+'\n':'')+(destructive?`以下操作包含 ${destructive} 项删除，请确认：\n`:'我准备执行以下操作，确认后开始：\n')+lines.join('\n');
+            out.text=(autoLog.length?autoLog.map(r=>'✓ '+r).join('\n')+'\n':'')+(message?message+'\n':'')+(destructive?`以下操作包含 ${destructive} 项删除，请确认：`:'我准备执行以下操作，确认后开始：');
+            out.plan={key,steps,state:'pending',destructive};
             out.actions=[{id:'plan-confirm:'+key,label:destructive?`确认执行（含 ${destructive} 项删除）`:'确认执行'},{id:'plan-cancel:'+key,label:'取消'}];
           }
           else if(autoLog.length){ out.text=autoLog.map(r=>'✓ '+r).join('\n')+(message?'\n'+message:''); }
@@ -1361,22 +1368,81 @@
           default: return '执行 '+(a?.tool||'未知操作');
         }
       }
+      // ===== 结构化计划卡：计划（pending / confirmed / cancelled）与执行（running / reviewing / done / stopped / error）共用一组步骤 =====
+      const PLAN_KIND={write_cover:'write',write_script:'write',rewrite_scene:'write',insert_scene:'write',move_scene:'write',delete_scene:'delete',
+        create_shots:'shot',update_shot:'shot',move_shot:'shot',create_chunk:'shot',delete_shot:'delete',
+        create_doc:'doc',rename_doc:'doc',duplicate_doc:'doc',open_doc:'doc',read_doc:'doc',locate_scene:'doc',list_versions:'doc',restore_version:'doc',create_version:'doc',delete_doc:'delete',
+        create_asset:'asset',update_asset:'asset',read_asset:'asset',merge_assets:'delete',delete_asset:'delete',
+        create_project:'project',switch_project:'project',rename_project:'project',create_episode:'project',switch_episode:'project',rename_episode:'project',
+        export_docs:'export',export_backup:'export',save_brief:'brief',ask_user:'brief'};
+      const PLAN_ICON={
+        write:'<path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m13.5 6.5 3 3"/>',
+        shot:'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M3 14h18M8 6v12M16 6v12"/>',
+        doc:'<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 12h6M9 16h6"/>',
+        asset:'<circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/>',
+        project:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 11h18M7 7l2 4M12 7l2 4M17 7l2 4"/>',
+        export:'<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+        delete:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
+        brief:'<path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/>',
+        other:'<circle cx="12" cy="12" r="3"/>'
+      };
+      function planKind(tool){ return PLAN_KIND[tool]||'other'; }
+      // 把待确认的 actions 变成计划卡步骤：标题来自 describeAction（去掉 ⚠ 前缀，改用删除标记），预览来自 previewAction（去掉「｜」缩进）
+      function planSteps(plan){
+        return (Array.isArray(plan)?plan:[]).map(a=>{
+          const destructive=DESTRUCTIVE_TOOLS.has(a.tool); const title=String(describeAction(a)||'').replace(/^⚠\s*/,''); let preview=''; try{ preview=String(previewAction(a)||''); }catch(e){}
+          return {tool:a.tool,kind:planKind(a.tool),title,preview:preview.split('\n').map(l=>l.replace(/^\s*｜\s?/,'')).join('\n').trim(),destructive,status:'pending',result:'',logs:[]};
+        });
+      }
+      function planHtml(m){
+        const p=m?.plan; if(!p||m.role==='user'||!Array.isArray(p.steps)||!p.steps.length) return '';
+        const steps=p.steps, n=steps.length, state=p.state||'pending';
+        const done=steps.filter(s=>s.status==='done').length, failed=steps.filter(s=>s.status==='failed').length, finished=steps.filter(s=>['done','failed','skipped'].includes(s.status)).length;
+        const destructive=steps.filter(s=>s.destructive).length;
+        const planning=['pending','confirmed','cancelled'].includes(state), folded=state==='confirmed'||state==='cancelled';
+        const head={pending:[`计划 · ${n} 步`,destructive?[`含 ${destructive} 项删除`,'warn']:['待确认','']],confirmed:[`计划 · ${n} 步`,['已确认','']],cancelled:[`计划 · ${n} 步`,['已取消','']],
+          running:[`执行中 · 第 ${Math.min(n,finished+1)} / ${n} 步`,['进行中','']],reviewing:[`执行完成 · ${done} / ${n} 步`,['正在自审刚写的内容…','']],done:[`执行完成 · ${done} / ${n} 步`,['完成','']],
+          stopped:[`已停止 · 完成 ${done} / ${n} 步`,['已停止','']],error:[`执行出错 · 完成 ${done} / ${n} 步`,[`${failed} 步出错`,'warn']]}[state]||[`计划 · ${n} 步`,['','']];
+        const mark=(s,i)=>s.status==='running'?'<span class="agent-plan-spin"></span>':s.status==='done'?'<svg viewBox="0 0 24 24" class="icon sm"><path d="m6 12 4 4 8-8"/></svg>':s.status==='failed'?'<svg viewBox="0 0 24 24" class="icon sm"><path d="m7 7 10 10M17 7 7 17"/></svg>':s.status==='skipped'?'–':String(i+1);
+        const rows=steps.map((s,i)=>{
+          const showPreview=s.preview&&(planning||s.status==='pending'||s.status==='running');
+          return `<li class="agent-plan-step is-${escapeHtml(s.status||'pending')}${s.destructive?' is-destructive':''}" data-kind="${escapeHtml(s.kind||'other')}"><span class="agent-plan-mark" aria-hidden="true">${mark(s,i)}</span><div class="agent-plan-body">`+
+            `<div class="agent-plan-title"><svg viewBox="0 0 24 24" class="icon sm" aria-hidden="true">${PLAN_ICON[s.kind]||PLAN_ICON.other}</svg><span>${escapeHtml(s.title)}</span>${s.destructive?'<em class="agent-plan-tag">删除</em>':''}</div>`+
+            (showPreview?`<pre class="agent-plan-preview" data-i18n-skip>${escapeHtml(s.preview)}</pre>`:'')+
+            (s.status==='running'&&s.logs?.length?`<ul class="agent-plan-log">${s.logs.map(l=>`<li>${escapeHtml(l)}</li>`).join('')}</ul>`:'')+
+            (s.result&&['done','failed','skipped'].includes(s.status)?`<p class="agent-plan-result" data-i18n-skip>${escapeHtml(s.result)}</p>`:'')+
+            `</div></li>`;
+        }).join('');
+        const header=`<span class="agent-plan-icon" aria-hidden="true"><svg viewBox="0 0 24 24" class="icon sm"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 6 1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span><strong>${escapeHtml(head[0])}</strong>${head[1][0]?`<span class="agent-plan-badge${head[1][1]?' '+head[1][1]:''}">${escapeHtml(head[1][0])}</span>`:''}`;
+        const bar=state==='running'||state==='reviewing'?`<div class="agent-plan-bar" aria-hidden="true"><span style="width:${Math.round(finished/n*100)}%"></span></div>`:'';
+        if(folded) return `<details class="agent-plan is-${state}"><summary class="agent-plan-head">${header}<small>查看步骤</small></summary><ol class="agent-plan-steps">${rows}</ol></details>`;
+        return `<section class="agent-plan is-${state}" aria-live="polite"><header class="agent-plan-head">${header}</header>${bar}<ol class="agent-plan-steps">${rows}</ol></section>`;
+      }
+      // 执行记录（agentLogLines）折叠在结果卡下面，样式沿用工作流的 .workflow-log
+      function planLogHtml(m){
+        if(!m||m.role!=='assistant'||!Array.isArray(m.log)||!m.log.length) return '';
+        return `<details class="workflow-log agent-plan-log-all"><summary>执行记录 · ${m.log.length} 步</summary><ol>${m.log.map(l=>`<li>${escapeHtml(l)}</li>`).join('')}</ol></details>`;
+      }
       async function executePlan(key){
         const p=pendingPlans[key]; if(!p) return;
         if(agentBusy){ agentStatus('上一条指令还在执行，等它完成或点「停止」'); return; }
         if(!followUpContextMatches(p.context)){showToast('当前文稿或剧集已变化，请重新发送请求后确认。');return;}
         delete pendingPlans[key];
         const c=store.chats.find(x=>x.id===p.chatId)||chat();
-        const pending={role:'system',text:'Agent 正在操作…',at:Date.now()}; c.messages.push(pending); renderAgent();
+        // 执行卡：与计划卡同一组步骤，runActions 逐步更新状态；结束后换成结果卡（每步的结果）+ 折叠的执行记录
+        const steps=(p.steps||planSteps(p.plan)).map(s=>({...s,status:'pending',result:'',logs:[]}));
+        const pending={role:'assistant',text:'',plan:{steps,state:'running'},at:Date.now()}; c.messages.push(pending); renderAgent();
         agentBusy=true; agentAbort=false; agentLogLines=[]; agentPending=pending; $('#agent-send').classList.add('busy'); agentGlow(true);
-        let out={role:'assistant',text:'',at:Date.now()};
-        try{ await sleep(250); try{ await moodioVersions.snapshotAll('agent-before'); }catch(e){} const {results,buttons,reviewTargets}=await runActions(p.plan,p.text); out.text=results.map(r=>'✓ '+r).join('\n'); out.actions=buttons; try{ await moodioVersions.snapshotAll('agent'); }catch(e){} try{ refreshSceneSummaries(latestFile('script')); }catch(e){}
-          if(reviewTargets&&reviewTargets.length&&modelCfg()?.apiKey){ pending.text='正在自审刚写的内容…'; renderAgent(); try{ out.review=await selfReview(reviewTargets.slice(0,2)); }catch(e){ console.warn('自审失败',e); } } }
+        let out={role:'assistant',text:'',at:Date.now()}; let results=[];
+        try{ await sleep(250); try{ await moodioVersions.snapshotAll('agent-before'); }catch(e){} const run=await runActions(p.plan,p.text,steps); results=run.results; out.actions=run.buttons; try{ await moodioVersions.snapshotAll('agent'); }catch(e){} try{ refreshSceneSummaries(latestFile('script')); }catch(e){}
+          if(run.reviewTargets&&run.reviewTargets.length&&modelCfg()?.apiKey){ pending.plan.state='reviewing'; renderAgent(); try{ out.review=await selfReview(run.reviewTargets.slice(0,2)); }catch(e){ console.warn('自审失败',e); } } }
         catch(e){ out.text='执行时出错：'+e.message; }
         agentEnd(); agentBusy=false; agentPending=null; $('#agent-send').classList.remove('busy');
-        if(agentLogLines.length) out.text=agentLogLines.join('\n')+'\n\n'+out.text;
+        steps.forEach(s=>{ if(s.status==='running') s.status='failed'; else if(s.status==='pending') s.status='skipped'; });
+        out.plan={steps,state:steps.some(s=>s.status==='failed')?'error':steps.some(s=>s.status==='skipped')?'stopped':'done'};
+        if(agentLogLines.length) out.log=agentLogLines.slice();
         const i=c.messages.indexOf(pending); if(i>=0) c.messages.splice(i,1);
-        attachFollowUps(out,p.text,followUpContext());
+        attachFollowUps(out,p.text+'\n'+results.join('\n'),followUpContext());
         c.messages.push(out); c.at=Date.now(); save(); renderAgent();
       }
       let quote=null;
@@ -1442,7 +1508,7 @@
             const key=a.slice(a.indexOf(':')+1); const ok=a.startsWith('plan-confirm:');
             if(ok&&(agentBusy||!pendingPlans[key]||!followUpContextMatches(pendingPlans[key].context))){showToast(agentBusy?'请等待当前任务完成。':'计划或上下文已变化，请重新发送请求后确认。');return;}
             const c=chat(); const m=c.messages.find(mm=>mm.actions?.some(x=>x.id===a));
-            if(m){ m.actions=null; m.text+=ok?'\n已确认，开始执行。':'\n已取消，未做任何改动。'; }
+            if(m){ m.actions=null; if(m.plan) m.plan.state=ok?'confirmed':'cancelled'; else m.text+=ok?'\n已确认，开始执行。':'\n已取消，未做任何改动。'; }
             if(!ok) delete pendingPlans[key];
             save(); renderAgent(); if(ok) executePlan(key); return; }
           if(a==='split'){ try{ agentShots(); }catch(e){} } else if(a==='open-board'){ openBoard(); } else if(a==='open-script'){ selectProjectPage('scripts'); selectFile(latestFile('script')?.id); } else if(a==='open-create'){ selectProjectPage('create'); } else if(a==='open-synopsis'){ selectProjectPage('scripts'); selectFile(latestFile('synopsis')?.id); } else if(a==='open-outline'){ selectProjectPage('scripts'); selectFile(latestFile('outline')?.id); } else if(a==='open-assets'){ state.assetFilter='character'; selectProjectPage('assets'); } else if(a.startsWith('open-file:')){ selectProjectPage('scripts'); selectFile(a.slice(10)); } else if(a.startsWith('chunk-latest:')){ const n=parseInt(a.slice(13),10)||3; const board=activeStoryboardId(); const ids=state.shots.filter(sh=>sh.boardFileId===board).slice(-n).map(sh=>sh.id); if(ids.length) makeChunk(ids); } return; }

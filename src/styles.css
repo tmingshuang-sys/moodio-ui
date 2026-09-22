@@ -3917,3 +3917,52 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .top-nav button + button { margin-left: 26px; }
     .top-nav button + button::before { content: ''; position: absolute; left: -17px; top: 50%; width: 7px; height: 7px; border-right: 1.6px solid #9c9b98; border-bottom: 1.6px solid #9c9b98; transform: translateY(-50%) rotate(-45deg); pointer-events: none; }
     @media (max-width: 600px) { .top-nav button { padding: 0 8px; } .top-nav button + button { margin-left: 16px; } .top-nav button + button::before { left: -12px; } }
+
+    /* ===== Agent 计划卡与执行进度：计划（待确认 / 已确认 / 已取消）与执行（逐步 进行中 → 完成 / 出错 / 未执行）共用一张卡，替代原先拼在正文里的编号列表（src/11 planHtml） ===== */
+    .agent-msg:has(.agent-plan), body.home-page.home-chatting #agent-panel .agent-msg:has(.agent-plan) { width: 100%; max-width: 100%; box-sizing: border-box; }
+    .agent-plan { margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfa; white-space: normal; overflow: hidden; }
+    .agent-msg > .agent-plan:first-child { margin-top: 0; }
+    .agent-plan-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.4; background: #fff; border-bottom: 1px solid var(--line); }
+    details.agent-plan > .agent-plan-head { cursor: pointer; list-style: none; border-bottom: 0; }
+    details.agent-plan > .agent-plan-head::-webkit-details-marker { display: none; }
+    details.agent-plan[open] > .agent-plan-head { border-bottom: 1px solid var(--line); }
+    .agent-plan-head strong { font-weight: 600; color: var(--ink); }
+    .agent-plan-head small { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+    .agent-plan-head .agent-plan-badge + small { margin-left: 0; }
+    .agent-plan-icon { display: inline-flex; color: var(--ink-3); }
+    .agent-plan-badge { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 500; background: #ececea; color: var(--ink-2); white-space: nowrap; }
+    .agent-plan-badge.warn { background: #f3e4e4; color: #9a3d3d; }
+    .agent-plan.is-done .agent-plan-badge { background: #e6efe8; color: #2f6b45; }
+    .agent-plan.is-running .agent-plan-badge, .agent-plan.is-reviewing .agent-plan-badge { background: var(--brand); color: #fff; }
+    .agent-plan.is-cancelled .agent-plan-head strong { color: var(--ink-3); }
+    .agent-plan-bar { height: 3px; background: #ececea; }
+    .agent-plan-bar span { display: block; height: 100%; min-width: 4%; background: var(--brand); transition: width .35s var(--ease-out); }
+    .agent-plan-steps { list-style: none; margin: 0; padding: 4px 0; }
+    .agent-plan-step { display: flex; gap: 10px; align-items: flex-start; padding: 7px 12px; }
+    .agent-plan-step + .agent-plan-step { border-top: 1px dashed var(--line); }
+    .agent-plan-mark { flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; display: inline-grid; place-items: center; font: 600 11px/1 var(--font-ui); color: var(--ink-2); background: #ececea; }
+    .agent-plan-mark .icon { width: 12px; height: 12px; stroke-width: 2.4; }
+    .agent-plan-step.is-running .agent-plan-mark { background: var(--brand); color: #fff; }
+    .agent-plan-step.is-done .agent-plan-mark { background: #e6efe8; color: #2f6b45; }
+    .agent-plan-step.is-failed .agent-plan-mark { background: #f3e4e4; color: #9a3d3d; }
+    .agent-plan-step.is-skipped .agent-plan-mark { background: transparent; border: 1px dashed var(--line-strong); color: var(--ink-3); }
+    .agent-plan-step.is-destructive .agent-plan-mark { background: #f3e4e4; color: #9a3d3d; }
+    .agent-plan-spin { width: 9px; height: 9px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; animation: agent-plan-spin .8s linear infinite; }
+    @keyframes agent-plan-spin { to { transform: rotate(360deg); } }
+    .agent-plan-body { flex: 1; min-width: 0; }
+    .agent-plan-title { display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.5; color: var(--ink); }
+    .agent-plan-title .icon { width: 14px; height: 14px; margin-top: 2px; color: var(--ink-3); }
+    .agent-plan-title span { flex: 1; min-width: 0; word-break: break-word; }
+    .agent-plan-step.is-skipped .agent-plan-title, .agent-plan.is-cancelled .agent-plan-title { color: var(--ink-3); }
+    .agent-plan-step.is-destructive .agent-plan-title .icon { color: #9a3d3d; }
+    .agent-plan-tag { flex: none; margin-top: 2px; padding: 0 6px; border-radius: 999px; background: #f3e4e4; color: #9a3d3d; font-size: 10px; line-height: 15px; font-style: normal; font-weight: 500; }
+    .agent-plan-preview { margin: 5px 0 0; padding: 6px 8px; border-left: 2px solid var(--line-strong); background: #fff; border-radius: 0 6px 6px 0; font: 11.5px/1.55 var(--font-ui); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+    .agent-plan-log { list-style: none; margin: 4px 0 0; padding: 0; font-size: 11px; line-height: 1.5; color: var(--ink-3); }
+    .agent-plan-result { margin: 3px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
+    .agent-plan-step.is-failed .agent-plan-result { color: #9a3d3d; }
+    .agent-plan-log-all { white-space: normal; }
+    .agent-plan + .agent-msg-actions, .agent-plan-log-all + .agent-msg-actions { margin-top: 10px; }
+    .agent-msg .agent-msg-actions button[data-agent-action^="plan-confirm"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+    .agent-msg .agent-msg-actions button[data-agent-action^="plan-confirm"]:hover { background: #000; }
+    body.home-page.home-chatting #agent-panel .agent-plan-title { font-size: 13.5px; }
+    body.home-page.home-chatting #agent-panel .agent-plan-preview, body.home-page.home-chatting #agent-panel .agent-plan-result { font-size: 12.5px; }

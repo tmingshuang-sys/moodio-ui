@@ -191,7 +191,7 @@ function conversationHarness(){
     c:{id:'chat-1',title:'回归测试',messages:[{role:'user',text:'创建两镜'}]},
     localPlan:()=>{throw Error('must not use local fallback');}
   });
-  for(const name of ['runActions','reply','describeAction'])h.load(name);
+  for(const name of ['runActions','reply','describeAction','PLAN_KIND','planKind','planSteps'])h.load(name);
   return h;
 }
 test('conversation reads several pages with IDs then offers confirmation without writes',async()=>{
@@ -200,8 +200,26 @@ test('conversation reads several pages with IDs then offers confirmation without
   await h.run('reply("创建两镜",c,context)');
   assert.match(h.run('inputs[2]'),/"id":"para-a"/);assert.match(h.run('inputs[2]'),/"id":"para-c"/);
   assert.equal(Object.keys(h.ctx.pendingPlans).length,1);assert.equal(h.ctx.state.shots.length,0);
-  assert.match(h.run('c.messages.at(-1).text'),/剧本依据/);
+  assert.match(h.run('c.messages.at(-1).plan.steps[0].preview'),/剧本依据/);
+  assert.equal(h.run('c.messages.at(-1).plan.state'),'pending');assert.equal(h.run('c.messages.at(-1).plan.steps[0].kind'),'shot');
+  assert.doesNotMatch(h.run('c.messages.at(-1).text'),/剧本依据/);
   assert.equal(h.run('c.messages.at(-1).actions[0].label'),'确认执行');
+});
+test('execution marks each plan step running, then done with its result',async()=>{
+  const h=conversationHarness();
+  h.run('var prepared=prepareChatShotAction(action,context);var steps=planSteps([prepared]);var seen=[];renderAgentSoon=()=>seen.push(steps[0].status);');
+  assert.equal(h.run('steps[0].status'),'pending');assert.equal(h.run('steps[0].destructive'),false);
+  const out=await h.run('runActions([prepared],"创建两镜",steps)');
+  assert.equal(h.run('steps[0].status'),'done');assert.match(h.run('steps[0].result'),/已创建 2 个镜头/);
+  assert.deepEqual(h.json('seen'),['running','done']);assert.equal(out.results.length,1);assert.equal(h.ctx.state.shots.length,2);
+});
+test('a failing step is marked failed and a stop skips the rest',async()=>{
+  const h=conversationHarness();
+  h.run('AGENT_TOOLS.boom=async()=>{throw Error("坏了");};AGENT_TOOLS.halt=async()=>{throw Error("已停止");};AGENT_TOOLS.ok=async()=>"好";renderAgentSoon=()=>{};');
+  h.run('var plan=[{tool:"boom"},{tool:"ok"},{tool:"halt"},{tool:"ok"}];var steps=plan.map(a=>({tool:a.tool,status:"pending",result:""}));');
+  const out=await h.run('runActions(plan,"x",steps)');
+  assert.deepEqual(h.json('steps.map(s=>s.status)'),['failed','done','skipped','skipped']);
+  assert.match(h.run('steps[0].result'),/坏了/);assert.equal(h.run('steps[1].result'),'好');assert.equal(out.results.length,3);
 });
 test('conversation rejects a malformed model plan without local fallback or confirmation',async()=>{
   const h=conversationHarness();
