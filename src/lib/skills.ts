@@ -10,6 +10,7 @@ export interface StageDef { id: StageId; name: string; goal: string; outputs: st
 export interface QuestionDef extends Question { key: string; }
 export interface Skill {
   id: string; name: string; title: string;
+  modelTemplate?: string;       // 建模文稿的冻结格式（只在建模阶段注入）
   modelName: string;            // 建模阶段的叫法（商品建模 / 人物与世界建模 …）
   modelDocs: string[];          // 建模阶段要写的文稿
   modelGuide: string;           // 建模文稿写什么
@@ -22,6 +23,52 @@ export interface Skill {
 }
 
 export const STAGE_ORDER: StageId[] = ['brief', 'model', 'script', 'assets', 'storyboard', 'prompts', 'video', 'deliver'];
+
+// 所有类型共用的契约：建模文稿必须标注证据来源，不知道的写 unknown，不编造
+export const EVIDENCE_CONTRACT = '证据来源契约：建模文稿里每个事实都标注来源——用户确认 / AI 推导 / 品类常识推导 / unknown；不知道的一律写 unknown，不得编造参数、材质、尺寸或背景；AI 推导出的外观要在 message 里提醒用户「可能与真实不符，有图可随时补传校正」。';
+// 广告的营销脑图冻结格式（商品模型 + 卖点账本 + 营销策略 + 创意方向 + 本地化 合在一份文稿里）
+export const AD_MODEL_TEMPLATE = `「营销脑图.md」固定结构：
+# 营销脑图
+## 商品模型
+### 产品1：<名称>
+\`\`\`yaml
+物态: 实物 | 服务 | App | 品牌
+参数与形态:
+  物理规格: {大小, 重量, 容量/规格, 数量}
+  材质与质感: {外壳材质, 质感, 工艺特征}
+  结构与组成: {部件构成, 连接/嵌套/开合}
+  外观分面还原: {正面, 侧面, 顶部, 底部, 背面/内部}
+  颜色/款式/型号/SKU: {主色调, 品牌/型号, SKU 区分}
+  品类特有维度: {按品类补，如 接口 / 续航 / 防水等级 / 口味 / 尺码}
+功能与使用:
+  核心功能 / 打开或启动方式 / 关键操作部件 / 标准使用流程 / 易错点与禁忌 / 使用场景 / 便携或展示方式
+证据来源:
+  <逐字段>: 用户确认 | AI 推导 | 品类常识推导 | unknown
+\`\`\`
+**证据来源复核**：一句话说明哪些是用户给的、哪些是 AI 推导的，AI 推导的外观是否已提醒用户。
+## 卖点账本
+| 编号 | 卖点 | 优先级 | 篇幅权重 | 内容 | 证明方式（画面怎么证明） | 落在哪个片段 | 状态 |
+编号 USP-01 是核心卖点、SP-01 是次要卖点；优先级 P00 > P0 > P1；篇幅权重 高 / 中 / 低；状态 已激活 / 备选。每个已激活卖点必须能在画面里被证明，只靠字幕或口播说出来的不算。
+**关键事实清单**：颜色、形状、大小、连接方式等，挂靠到已激活卖点顺带呈现。
+## 营销策略
+\`\`\`yaml
+受众: {目标用户, 购买情境, 当前压力, 潜在渴望, 主要顾虑}
+商品语义: {品类归属, 目标使用者, 人与商品的关系, 使用或展示情境, 购买动机, 可信互动: [可见的互动动作]}
+价值: {主要价值, 对用户的意义, 最小可见价值}
+信任: {壁垒, 依据}
+证明: {主张, 方式, 可见结果, 需要见证}
+情绪: {起始状态, 目标状态, 情绪回报}
+记忆: {唤起目标（一句话）, 品牌资产}
+行动: {下一步, 此刻理由}
+\`\`\`
+## 创意方向
+**方向**：剧情带货 / 口播种草 / 产品展示 / 情绪氛围　**选择理由**：…
+## 本地化
+\`\`\`yaml
+市场 / 平台 / 口播语言 / 画面文字语言 / 人物本地化 / 人物参考
+\`\`\``;
+// 脚本阶段：60 秒以内的广告 / 短视频直接写分镜脚本表，不再先写场景式剧本
+export const SHORT_SCRIPT_NOTE = '总时长 60 秒以内时，「故事脚本.md」直接写成分镜脚本表：列为 镜号 | 时长(秒) | 画面描述 | 景别 | 光影氛围 | 对白·旁白 | 音效 | 运镜，每镜一行，人物首次出场在画面描述里给年龄与一句外形并加粗，产品每次露出都写明看得见的部位；表后加「## 全片 BGM」段（乐器、BPM、各段情绪、哪些段音乐是画面内声源）。镜头时长合计必须等于总时长。分镜阶段只做核对与微调。';
 const opt = (label: string, hint?: string) => ({ label, hint });
 const single = (key: string, text: string, options: { label: string; hint?: string }[]): QuestionDef => ({ key, text, type: 'single', multi: false, options });
 const multi = (key: string, text: string, options: { label: string; hint?: string }[]): QuestionDef => ({ key, text, type: 'multi', multi: true, options });
@@ -32,10 +79,10 @@ function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; 
   return [
     { id: 'brief', name: '需求澄清', goal: '用问卷问清类型、时长、平台与画幅、受众、调性，答案用 save_brief 记录；信息够了就推进，不要反复追问。', outputs: '创作纲领', gate: '纲领里类型、时长、受众、调性齐全' },
     { id: 'model', name: s.modelName, goal: s.modelGoal, outputs: s.modelDocs.map(d => `「${d}」`).join('、'), gate: '建模文稿写完并经用户确认' },
-    { id: 'script', name: '脚本', goal: '按写作规范写故事脚本，多场先给大纲再逐场写；写完用自审清单核对。', outputs: '「故事脚本.md」', gate: '脚本通过自审且用户确认' },
+    { id: 'script', name: '脚本', goal: '按写作规范写故事脚本，多场先给大纲再逐场写；写完用自审清单核对。人物名、产品名全片用同一写法并加粗，产品每次露出写明看得见的部位。', outputs: '「故事脚本.md」', gate: '脚本通过自审且用户确认' },
     { id: 'assets', name: '素材检查', goal: '列出脚本涉及的实体，判断哪些需要参考图；按契约处理产品 / 人物参考图；生成后把实体和参考图 id 写进台账并请用户确认。', outputs: '参考图（媒体库）与台账里的实体清单', gate: '所有需要参考图的实体都有用户确认过的参考图' },
-    { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表，镜头总时长与纲领时长一致。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
-    { id: 'prompts', name: '片段方案', goal: `按总时长和单段上限（默认 ${s.clipSeconds} 秒）把分镜切成若干片段，每段一份视频生成提示词文稿，写明承接哪些镜头、引用哪些参考图；片段清单写进台账 clips；全部写完后用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成' },
+    { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表（十列 + 全片 BGM），镜头总时长与纲领时长一致；脚本已经是分镜脚本表时只核对与微调。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
+    { id: 'prompts', name: '片段方案', goal: `按总时长和单段上限（默认 ${s.clipSeconds} 秒）把分镜切成若干片段，每段一份按「片段提示词冻结格式」写的文稿：全片风格表逐字相同、主体绑定参考图并写清只采用什么、子镜头时段首尾相接且合计等于片段时长；片段清单写进台账 clips（no / seconds / shots / docId）；全部写完先用 lint_clips 自查，再用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成；系统会校验时长与卖点落地' },
     { id: 'video', name: '生成成片', goal: '按片段顺序 generate_video，有参考图就用 from_media_id 或在提示词里复用同一段外形描述；全部生成后用 compose_video 按顺序合成 MP4 成片：字幕从脚本的台词 / 口播 / 字幕列生成（按各段时长累计起止秒数，每条不超过 20 字），媒体清单里有用户上传的音频就作配乐。', outputs: '片段视频与成片', gate: '成片合成完成' },
     { id: 'deliver', name: '交付', goal: '总结成片：结构、每段承担的内容、核心信息如何落地；请用户审阅并说明要改哪一段。', outputs: '交付说明', gate: '用户验收' },
   ];
@@ -50,9 +97,9 @@ const COMMON_GENERAL: QuestionDef[] = [
 export const SKILLS: Record<string, Skill> = {
   ad: {
     id: 'ad', name: '营销视频大师', title: '广告',
-    modelName: '商品建模', modelDocs: ['商品模型.md', '卖点账本.md'],
-    modelGuide: '「商品模型.md」：品牌 / 型号、类目、尺寸与形状、主色与材质、使用场景、目标人群、价格带、有无产品图；「卖点账本.md」：一张表，列 卖点 | 证明方式（画面怎么证明） | 落在哪个片段 | 状态，每个核心卖点至少一行。',
-    scriptNote: '按时长选结构（15 / 30 / 60 秒），产品在剧情里自然登场，每个核心卖点在画面里有可见证明，结尾行动号召具体。',
+    modelName: '商品建模', modelDocs: ['营销脑图.md'], modelTemplate: AD_MODEL_TEMPLATE,
+    modelGuide: '「营销脑图.md」一份文稿装下商品模型（YAML，逐字段标证据来源）、卖点账本（表）、营销策略（YAML 说服链）、创意方向与本地化；没有的信息写 unknown。',
+    scriptNote: '按时长选结构（15 / 30 / 60 秒），产品在剧情里自然登场，每个已激活卖点在画面里有可见证明，结尾行动号召具体。' + SHORT_SCRIPT_NOTE,
     general: [
       single('subject', '想推广的是什么？', [opt('实物产品'), opt('App 或服务'), opt('品牌形象'), opt('活动或促销')]),
       single('style', '想要什么风格？', [opt('剧情故事型', '一个小故事，产品是情节的一部分'), opt('口播种草型', '一个人对镜头讲'), opt('产品展示型', '画面直接展示产品与功能'), opt('情绪氛围型', '靠画面和音乐带情绪')]),
@@ -71,6 +118,7 @@ export const SKILLS: Record<string, Skill> = {
       '产品图契约：没有实拍图时不得直接把 AI 想象的产品写进片段；必须先在 message 里声明「AI 推导外观可能与真机不同」，生成产品三视图（正面 / 侧面 / 45 度）后请用户确认，确认后所有片段引用同一组三视图。',
       '卖点落地契约：卖点账本里每个核心卖点至少在一个片段里有可见证明（动作、对比或结果），只靠字幕或口播说出来的不算。',
       '品牌露出契约：产品或品牌至少露出两次，结尾定帧留出行动号召。',
+      '三视图契约：AI 生成的产品参考图先出正面 / 侧面 / 顶面三张，再用 make_sheet 拼成一张带标签的三视图，之后所有片段只引用这一张（@图片1）。',
     ],
     entities: ['产品', '人物', '场景', '道具', '风格锚点'],
     clipSeconds: 15,
@@ -130,7 +178,7 @@ export const SKILLS: Record<string, Skill> = {
     id: 'short', name: '短视频制片', title: '短片 / 短视频',
     modelName: '人设与选题建模', modelDocs: ['人设与选题.md', '钩子账本.md'],
     modelGuide: '「人设与选题.md」：出镜人设（是谁、说话方式、外形冻结描述）、选题一句话、目标动作（点赞 / 关注 / 下单）、平台规范；「钩子账本.md」：一张表，列 时间点 | 钩子类型 | 画面 | 状态，前 3 秒必须有一行。',
-    scriptNote: '一个主角、一个冲突、一次转折；前 3 秒出钩子，每 10 秒一个新信息，结尾给记忆点或行动指令。',
+    scriptNote: '一个主角、一个冲突、一次转折；前 3 秒出钩子，每 10 秒一个新信息，结尾给记忆点或行动指令。' + SHORT_SCRIPT_NOTE,
     general: [
       single('kind', '是哪种内容？', [opt('剧情短片', '有人物和情节'), opt('口播 / 知识', '一个人对镜头讲'), opt('Vlog / 记录'), opt('产品或探店'), opt('氛围 / 混剪')]),
       ...COMMON_GENERAL,
@@ -188,7 +236,10 @@ export const SKILLS: Record<string, Skill> = {
   },
 };
 
-export function skillFor(format?: string): Skill { return SKILLS[String(format || '')] || SKILLS.other; }
+export function skillFor(format?: string): Skill {
+  const s = SKILLS[String(format || '')] || SKILLS.other;
+  return s.contracts.includes(EVIDENCE_CONTRACT) ? s : { ...s, contracts: [...s.contracts, EVIDENCE_CONTRACT] };
+}
 export function skillStages(skill: Skill): StageDef[] {
   const goal: Record<string, string> = {
     ad: '用专项问卷把产品问清楚，然后写「商品模型.md」和「卖点账本.md」；有实拍图先让用户上传。',

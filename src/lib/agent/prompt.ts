@@ -8,6 +8,13 @@ import { timeAgo } from '../time';
 import { readLedger, ledgerText } from '../ledger';
 import { skillFor, STAGE_ORDER } from '../skills';
 import type { Ledger } from '../ledger';
+import { currentVideoModel, effectivePreset, modelDisplayName } from '../mediagen';
+
+// 当前视频模型决定提示词语言：方舟系用中文，fal 系用英文
+export function videoModelLine(): string {
+  const id = currentVideoModel(); const preset = effectivePreset('video', id);
+  return `【当前视频模型】${modelDisplayName('video', id)}${preset ? `（实际先用 ${preset.name}，${preset.provider === 'ark' ? '方舟系，提示词用中文' : 'fal 系，提示词用英文'}）` : ''}`;
+}
 
 // 创作流程块：按纲领类型选技能，只注入当前阶段的目标 / 产物 / 门禁 / 问卷与契约
 export function skillBlock(): string {
@@ -18,7 +25,8 @@ export function skillBlock(): string {
   const bank = l.stage === 'brief' ? skill.general : l.stage === 'model' ? skill.modeling : [];
   const pending = bank.filter(q => !l.answers[q.key] && !(q.key === 'duration' && brief.duration) && !(q.key === 'ratio' && brief.ratio) && !(q.key === 'audience' && brief.audience));
   const qJson = pending.length ? JSON.stringify(pending.map(q => ({ key: q.key, text: q.text, type: q.type, options: q.options.map(o => o.hint ? { label: o.label, hint: o.hint } : o.label), placeholder: q.placeholder }))) : '';
-  return `【创作流程 · ${skill.name}（${skill.title}）】\n${ledgerText(l)}\n阶段推进规则：本阶段产物写完并得到用户确认后，用 update_ledger 把 stage 改成下一阶段的 id（顺序 ${STAGE_ORDER.join(' → ')}），可与其他 actions 放在同一批，它不需要确认；不要跳阶段，除非用户明确要求。用户给出的信息用 update_ledger 的 answers 记录（key 用问卷里的 key 或简短英文）；素材阶段把实体和参考图 id 写进 entities；片段方案阶段把每段的序号、秒数、承接镜头和提示词文稿 id 写进 clips，生成后补 mediaId。\n${qJson ? `本阶段问卷（这些题还没回答，可按情况删改或补充，一批最多 8 题，用 ask_user 的同一格式，key 原样带上）：${qJson}\n` : ''}建模文稿写法：${skill.modelGuide}\n脚本要求：${skill.scriptNote}\n契约（硬规则）：${skill.contracts.map((c, i) => `${i + 1}. ${c}`).join(' ')}\n素材实体类型：${skill.entities.join('、')}。片段规则：单段默认 ${skill.clipSeconds} 秒，片段数 = 总时长 ÷ 单段时长向上取整，最后一段可短；每段提示词文稿引用它要用的参考图文件名与冻结的外形描述。`;
+  const modelTemplate = l.stage === 'model' && skill.modelTemplate ? `\n建模文稿冻结格式：${skill.modelTemplate}` : '';
+  return `【创作流程 · ${skill.name}（${skill.title}）】\n${ledgerText(l)}\n${videoModelLine()}${modelTemplate}\n阶段推进规则：本阶段产物写完并得到用户确认后，用 update_ledger 把 stage 改成下一阶段的 id（顺序 ${STAGE_ORDER.join(' → ')}），可与其他 actions 放在同一批，它不需要确认；不要跳阶段，除非用户明确要求。用户给出的信息用 update_ledger 的 answers 记录（key 用问卷里的 key 或简短英文）；素材阶段把实体和参考图 id 写进 entities；片段方案阶段把每段的序号、秒数、承接镜头和提示词文稿 id 写进 clips，生成后补 mediaId。\n${qJson ? `本阶段问卷（这些题还没回答，可按情况删改或补充，一批最多 8 题，用 ask_user 的同一格式，key 原样带上）：${qJson}\n` : ''}建模文稿写法：${skill.modelGuide}\n脚本要求：${skill.scriptNote}\n契约（硬规则）：${skill.contracts.map((c, i) => `${i + 1}. ${c}`).join(' ')}\n素材实体类型：${skill.entities.join('、')}。片段规则：单段默认 ${skill.clipSeconds} 秒，片段数 = 总时长 ÷ 单段时长向上取整，最后一段可短；每段提示词文稿引用它要用的参考图文件名与冻结的外形描述。`;
 }
 
 export function briefMissing(): string[] { const b: Record<string, any> = useFiles.getState().brief || {}; return BRIEF_KEY_FIELDS.filter(k => !String(b[k] || '').trim()).map(k => BRIEF_FIELDS.find(f => f[0] === k)![1]); }
@@ -72,6 +80,8 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 - {"tool":"replace_section","args":{"id":"文稿id","heading":"要替换的标题原文","content":"新的整段内容（可含新标题）"}} 按标题整段替换（改写某一场、某个人物、某个镜头的提示词）
 - {"tool":"rename_doc","args":{"id":"文稿id","name":"新文件名.md"}}；{"tool":"delete_doc","args":{"id":"文稿id"}}（进回收站，可撤销）
 - {"tool":"read_doc","args":{"id":"文稿id"}} 读取整份文稿（不需要确认，结果会交回给你再规划）；{"tool":"open_doc","args":{"id":"文稿id"}} 在工作区打开；{"tool":"export_doc","args":{"id":"文稿id"}} 下载
+- {"tool":"make_sheet","args":{"name":"产品三视图","group":"产品","tiles":[{"id":"图片id","label":"正面"},{"id":"图片id","label":"侧面"},{"id":"图片id","label":"顶面"}]}} 把几张参考图拼成一张带标签的分格图（不计费，之后片段只引用这一张）
+- {"tool":"lint_clips","args":{}} 校验片段提示词：子镜头时段首尾相接且等于片段时长、片段合计接近纲领总时长、每个已激活卖点至少落在一个片段里（不需要确认，结果交回给你）
 - {"tool":"inspect_image","args":{"id":"图片id","question":"想确认什么"}} 用视觉模型看一张图（不需要确认，描述会交回给你再规划；只有配置了支持看图的模型才可用）。参考图生成完系统会自动用视觉模型逐张质检并把结果展示给用户，你不必再安排检查
 - {"tool":"open_media","args":{"id":"媒体id"}} 查看图片 / 视频；{"tool":"rename_media","args":{"id":"媒体id","name":"新名"}}；{"tool":"tag_media","args":{"id":"媒体id","group":"人物|场景|产品|其他"}}；{"tool":"delete_media","args":{"id":"媒体id"}}
 - {"tool":"generate_image","args":{"prompt":"英文画面提示词","name":"文件名（不含扩展名）","group":"人物|场景|产品|其他","ratio":"可选 16:9|9:16|1:1|4:3|3:4"}} 生成图片并存进媒体库
@@ -84,8 +94,8 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 - {"tool":"create_project","args":{"title":"项目名"}}；{"tool":"switch_project","args":{"id":"项目id"}}；{"tool":"rename_project","args":{"id":"项目id","title":"新名称"}}
 【文稿约定】
 - 剧本：文件名如「故事脚本.md」「第一集剧本.md」；正文用 Markdown：一级标题是剧名，每一场一个二级标题「## INT./EXT. 地点 - 时间」，动作行是普通段落，对白写成「**人物名**」独占一行、下一行台词，括注写在人物名后的括号里，转场用斜体。
-- 分镜表：文件名如「分镜表.md」「第一集分镜.md」；一级标题 + Markdown 表格，列固定为：镜号 | 场次 | 景别 | 角度 | 运镜 | 时长(秒) | 画面描述 | 台词 / 音效 | 剧本依据。镜号两位数字，每镜一行。
-- 视频生成提示词：每个镜头一份，文件名「视频生成Prompt-01.md」（两位镜号），结构见提示词规范；批量生成时一次 actions 里放多个 write_doc。
+- 分镜表：文件名如「分镜表.md」「第一集分镜.md」；一级标题 + Markdown 表格，列固定为：镜号 | 场次 | 时长(秒) | 景别 | 运镜 | 画面描述 | 光影氛围 | 对白·旁白 | 音效 | 剧本依据。镜号两位数字，每镜一行；表后一段「## 全片 BGM」。
+- 视频生成提示词：每个片段（一段 10–15 秒、含若干子镜头的视频）一份，文件名「视频生成Prompt-01.md」（两位片段号），正文本身就是提示词，结构见片段提示词冻结格式；批量写时一次 actions 里放多个 write_doc。
 - 人物：「人物小传.md」，每个人物一个二级标题，下面是概况 / 外形 / 性格 / 弧光；新增人物用 append_doc，改人物用 replace_section。
 - 其他产物（故事梗概、大纲、营销文案、脑图大纲、拍摄计划）也都是 .md，标题清楚、结构用标题和列表。
 - 修改已有文稿时优先 replace_section 或 append_doc，只有用户要求整份重来才 write_doc + overwrite；不要为了小改动重写整份。

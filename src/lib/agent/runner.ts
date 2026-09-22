@@ -137,7 +137,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     const briefSave = plan.find(a => a.tool === 'save_brief'); if (briefSave) { try { const saved = saveBrief(briefSave.args || {}); if (saved.length) notes.push(`✓ 已记录创作纲领：${saved.join('、')}`); } catch { /* ignore */ } plan = plan.filter(a => a.tool !== 'save_brief'); }
     const fmt = useFiles.getState().brief?.format;
     if (fmt) { try { const { created, ledger } = ensureLedger(fmt); if (created) notes.push(`✓ 已加载创作流程「${skillFor(ledger.skill).name}」，台账已建立`); } catch { /* ignore */ } }
-    for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const l = updateLedger(a.args || {}); if (a.args?.stage) notes.push(`✓ 阶段推进到「${stageName(skillFor(l.skill), l.stage)}」`); } catch { /* ignore */ } }
+    for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const r = await AGENT_TOOLS.update_ledger(a.args || {}, { request: text, chatId: c.id, typeInto, step, live: setLive }); if (a.args?.stage) notes.push(`✓ ${typeof r === 'string' ? r : r.summary}`); } catch (e: any) { notes.push(`✗ ${e?.message || e}`); } }
     plan = plan.filter(a => a.tool !== 'update_ledger');
     const ask = plan.find(a => a.tool === 'ask_user');
     if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; }

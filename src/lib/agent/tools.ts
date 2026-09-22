@@ -13,6 +13,8 @@ import { updateLedger } from '../ledger';
 import { skillFor, stageName } from '../skills';
 import { composeVideos } from '../compose';
 import { askAboutImages } from '../vision';
+import { makeSheet } from '../sheet';
+import { lintClips, lintSummary } from '../lint';
 
 export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; artifact?: Artifact; }
 export interface ToolContext {
@@ -25,7 +27,7 @@ export interface ToolContext {
 }
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
-export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger', 'inspect_image']);
+export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger', 'inspect_image', 'lint_clips']);
 export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'compose_video']);   // 自动模式下不用确认
 export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
 
@@ -51,11 +53,26 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   async save_brief(args) { const saved = saveBrief(args || {}); return saved.length ? `已记录创作纲领：${saved.join('、')}` : '创作纲领没有变化'; },
   async ask_user() { return '（追问已展示给用户）'; },
   // 台账：阶段推进 / 答案 / 实体 / 片段，免确认
-  async update_ledger(args) { const l = updateLedger(args || {}); const parts = []; if (args?.stage) parts.push(`阶段 → ${stageName(skillFor(l.skill), l.stage)}`); if (args?.answers) parts.push(`答案 ${Object.keys(args.answers).length} 项`); if (args?.entities) parts.push(`实体 ${l.entities.length} 个`); if (args?.clips) parts.push(`片段 ${l.clips.length} 段`); return `台账已更新${parts.length ? '：' + parts.join('，') : ''}`; },
+  async update_ledger(args) {
+    // 进入「生成成片」前把关：时长与卖点落地有错就不推进
+    if (args?.stage === 'video') { const r = lintClips(); if (r.errors.length) throw new Error(`还不能进入生成成片：${r.errors.join('；')}`); }
+    const l = updateLedger(args || {}); const parts = []; if (args?.stage) parts.push(`阶段 → ${stageName(skillFor(l.skill), l.stage)}`); if (args?.answers) parts.push(`答案 ${Object.keys(args.answers).length} 项`); if (args?.entities) parts.push(`实体 ${l.entities.length} 个`); if (args?.clips) parts.push(`片段 ${l.clips.length} 段`); return `台账已更新${parts.length ? '：' + parts.join('，') : ''}`; },
   // ---- 读取与打开（不需要确认）----
   async read_doc(args) { const d = requireDoc(args.id); return { summary: `已读取「${d.name}」（${wordCount(d.content)} 字）`, content: d.content.slice(0, 16000), actions: [openDocAction(d.id, d.name)] }; },
   async open_doc(args) { const d = requireDoc(args.id); useFiles.getState().openInPane(d.id); return `已打开「${d.name}」`; },
   async open_media(args) { const m = requireMedia(args.id); useFiles.getState().openInPane(m.id); return `已打开「${m.name}」`; },
+  // 校验片段提示词（不需要确认），结果交回模型
+  async lint_clips() { const r = lintClips(); const text = lintSummary(r); return { summary: r.errors.length ? `片段校验有 ${r.errors.length} 处问题` : '片段校验通过', content: text }; },
+  // 拼图：几张参考图拼成一张带标签的分格图
+  async make_sheet(args, ctx) {
+    const tiles = (Array.isArray(args.tiles) ? args.tiles : []).map((t: any) => ({ id: String(t?.id || '').trim(), label: String(t?.label || '').trim() || '视图' })).filter((t: any) => t.id);
+    if (!tiles.length) throw new Error('缺少要拼的图片');
+    tiles.forEach((t: any) => { const m = requireMedia(t.id); if (m.kind !== 'image') throw new Error(`「${m.name}」不是图片`); });
+    let item!: import('../types').MediaItem;
+    await ctx.step(`把 ${tiles.length} 张图拼成「${args.name || '三视图'}」`, async () => { item = await makeSheet(tiles, { name: String(args.name || '三视图'), group: String(args.group || '产品') }); });
+    useFiles.getState().openInPane(item.id);
+    return { summary: `已把 ${tiles.length} 张图拼成「${item.name}」`, actions: [{ id: 'open-media:' + item.id, label: '查看' }], artifact: { id: item.id, kind: 'image', name: item.name } };
+  },
   // 看图（不需要确认）：用视觉模型描述或检查一张图片，结果交回模型再规划
   async inspect_image(args, ctx) {
     const m = requireMedia(args.id); if (m.kind !== 'image') throw new Error(`「${m.name}」不是图片`);
@@ -137,7 +154,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
 };
 
 // ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
-const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', compose_video: 'video', inspect_image: 'media', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', compose_video: 'video', inspect_image: 'media', make_sheet: 'image', lint_clips: 'doc', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
 export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
 
 export function describeAction(a: Action): string {
@@ -153,6 +170,8 @@ export function describeAction(a: Action): string {
     case 'open_doc': return `打开「${docName(g.id)}」`;
     case 'export_doc': return `下载「${docName(g.id)}」`;
     case 'open_media': return `查看「${mediaName(g.id)}」`;
+    case 'make_sheet': { const n = Array.isArray(g.tiles) ? g.tiles.length : 0; return `把 ${n} 张图拼成带标签的分格图「${g.name || '三视图'}」`; }
+    case 'lint_clips': return '校验片段提示词的时长与卖点落地';
     case 'inspect_image': return `用视觉模型看「${mediaName(g.id)}」${g.question ? '：' + String(g.question).slice(0, 30) : ''}`;
     case 'rename_media': return `把「${mediaName(g.id)}」重命名为「${g.name || ''}」`;
     case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
