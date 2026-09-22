@@ -46,7 +46,7 @@ npm run build          # vite build → dist/
   加模型：方舟用 `GET /ark/models` 能列出账号下全部型号，最准；fal 的 id 从官网抄。**注意 fal 队列接口只在顶层命名空间不存在时才 404**，所以「提交返回 200」不能证明具体变体存在，要看任务状态或实际跑一次才算数；空请求体也会被排进队列而不是被拒绝。
   用户在输入框下方的「模型」按钮（`ModelPrefs.tsx`）里选，选择存 `moodio-agent-model` 的 `imageModel` / `videoModel` / `videoImageModel` / `imageRatio` / `videoRatio` / `videoDuration` / `videoResolution`。
 - **模型调用**只经过 `model.ts` 的 `callModel()`（内部按 provider 走 `callClaude` / `callOpenAI`），支持 `{signal,onText,onReasoning}`。密钥只存 localStorage `moodio-agent-model`，任何 API key 不得进入仓库或对话。创意类请求（`isCreativeRequest`）用写作模型 `writerCfg()`。
-- **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，品牌渐变 `var(--brand)`；新规则追加到对应区块或文件末尾并加中文注释。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
+- **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，新规则追加到对应区块或文件末尾并加中文注释。**配色是黑白灰**：主色 `--accent` 就是墨色，选中态用 `--accent-soft` 浅灰底 + 墨色字，不要引入紫色或蓝色做强调；彩色只留状态语义（成功绿 `#2f6b45`、警告 `--warn`、危险 `--danger`）。品牌渐变 `--brand` 只给 logo 等品牌位，不要用在按钮、徽标、进度条上。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
 - **界面语言**：系统文案用 `useT()` / `t()`（i18n.ts 的 `EN` 词典），用户内容与模型正文不翻译。新增系统文案时在词典里补一条。
 - **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；由「新建项目」建的项目（`moodio-project-fresh::<id>` 标记）为空白。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude <当前模型名> <noreply@anthropic.com>`。
