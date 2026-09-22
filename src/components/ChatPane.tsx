@@ -7,7 +7,6 @@ import { cancelTask } from '../lib/mediagen';
 import { openMenuAt } from './Menu';
 import { confirmDialog } from './Dialogs';
 import { timeAgo } from '../lib/time';
-import { StageStrip } from './LedgerView';
 import NextStepBar, { FormatPicker, useNextStep } from './Director';
 import { startCreation } from '../lib/session';
 import { useT } from '../lib/i18n';
@@ -110,8 +109,6 @@ export default function ChatPane() {
           {fileCount > 0 && <button type="button" className={`chip-btn${ui.paneOpen ? ' active' : ''}`} onClick={() => setUi({ paneOpen: !ui.paneOpen })}><FolderOpen size={15} /><span>{t('对话文件')}</span><em>{fileCount}</em></button>}
         </div>
       </header>
-      <StageStrip />
-      <NextStepBar />
       <div className={`chat-body${home ? ' is-home' : ''}${leaving ? ' is-entering' : ''}`} ref={listRef}>
         {messages.length ? <MessageList chat={chat} /> : (
           <div className={`chat-empty${home ? ' home' : ''}`}>
@@ -124,6 +121,7 @@ export default function ChatPane() {
           </div>
         )}
       </div>
+      <NextStepBar />
       {!home && <Composer />}
       {leaving && (
         <div className="home-leaving" aria-hidden="true">

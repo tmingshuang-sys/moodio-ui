@@ -609,13 +609,6 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .lint-text { margin: 6px 0 0; white-space: pre-wrap; font: 12.5px/1.6 var(--font-ui); color: var(--ink-2); }
 
 /* ===== 导演条：唯一的下一步 + 一键模式；类型选择；推荐标记；重试按钮 ===== */
-.next-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; border-bottom: 1px solid var(--line); background: #fff; }
-.next-bar.is-confirm { background: #fbfbfa; }
-.next-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.next-stage { font-size: 13px; font-weight: 600; color: var(--ink); }
-.next-stage small { font-weight: 400; color: var(--ink-3); }
-.next-detail { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
-.next-actions { flex: none; display: flex; align-items: center; gap: 8px; }
 .next-primary { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 500; }
 .next-primary:hover { background: #000; }
 .next-primary.busy { background: var(--ink-2); }
@@ -634,10 +627,6 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .plan-retry:hover { background: var(--panel); }
 
 /* 导演条在窄对话栏里换行，不把文字挤成竖条 */
-.next-bar { flex-wrap: wrap; row-gap: 6px; }
-.next-info { flex: 1 1 200px; min-width: 160px; }
-.next-stage { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.next-actions { flex-wrap: wrap; justify-content: flex-end; }
 
 /* 台账视图：绑定了音色样本的实体，「音色」标记是个按钮，点了在工作区试听 */
 button.lg-chip-btn { appearance: none; border: 0; cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
@@ -685,3 +674,27 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .chat-body.is-entering .messages { animation: msgs-in 520ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes msgs-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .home-leaving, .chat-body.is-entering .messages { animation: none; } }
+
+/* 导演停靠区：贴在输入框上方——步骤清单卡（当前步骤带下一步动作与状态）、进度胶囊（Step k / 8）、主按钮；参考竞品的任务清单样式 */
+.dock { flex: none; width: 100%; max-width: 928px; margin: 0 auto; padding: 0 24px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.dock-card { width: 100%; max-width: 760px; padding: 10px 14px 12px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 8px 28px rgba(31, 38, 35, .08); animation: dock-in 220ms ease both; }
+@keyframes dock-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.dock-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.dock-skill { padding: 0; border: 0; background: none; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.dock-skill:hover { color: var(--ink); }
+.dock-skill small { font-weight: 400; color: var(--ink-3); }
+.dock-steps { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.dock-steps li { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 14px; color: var(--ink-3); }
+.dock-steps li.is-current { color: var(--ink); font-weight: 500; }
+.dock-icon { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; color: #2f6b45; }
+.dock-ring { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-strong); }
+.dock-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--ink); background: radial-gradient(circle, var(--ink) 0 3.5px, transparent 4px); }
+.dock-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-text em { font-style: normal; font-weight: 400; color: var(--ink-2); }
+.dock-detail { margin: 4px 0 0 28px; font-size: 12px; color: var(--ink-3); }
+.dock-secondary { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-left: 28px; }
+.dock-bar { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 760px; }
+.dock-pill { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 13px; cursor: pointer; box-shadow: 0 2px 10px rgba(31, 38, 35, .06); }
+.dock-pill:hover { background: var(--panel); }
+.dock-pill .plan-spin, .dock-pill .dock-dot, .dock-pill svg { flex: none; }
+.dock-pill-text { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
