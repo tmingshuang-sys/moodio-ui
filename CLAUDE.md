@@ -35,7 +35,7 @@ npm run build          # vite build → dist/
 
 ## 修改约定
 
-- **状态**：只通过 zustand 仓库改数据（`useFiles` / `useChats` / `useAgent`），仓库自己负责持久化（文件 `moodio-files-v1::<项目id>`，对话 `moodio-agent-chats::<项目id>`，媒体 blob IndexedDB `moodio-media`）。组件里用 hook 选择需要的字段；逻辑层用 `useX.getState()`。流式更新对话用 `useChats.getState().mutate(fn)` 原地改后提交。
+- **状态**：只通过 zustand 仓库改数据（`useFiles` / `useChats` / `useAgent`），仓库自己负责持久化（文件 `moodio-files-v1::<项目id>`，对话 `moodio-agent-chats::<项目id>`，媒体 blob IndexedDB `moodio-media`）。组件里用 hook 选择需要的字段；逻辑层用 `useX.getState()`。流式更新对话用 `useChats.getState().mutate(fn)` 原地改后提交；`mutate` 会给每个对话换新的对象引用（消息对象不换），因为 `ChatPane` 按对话对象订阅，只换外层数组不会重渲染。新加按对象订阅的组件时记住这一点，不要在 store 里只做 `slice()`。
 - **Agent 执行前必须确认**：`reply()`（runner.ts）只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。例外：`NO_CONFIRM_TOOLS`（read_doc / open_doc / open_media / export_doc / save_brief）直接执行，read_doc 的结果交回模型再规划一轮（最多四轮）。`DESTRUCTIVE_TOOLS`（delete_doc / delete_media）在计划卡里标「删除」，确认按钮显示删除计数；删除进回收站 7 天，结果里带「撤销删除」。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`previewAction()`、`PLAN_KIND`、`buildSystemPrompt()` 里的工具说明，必要时 `NO_CONFIRM_TOOLS` / `DESTRUCTIVE_TOOLS`。
 - **写入文稿的显式化**：写作类工具（write_doc / append_doc / replace_section）不直接改内容，而是调 `ctx.typeInto(docId, from, to)`：在右侧工作区打开该文稿、逐行显示变化的部分（`useAgent.writing`），完成后再提交；期间工作区盖流光（`AgentLive`）、状态胶囊显示「写入第 k/n 行」、左侧计划卡逐步更新。
 - **文稿约定**（模型与工具都遵守，见 prompt.ts）：剧本每场一个 `## INT./EXT. 地点 - 时间`，对白 `**人物**` 独占一行；分镜表是固定列的 Markdown 表格；提示词一镜一份 `视频生成Prompt-01.md`；人物在 `人物小传.md` 每人一个二级标题。改已有文稿优先 `replace_section` / `append_doc`，整份重写才 `write_doc` + `overwrite`。`docRole(name)` 按文件名判断类别，剧本类写完会用写作模型自审（`selfReview`），结果渲染成自审卡。
