@@ -36,7 +36,12 @@ describe('skill packs', () => {
     const en = guides.applyStyleBaseline('Character reference sheet of a 5-year-old boy, warm smile', undefined);
     expect(en.startsWith('Photorealistic RAW photograph')).toBe(true); expect(en).toContain('full-body photograph of a 5-year-old boy'); expect(en).not.toMatch(/reference sheet/i); expect(en).toContain('画风基线：');
     expect(guides.applyStyleBaseline('五岁男孩的角色设定图，站在客厅', '写实真人').startsWith('写实真人照片')).toBe(true);
-    expect(guides.applyStyleBaseline('a boy', '3D 动画')).not.toMatch(/^Photorealistic/); expect(guides.applyStyleBaseline('已有\n画风基线：x', undefined)).toBe('已有\n画风基线：x'); expect(guides.styleBaseline('3D 动画')).toContain('3D animated'); expect(guides.styleBaseline('赛博朋克油画')).toContain('赛博朋克油画');
+    expect(guides.applyStyleBaseline('a boy', '3D 动画')).not.toMatch(/^Photorealistic/);
+    // 人物类参考图套七视图设定图：只留人物描述，布局与避免项由模板补，末尾带画风基线
+    const sheet = guides.characterSheetPrompt('五岁中国男孩，短黑发，浅蓝色 T 恤\n画风基线：旧的', undefined);
+    expect(sheet).toContain('【人物】五岁中国男孩'); expect(sheet).not.toContain('旧的'); expect(sheet).toContain('七个视图'); expect(sheet).toContain('2×2'); expect(sheet.startsWith('写实真人摄影')).toBe(true); expect(sheet).toContain('画风基线：');
+    expect(guides.characterSheetPrompt('x', '3D 动画').startsWith('七视图人物设定图')).toBe(true);
+    expect(guides.isCharacterAsset('人物')).toBe(true); expect(guides.isCharacterAsset('产品', '清岚C1-正面')).toBe(false); expect(guides.isCharacterAsset('其他', '老周形象图')).toBe(true); expect(guides.applyStyleBaseline('已有\n画风基线：x', undefined)).toBe('已有\n画风基线：x'); expect(guides.styleBaseline('3D 动画')).toContain('3D animated'); expect(guides.styleBaseline('赛博朋克油画')).toContain('赛博朋克油画');
     expect(skills.skillFor('ad').name).toBe('营销视频大师'); expect(skills.skillFor('mv').modelDocs).toContain('歌曲分析.md');
     expect(skills.skillStages(skills.skillFor('ad'))[1].name).toBe('商品建模');
     expect(skills.skillStages(skills.skillFor('film'))[1].name).toBe('人物与世界建模');
@@ -46,7 +51,7 @@ describe('skill packs', () => {
     const segs = lint.songSegments(skills.MV_MODEL_SAMPLE); expect(segs.map(x => [x.start, x.end])).toEqual([[0, 15], [15, 30], [30, 45], [45, 60]]);
     const mvFrozen = lint.frozenDescriptions(skills.MV_MODEL_SAMPLE); expect(mvFrozen.map(f => f.name)).toEqual(['艺人']);
     const mvLint = lint.lintClipDocs([{ name: '视频生成Prompt-03.md', content: skills.MV_CLIP_SAMPLE }], [], null, { frozen: mvFrozen, segments: segs, maxClip: 15 }); expect(mvLint.errors).toEqual([]);
-    expect(skills.MV_CLIP_SAMPLE).toContain('精准咬字口型：{'); expect(skills.skillFor('mv').imageQA).toContain('单人');
+    expect(skills.MV_CLIP_SAMPLE).toContain('精准咬字口型：{'); expect(skills.skillFor('mv').imageQA).toContain('七视图');
     expect(skills.skillFor('film').samples!.clip).toContain('音色参考@音频1');
     expect(lint.voiceDescriptions(skills.FILM_MODEL_SAMPLE).map(v => v.name)).toEqual(['老周', '女孩', '旁白']);
     expect(lint.voiceDescriptions('## 甲\n音色：无\n## 乙\n- 音色：清亮少年音')).toEqual([{ name: '乙', desc: '清亮少年音' }]);

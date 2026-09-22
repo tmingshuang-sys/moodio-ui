@@ -20,6 +20,21 @@ export function applyStyleBaseline(prompt: string, visualStyle?: string): string
   }
   return `${p}\n画风基线：${styleBaseline(visualStyle)}`;
 }
+// 七视图人物设定图（用户提供的模板，人物 / 艺人类参考图默认套用）：模型只写人物描述，布局、一致性、避免项由这里补齐；画幅固定 16:9
+export const CHARACTER_SHEET_RULES = `【人物一致性】所有视图必须呈现同一个人物：脸型、五官比例、年龄观感、肤色、发型、身体比例，以及最终确定的服装和鞋子保持一致。只按人物描述来，不自动美颜、瘦身或年轻化。胎记、发缝、服装细节等不对称特征按人物本人的左右保持，不镜像搬移。描述未展示的部分采用简单、合理且与已知结构一致的补全，不自行添加配饰或图案。
+【七视图布局】生成一张横向 16:9 设定图，同一人物严格七个视图，用清晰留白分成左右两区。
+左侧约占 60%，三个完整全身像从左到右排列：1. 正面。2. 展示人物本人左侧的严格 90° 侧面，鼻尖指向画面左方。3. 背面，不回头。三个全身像比例一致，头顶高度与鞋底落地线对齐，完整显示头顶至鞋底，并保留安全边距。头部与身体共同转向对应方位。自然直立，双臂放松下垂、略离躯干，双脚稳定落地；侧面允许正常肢体遮挡，不为展示肢体而扭曲姿势。
+右侧约占 40%，四张等大的头肩特写组成 2×2 网格：左上：正面。右上：左前 45°，展示人物左脸较多，鼻尖偏向画面左方。左下：右前 45°，展示人物右脸较多，鼻尖偏向画面右方。右下：展示人物左脸的严格 90° 侧面，鼻尖指向画面左方。四张特写保持相同头部尺寸、相近肩部裁切和放松中性表情，完整保留发顶与下巴。用角度变化展示人物结构，不用不同表情替代不同视角。
+【避免】避免人物或服装漂移、重复或缺失视角、侧身正脸、背身回头、左右镜像错误、头脚裁切、严重肢体错误和视图重叠。不要额外添加人物、头像、替代服装、文字、编号、标题、尺寸线、装饰框或场景道具。
+Layout (for the image model): one 16:9 character sheet of ONE and the same person — left 60%: three full-body views side by side (front; strict 90° left profile with the nose pointing to the left of the frame; back view, not looking back), same scale, heads and feet aligned, full body from top of head to soles; right 40%: a 2×2 grid of equal head-and-shoulder close-ups (front; left three-quarter; right three-quarter; strict left profile), neutral relaxed expression, hair top and chin fully visible. Plain near-white background, soft even lighting. No text, numbers, titles, frames, props or extra people.`;
+export function characterSheetPrompt(description: string, visualStyle?: string): string {
+  const desc = String(description || '').trim().replace(/\n?画风基线：[\s\S]*$/, '').trim();
+  const base = styleBaseline(visualStyle);
+  const lead = isPhotoreal(visualStyle) ? '写实真人摄影的七视图人物设定图（photorealistic photographs of one real person, natural skin and fabric texture, not cartoon, not 3D, not illustration）。' : '七视图人物设定图，全部视图统一采用指定画风，保留人物识别特征与布局要求。';
+  return `${lead}\n【人物】${desc}\n${CHARACTER_SHEET_RULES}\n【视觉风格】${base}；近白纯色背景、柔和均匀照明、自然皮肤与衣料质感，清楚呈现五官、发丝、服装结构和鞋子；不自动添加复古滤镜或胶片颗粒。\n画风基线：${base}`;
+}
+// 人物 / 艺人 / 角色类的参考图都按七视图设定图生成
+export const isCharacterAsset = (group?: string, name?: string) => /人物|角色|艺人|character/i.test(String(group || '')) || /人物|角色|艺人|定妆照|形象图|设定图|character/i.test(String(name || ''));
 export const BRIEF_FIELDS: [string, string][] = [['format', '类型'], ['duration', '时长'], ['platform', '平台'], ['ratio', '画幅'], ['audience', '受众'], ['tone', '调性'], ['references', '参考作品'], ['visualStyle', '视觉风格'], ['taboos', '禁忌'], ['notes', '备注']];
 export const BRIEF_KEY_FIELDS = ['format', 'duration', 'audience', 'tone'];
 
@@ -129,7 +144,7 @@ export const PROMPT_GUIDE = `【片段提示词冻结格式】每个片段一份
 风格与视觉参考：风格参考：… / 风格关键词：…
 镜头语言：… ／ 视觉与美术规则：… ／ 色彩与材质系统：… ／ 打光规则：… ／ 剪辑节奏：… ／ 声音方向：…（这七行是「全片风格表」，所有片段逐字相同）
 场景：场景1是…——有场景参考图写「对应@图片N」，没有写「本片不使用场景参考图，场景为纯文字描述生成」
-主体：产品1：<冻结的外形描述>，对应@图片1（只采用结构、材质、颜色、按键排布与形态比例，不采用图中背景和道具）。产品尺寸：约一掌可握、高约 8 厘米，全片保持同一真实尺寸与相对比例。主体1：<人物冻结描述>，对应@图片2（只采用五官、发型、服装、姿态、气质，不采用图中背景和任何物品）
+主体：产品1：<冻结的外形描述>，对应@图片1（只采用结构、材质、颜色、按键排布与形态比例，不采用图中背景和道具）。产品尺寸：约一掌可握、高约 8 厘米，全片保持同一真实尺寸与相对比例。主体1：<人物冻结描述>，对应@图片2 的七视图设定图（只采用五官、发型、服装、鞋子、体型与气质，不采用图中白底与多视图排版，画面里只出现一个此人）
 各个分镜的具体内容：按时段拆子镜头，每段四行——「0-4秒」独占一行 / 拍法：… / 画面内容：…（引用写成「主体1（@图片2）」「产品1（@图片1）」；同一片段内的切换写「镜头切换」）/ 品牌/产品露出：…（没有就写「无」并说明本镜作用）/ 声音：{对白} <音效> （BGM）。有音色样本时对白写成 {角色（音色参考@音频N，语气）：台词} 并注明「说的是普通话」；没有音色样本时对白照写，成片合成时烧成字幕。时段首尾相接，最后一段的结束时间必须等于片段时长。
 最后一段：全片保持产品1、主体1与场景1连续一致；产品1（@图片1）…全片同一尺寸；主体1（@图片2）全片保持同一人物五官、发型与服装；全程保持无字幕，不生成任何文字、字幕、标题、标识或说明性文本（字幕由成片合成时加）；不生成 BGM，保留环境音效（配乐由成片合成时加）。
 语言：方舟（Seedance 等）模型用中文写；当前视频模型是 fal 系时在文末追加「## English Prompt」同结构英文版，generate_video 的 prompt 用与模型语言一致的那份。写完全部片段后用 lint_clips 自查时长与卖点落地。`;
