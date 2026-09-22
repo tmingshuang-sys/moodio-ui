@@ -329,6 +329,7 @@
       paginationMode: 'pages',
       workspacePaneHeight: restoredWorkspace?.workspacePaneHeight ?? null,
       sidebarCollapsed: false,
+      homeSplit: false,   // 审阅工作区：首页全屏对话里打开板块时为 true（对话停靠左栏、板块在右栏），不持久化；规则见 src/06 stagePage
       selectedPageSlot: 'left',
       suppressPageHandleClick: false,
       activeScene: 'scene1',
