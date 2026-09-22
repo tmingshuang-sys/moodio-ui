@@ -669,8 +669,8 @@ button.lg-chip-btn:hover { color: var(--ink); }
 @property --glow-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 .chat-empty.home .composer-wrap { position: relative; }
 .chat-empty.home .composer-wrap::before { content: ''; position: absolute; inset: -3px; border-radius: 20px; z-index: 0; pointer-events: none;
-  background: conic-gradient(from var(--glow-angle), rgba(96, 132, 255, 0) 0deg, rgba(96, 132, 255, .55) 70deg, rgba(168, 110, 255, .6) 140deg, rgba(96, 132, 255, 0) 210deg, rgba(168, 110, 255, .45) 290deg, rgba(96, 132, 255, 0) 360deg);
-  filter: blur(12px); opacity: .6; animation: glow-spin 7s linear infinite; }
+  background: conic-gradient(from var(--glow-angle), rgba(96, 132, 255, 0) 0deg, rgba(96, 132, 255, .35) 70deg, rgba(168, 110, 255, .4) 140deg, rgba(96, 132, 255, 0) 210deg, rgba(168, 110, 255, .3) 290deg, rgba(96, 132, 255, 0) 360deg);
+  filter: blur(14px); opacity: .38; animation: glow-spin 18s linear infinite; }   /* 转一圈 18 秒，整体更淡 */
 .chat-empty.home .composer { position: relative; z-index: 1; }
 @keyframes glow-spin { to { --glow-angle: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .chat-empty.home .composer-wrap::before { animation: none; } }
