@@ -1,6 +1,6 @@
 // ===== 导演停靠区：贴在输入框上方——一张步骤清单卡（八个阶段，当前步骤带下一步动作）、一颗进度胶囊（Step k / 8，点了收起 / 展开清单）和主按钮；一键模式开关；空白页的类型选择也在这里 =====
 import { useEffect, useState } from 'react';
-import { Play, Check, SkipForward, Sparkles, Wand2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, SkipForward, Sparkles, Wand2, ChevronDown, ChevronUp } from 'lucide-react';
 import { LEDGER_NAME } from '../lib/ledger';
 const DOCK_KEY = 'moodio-dock-open';   // 步骤清单卡收起 / 展开的记忆
 import { useFiles, useAgent } from '../lib/store';
@@ -9,7 +9,7 @@ import { nextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, skipVoice,
 import type { NextStep } from '../lib/director';
 import { BRIEF_FORMATS } from '../lib/guides';
 import { skillFor, skillStages } from '../lib/skills';
-import { send, stopAgent } from '../lib/agent/runner';
+import { send } from '../lib/agent/runner';
 import { useT } from '../lib/i18n';
 
 export function useNextStep(): NextStep {
@@ -75,7 +75,7 @@ export default function NextStepBar() {
             {stages.map((s, i) => {
               const state = step.kind === 'done' ? 'done' : i < idx ? 'done' : i === idx ? 'current' : 'pending';
               return (
-                <li key={s.id} className={`is-${state}`}>
+                <li key={s.id} className={`is-${state}${state === 'current' && !busy ? ' can-act' : ''}`} role={state === 'current' && !busy ? 'button' : undefined} tabIndex={state === 'current' && !busy ? 0 : undefined} onClick={state === 'current' && !busy ? primary : undefined} onKeyDown={state === 'current' && !busy ? (e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); primary(); } }) : undefined} title={state === 'current' && !busy ? step.label : undefined}>
                   <span className="dock-icon">{state === 'done' ? <Check size={12} strokeWidth={3} /> : state === 'current' ? (busy ? <span className="plan-spin" /> : <span className="dock-dot" />) : <span className="dock-ring" />}</span>
                   <span className="dock-text">{s.name}{state === 'current' && step.kind !== 'done' && <em> · {busy && live ? live : step.label}</em>}</span>
                 </li>
@@ -92,8 +92,6 @@ export default function NextStepBar() {
           <span className="dock-pill-text">Step {Math.min(idx + 1, stages.length)} / {stages.length} · {current}</span>
           {open ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </button>
-        {busy ? <button type="button" className="next-primary busy" onClick={stopAgent}><span className="plan-spin" />{t('执行中，点击停止')}</button>
-          : <button type="button" className="next-primary" onClick={primary}>{step.kind === 'confirm' ? <Check size={15} /> : step.kind === 'done' ? <Sparkles size={15} /> : <Play size={15} />}{step.label}</button>}
       </div>
     </div>
   );

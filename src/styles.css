@@ -698,3 +698,8 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .dock-pill:hover { background: var(--panel); }
 .dock-pill .plan-spin, .dock-pill .dock-dot, .dock-pill svg { flex: none; }
 .dock-pill-text { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 停靠卡里当前步骤那一行可以点（等于原来的主按钮） */
+.dock-steps li.can-act { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding: 0 8px; }
+.dock-steps li.can-act:hover { background: var(--panel); }
+.dock-steps li.can-act:focus-visible { outline: 2px solid var(--line-strong); outline-offset: -2px; }
