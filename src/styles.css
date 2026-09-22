@@ -378,3 +378,39 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 /* 生成中的媒体占位卡 */
 .file-card.pending .card-thumb { display: grid; place-items: center; border-style: dashed; background: linear-gradient(135deg, #f7f5ff, #f1f1ef); }
 .file-card.pending .card-thumb span { font-size: 12px; color: var(--accent); }
+
+/* ===== 输入框下方的「模型」按钮与偏好面板（src/components/ModelPrefs.tsx）：左侧选模型，右侧调画面比例与时长 ===== */
+.tool-btn.wide { width: auto; gap: 6px; padding: 0 12px; border-radius: 999px; font-size: 13px; color: var(--ink-2); }
+.tool-btn.wide span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-btn.wide.on { background: var(--active); color: var(--ink); border-color: var(--line-strong); }
+.mp-panel { position: fixed; z-index: 480; width: min(620px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 120px)); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: var(--shadow-pop); animation: menu-in 160ms var(--ease-out); overflow: hidden; }
+.mp-tabs { flex: none; display: inline-flex; gap: 2px; margin: 12px 12px 0; padding: 3px; border-radius: 10px; background: var(--panel); align-self: flex-start; }
+.mp-tabs button { height: 30px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-size: 13px; }
+.mp-tabs button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(31, 38, 35, .14); font-weight: 500; }
+.mp-warn { margin: 10px 14px 0; padding: 8px 10px; border-radius: 8px; background: #f6efe1; color: var(--warn); font-size: 12px; }
+.mp-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 232px; gap: 0; }
+.mp-col { min-width: 0; overflow: auto; padding: 12px 14px 16px; }
+.mp-options { border-left: 1px solid var(--line); background: #fcfcfb; }
+.mp-col h4 { display: flex; align-items: baseline; gap: 6px; margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.mp-col h4 small { font-weight: 400; font-size: 11px; }
+.mp-col h4.mp-sub { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.mp-options h4 + h4 { margin-top: 16px; }
+.mp-model { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
+.mp-model:hover { background: var(--hover); }
+.mp-model.active { background: var(--accent-soft); }
+.mp-check { flex: none; display: inline-grid; place-items: center; width: 16px; height: 18px; color: var(--accent); }
+.mp-model-body { min-width: 0; }
+.mp-model-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 500; color: var(--ink); }
+.mp-model.active .mp-model-name { color: var(--accent); }
+.mp-model-name em { padding: 0 5px; border-radius: 999px; background: #e6efe8; color: #2f6b45; font: 500 10px/15px var(--font-ui); font-style: normal; }
+.mp-model-hint { display: block; margin-top: 1px; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+.mp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mp-chips button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: var(--panel); color: var(--ink-2); font-size: 12.5px; }
+.mp-chips button:hover { color: var(--ink); }
+.mp-chips button.active { background: #fff; border-color: var(--accent); color: var(--accent); font-weight: 500; }
+.mp-chips.ratios button { flex-direction: column; gap: 4px; justify-content: center; width: 54px; height: 54px; padding: 0; font-size: 11px; }
+.ratio-box { border: 1.5px solid currentColor; border-radius: 3px; opacity: .8; }
+.mp-note { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--ink-3); }
+.mp-id { margin: 0 0 4px; font: 11px/1.5 var(--font-mono); color: var(--ink-3); word-break: break-all; }
+.mp-id small { margin-left: 6px; font-family: var(--font-ui); }
+@media (max-width: 760px) { .mp-body { grid-template-columns: 1fr; } .mp-options { border-left: 0; border-top: 1px solid var(--line); } }

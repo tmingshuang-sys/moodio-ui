@@ -10,6 +10,7 @@ import { baseName } from '../lib/markdown';
 import { toast } from './Toast';
 import { promptDialog } from './Dialogs';
 import { manualGenerate, mediaReadyReason } from '../lib/mediagen';
+import ModelPrefs from './ModelPrefs';
 
 export default function Composer() {
   const t = useT();
@@ -62,6 +63,7 @@ export default function Composer() {
         <div className="composer-tools">
           <button type="button" className="tool-btn" aria-label="添加" onClick={e => plusMenu(e.currentTarget)}><Plus size={18} /></button>
           <button type="button" className="tool-btn" aria-label={t('引用文件')} onClick={e => atMenu(e.currentTarget)}><AtSign size={17} /></button>
+          <ModelPrefs />
           <span className="composer-spacer" />
           {busy ? <button type="button" className="send-btn stop" aria-label={t('停止')} onClick={stopAgent}><Square size={14} /></button>
             : <button type="button" className={`send-btn${value.trim() ? ' ready' : ''}`} aria-label={t('发送')} onClick={submit} disabled={!value.trim()}><ArrowUp size={18} /></button>}

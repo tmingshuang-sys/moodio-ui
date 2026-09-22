@@ -21,7 +21,7 @@ function corsHeaders(request, env) {
   const allowOrigin = allowed.length ? ((allowed.includes(origin) || isLocalDev) ? origin : 'null') : '*';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, GET, PUT, OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
@@ -36,7 +36,7 @@ function json(body, status, extra = {}) {
 async function falProxy(request, env, url, cors) {
   if (!env.FAL_KEY) return json({ error: { message: '网关还没有配置 FAL_KEY，无法生成图片或视频' } }, 503, cors);
   const target = FAL_QUEUE + url.pathname.slice('/fal'.length) + url.search;
-  const init = { method: request.method, headers: { 'Authorization': 'Key ' + env.FAL_KEY, 'Accept': 'application/json' } };
+  const init = { method: request.method, headers: { 'Authorization': 'Key ' + env.FAL_KEY, 'Accept': 'application/json' } };   // PUT 用于取消队列任务
   if (request.method === 'POST') {
     const body = await request.text();
     if (body.length > 12 * 1024 * 1024) return json({ error: { message: '请求过大' } }, 413, cors);   // 图生视频会把参考图以 data URI 传进来
@@ -85,7 +85,7 @@ export default {
     }
 
     if (url.pathname === '/fal' || url.pathname.startsWith('/fal/')) {
-      if (request.method !== 'POST' && request.method !== 'GET') return json({ error: { message: '只支持 GET / POST' } }, 405, cors);
+      if (!['POST', 'GET', 'PUT'].includes(request.method)) return json({ error: { message: '只支持 GET / POST / PUT' } }, 405, cors);
       return falProxy(request, env, url, cors);
     }
     if (request.method === 'GET' && url.pathname === '/media') return mediaProxy(request, env, url, cors);

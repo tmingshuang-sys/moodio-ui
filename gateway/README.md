@@ -5,7 +5,7 @@ Cloudflare Worker，替页面保管所有真实 API key。对外三个接口：
 | 接口 | 用途 |
 |---|---|
 | `POST /v1/chat/completions` | 文本模型，OpenAI 兼容，流式与非流式都透传 |
-| `POST /fal/<模型id>`、`GET /fal/<请求路径>` | 图片 / 视频，透传到 fal.ai 的队列接口（提交、查状态、取结果） |
+| `POST /fal/<模型id>`、`GET`、`PUT /fal/<请求路径>` | 图片 / 视频，透传到 fal.ai 的队列接口（提交、查状态、取结果、取消） |
 | `GET /media?url=` | 代下载 fal 的生成结果，避开浏览器跨域 |
 
 三者都要求 `Authorization: Bearer <ACCESS_TOKEN>`。

@@ -8,7 +8,7 @@ const EN: Record<string, string> = {
   '文稿': 'Documents', '图片': 'Images', '视频': 'Videos', '全部': 'All', '其他': 'Other', '人物': 'Characters', '场景': 'Locations', '道具': 'Props', '产品': 'Products',
   '查找…': 'Search…', '网格': 'Grid', '列表': 'List', '关闭工作区': 'Close workspace', '打开工作区': 'Open workspace',
   '预览': 'Preview', '编辑': 'Edit', '下载': 'Download', '重命名': 'Rename', '删除': 'Delete', '分区': 'Group', '返回': 'Back', '取消': 'Cancel', '保存': 'Save', '确定': 'OK',
-  '上传图片 / 视频': 'Upload image / video', '新建文档': 'New document', '生成图片': 'Generate image', '生成视频': 'Generate video', '引用文件': 'Reference a file', '发送': 'Send', '停止': 'Stop',
+  '上传图片 / 视频': 'Upload image / video', '新建文档': 'New document', '生成图片': 'Generate image', '生成视频': 'Generate video', '生成模型': 'Generation models', '视频偏好': 'Video', '图片偏好': 'Image', '模型选择': 'Model', '画面比例': 'Aspect ratio', '时长': 'Duration', '图生视频': 'Image to video', '当前模型': 'Current model', '用工作区里的图片当首帧时': 'When starting from an image in the workspace', '该模型不支持在这里设置，由模型自己决定': 'This model decides it on its own', '生成按次计费，Agent 也用这里选的模型': 'Billed per run; the Agent uses these models too', '引用文件': 'Reference a file', '发送': 'Send', '停止': 'Stop',
   '与 Moodio Agent 对话，剧本、分镜、提示词都会生成到右侧工作区…': 'Chat with Moodio Agent. Scripts, storyboards and prompts land in the workspace on the right…',
   '小技巧 输入 @ 引用工作区里的文稿或图片，助手会接着上次的思路创作': 'Tip: type @ to reference a document or image; the assistant keeps your context',
   '还没有文稿。让 Agent 写剧本、拆分镜或生成提示词，产物会出现在这里。': 'No documents yet. Ask the Agent to write a script, break down shots or generate prompts.',

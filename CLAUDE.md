@@ -41,7 +41,8 @@ npm run build          # vite build → dist/
 - **文稿约定**（模型与工具都遵守，见 prompt.ts）：剧本每场一个 `## INT./EXT. 地点 - 时间`，对白 `**人物**` 独占一行；分镜表是固定列的 Markdown 表格；提示词一镜一份 `视频生成Prompt-01.md`；人物在 `人物小传.md` 每人一个二级标题。改已有文稿优先 `replace_section` / `append_doc`，整份重写才 `write_doc` + `overwrite`。`docRole(name)` 按文件名判断类别，剧本类写完会用写作模型自审（`selfReview`），结果渲染成自审卡。
 - **上下文注入**：`buildSystemPrompt()` 注入文件清单（含 id）、`relevantDocs()`（打开中的文稿、请求里提到的文件名、按请求类型自动补的剧本 / 分镜 / 人物文稿，总量约 16k 字）、创作纲领、当前类型的写作规范；提到分镜 / 提示词 / 剧本时分别加分镜规范 / 提示词规范 / 格式硬规则。模型只能引用清单里的 id，找不到要反问。
 - **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染追问卡（消息字段 `questions` / `answers` / `questionsUsed`），点选答案只改选中态，点「发送回答」才提交。纲领信息由 `save_brief` 记录。
-- **图片 / 视频生成**：只经过 `mediagen.ts`，它把请求发给网关的 `/fal/<模型id>`（提交）→ 轮询 `status_url` / `response_url`（都改写成走网关）→ `/media?url=` 代下载 → 存进媒体库。真实的 fal key 是网关的 Worker secret `FAL_KEY`，页面只带访问口令（同对话用的那个）。模型 id 在设置里可改（默认见 `MEDIA_DEFAULTS`），换模型不用改代码。Agent 工具 `generate_image` / `generate_video` 与输入框「+」菜单的手动生成共用这一层；生成按次计费，所以不放进 `NO_CONFIRM_TOOLS`。
+- **图片 / 视频生成**：只经过 `mediagen.ts`，它把请求发给网关的 `/fal/<模型id>`（提交）→ 轮询 `status_url` / `response_url`（都改写成走网关）→ `/media?url=` 代下载 → 存进媒体库；中途停止或出错会 PUT `cancel_url` 取消 fal 那边的任务，避免白付费。真实的 fal key 是网关的 Worker secret `FAL_KEY`，页面只带访问口令（同对话用的那个）。Agent 工具 `generate_image` / `generate_video` 与输入框「+」菜单的手动生成共用这一层；生成按次计费，所以不放进 `NO_CONFIRM_TOOLS`。
+- **模型目录**：`mediamodels.ts` 列出图片 / 文生视频 / 图生视频三组预设，每条声明它接受哪些可选参数（`ratio: 'image_size' | 'aspect_ratio'`、`duration`），因为不同模型入参不一样——发模型不认识的字段会被 422 退回。画面比例在界面上统一用 `16:9` 这种写法，`ratioValue()` 按模型转成它要的值。加模型就往数组里加一条；加之前先用队列接口探一下 id 是否存在（未知 id 返回 404），**但注意空请求体会被排进队列而不是被拒绝**，探测请合理用参数。用户在输入框下方的「模型」按钮（`ModelPrefs.tsx`）里选，选择存 `moodio-agent-model` 的 `imageModel` / `videoModel` / `videoImageModel` / `imageRatio` / `videoRatio` / `videoDuration`。
 - **模型调用**只经过 `model.ts` 的 `callModel()`（内部按 provider 走 `callClaude` / `callOpenAI`），支持 `{signal,onText,onReasoning}`。密钥只存 localStorage `moodio-agent-model`，任何 API key 不得进入仓库或对话。创意类请求（`isCreativeRequest`）用写作模型 `writerCfg()`。
 - **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，品牌渐变 `var(--brand)`；新规则追加到对应区块或文件末尾并加中文注释。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
 - **界面语言**：系统文案用 `useT()` / `t()`（i18n.ts 的 `EN` 词典），用户内容与模型正文不翻译。新增系统文案时在词典里补一条。
@@ -56,7 +57,8 @@ npm run build          # vite build → dist/
 | 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle` |
 | 发送 / 回复 / 确认执行 | `runner.ts`：`send()` → `reply()`；`executePlan()` / `cancelPlan()`；`runActions()` 逐步标状态；`stopAgent()` |
 | 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / generate_image / generate_video / create_project / switch_project / rename_project）、`planSteps()` |
-| 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `gateway/worker.js` 的 `falProxy` 与 `mediaProxy` |
+| 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `buildInput()` / `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `gateway/worker.js` 的 `falProxy` 与 `mediaProxy` |
+| 模型选择面板 | `ModelPrefs.tsx`（输入框工具栏里的按钮，视频 / 图片两个标签页 + 画面比例 + 时长）；模型目录 `mediamodels.ts` |
 | 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
 | 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`、拖拽上传；上传逻辑 `upload.ts` |
 | 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、创作历史按今天 / 昨天 / 更早分组、底部设置菜单（模型设置 / 语言） |

@@ -68,7 +68,7 @@ function ModelDialog() {
     try { const r = await probeModel(cfg); setTest({ state: 'ok', text: `连接成功（${Date.now() - t0} ms）。模型回复：${r}` }); }
     catch (e) { setTest({ state: 'fail', text: '连接失败：' + explainModelError(e).message }); }
   };
-  const save = () => { saveModelCfg({ ...cfg, baseUrl: cfg.baseUrl?.trim(), apiKey: cfg.apiKey?.trim(), model: cfg.model?.trim(), writerModel: cfg.writerModel?.trim(), mediaBaseUrl: cfg.mediaBaseUrl?.trim(), mediaToken: cfg.mediaToken?.trim(), imageModel: cfg.imageModel?.trim(), videoModel: cfg.videoModel?.trim(), videoImageModel: cfg.videoImageModel?.trim() }); close(); toast('模型设置已保存'); };
+  const save = () => { saveModelCfg({ ...modelCfg(), ...cfg, baseUrl: cfg.baseUrl?.trim(), apiKey: cfg.apiKey?.trim(), model: cfg.model?.trim(), writerModel: cfg.writerModel?.trim(), mediaBaseUrl: cfg.mediaBaseUrl?.trim(), mediaToken: cfg.mediaToken?.trim() }); close(); toast('模型设置已保存'); };
   const mediaOn = !!mediaEndpoint(cfg);
   return (
     <Frame title="Agent 模型设置" onClose={close} footer={<><button type="button" className="btn" onClick={close}>取消</button><button type="button" className="btn" onClick={runTest} disabled={test?.state === 'pending'}>测试连接</button>{modelCfg()?.apiKey && <button type="button" className="btn" onClick={() => { saveModelCfg(null); close(); toast('已断开模型'); }}>断开</button>}<button type="button" className="btn primary" onClick={save}>保存</button></>}>
@@ -87,10 +87,7 @@ function ModelDialog() {
       <p>经 Moodio 网关调用 fal.ai；真实的 fal key 存在网关的 Worker 密钥里，页面只带访问口令。留空则沿用上面的网关地址与 API Key。{mediaOn ? '' : ' 当前还不可用。'}</p>
       <label>网关地址<input value={cfg.mediaBaseUrl || ''} placeholder={MEDIA_DEFAULTS.baseUrl} onChange={e => setCfg({ ...cfg, mediaBaseUrl: e.target.value })} /></label>
       <label>访问口令<input type="password" value={cfg.mediaToken || ''} placeholder="留空 = 同上面的 API Key" onChange={e => setCfg({ ...cfg, mediaToken: e.target.value })} /></label>
-      <label>图片模型<input value={cfg.imageModel || ''} placeholder={MEDIA_DEFAULTS.imageModel} onChange={e => setCfg({ ...cfg, imageModel: e.target.value })} /></label>
-      <label>视频模型（文生视频）<input value={cfg.videoModel || ''} placeholder={MEDIA_DEFAULTS.videoModel} onChange={e => setCfg({ ...cfg, videoModel: e.target.value })} /></label>
-      <label>视频模型（图生视频）<input value={cfg.videoImageModel || ''} placeholder={MEDIA_DEFAULTS.videoImageModel} onChange={e => setCfg({ ...cfg, videoImageModel: e.target.value })} /></label>
-      <small className="note">模型 id 用 fal.ai 上的写法，例如 fal-ai/flux/dev。换模型只改这里，不用改代码。</small>
+      <small className="note">具体用哪个图片 / 视频模型、画面比例和时长，在输入框下方的模型按钮里选，那里能看到每个模型的特点。</small>
     </Frame>
   );
 }

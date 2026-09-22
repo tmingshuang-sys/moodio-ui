@@ -5,7 +5,9 @@ import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
-import { generateImage, generateVideo, IMAGE_SIZES, VIDEO_RATIOS, mediaReadyReason } from '../mediagen';
+import { generateImage, generateVideo, mediaReadyReason } from '../mediagen';
+import type { RatioKey } from '../mediamodels';
+import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
 
 export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; }
 export interface ToolContext {
@@ -84,7 +86,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
     let item!: MediaItem;
     await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      item = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, size: args.size ? String(args.size) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+      item = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
     useFiles.getState().openInPane(item.id);
     return { summary: `已生成图片「${item.name}」并存入媒体库`, actions: [{ id: 'open-media:' + item.id, label: '查看' }] };
@@ -93,7 +95,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
     let item!: MediaItem;
     await ctx.step(`生成视频「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      item = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: args.ratio ? String(args.ratio) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+      item = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
     useFiles.getState().openInPane(item.id);
     return { summary: `已生成视频「${item.name}」并存入媒体库`, actions: [{ id: 'open-media:' + item.id, label: '查看' }] };
@@ -124,8 +126,8 @@ export function describeAction(a: Action): string {
     case 'rename_media': return `把「${mediaName(g.id)}」重命名为「${g.name || ''}」`;
     case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
     case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;
-    case 'generate_image': return `生成图片「${String(g.name || g.prompt || '').slice(0, 20)}」` + (IMAGE_SIZES[String(g.size || '')] ? `（${IMAGE_SIZES[String(g.size)]}）` : '');
-    case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS[String(g.ratio || '')] || ''); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${[from, `${String(g.duration || 5).replace(/[^0-9]/g, '') || 5} 秒`].filter(Boolean).join(' · ')}）`; }
+    case 'generate_image': return `生成图片「${String(g.name || g.prompt || '').slice(0, 20)}」` + (IMAGE_RATIOS.includes(g.ratio) ? `（${g.ratio}）` : '');
+    case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」` + ([from, secs ? `${secs} 秒` : ''].filter(Boolean).join(' · ') ? `（${[from, secs ? `${secs} 秒` : ''].filter(Boolean).join(' · ')}）` : ''); }
     case 'save_brief': return '记录创作纲领';
     case 'ask_user': return '向你确认几个问题';
     case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;

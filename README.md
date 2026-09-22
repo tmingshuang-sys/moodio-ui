@@ -18,7 +18,7 @@ npm run build      # 构建到 dist/
 
 侧栏底部用户菜单里的「模型设置」（或对话右上角的设置图标）：填写服务商、Base URL、API Key（用 Moodio 网关时填访问口令）、模型名和思考模式。密钥只保存在本机浏览器。
 
-同一个弹窗下半部分是「图片 / 视频生成」：默认沿用上面的网关地址与口令，模型 id 用 fal.ai 的写法（默认 `fal-ai/flux/dev` 与 `fal-ai/kling-video/v1/standard/text-to-video`）。真实的 fal key 存在网关的 Worker 密钥 `FAL_KEY` 里，不在页面上：
+同一个弹窗下半部分是「图片 / 视频生成」的网关地址与口令，默认沿用上面那套。具体用哪个模型、什么画幅、多长时间，在输入框下方的模型按钮里选。真实的 fal key 存在网关的 Worker 密钥 `FAL_KEY` 里，不在页面上：
 
 ```bash
 npx wrangler secret put FAL_KEY --config gateway/wrangler.toml
