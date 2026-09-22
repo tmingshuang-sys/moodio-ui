@@ -7,7 +7,7 @@ import type { StageId } from './skills';
 export const LEDGER_NAME = '台账.json';
 export interface LedgerEntity { name: string; kind: string; ref?: string; status?: string; }      // ref = 参考图媒体 id
 export interface LedgerClip { no: number; seconds: number; shots?: string; docId?: string; mediaId?: string; status?: string; }
-export interface Ledger { skill: string; stage: StageId; done: StageId[]; answers: Record<string, string>; entities: LedgerEntity[]; clips: LedgerClip[]; notes: string; updatedAt: number; }
+export interface Ledger { skill: string; stage: StageId; done: StageId[]; answers: Record<string, string>; entities: LedgerEntity[]; clips: LedgerClip[]; notes: string; confirmed: string[]; flags: Record<string, boolean>; updatedAt: number; }   // confirmed：用户点过的检查点（script / assets / prompts / deliver）；flags：skipLint 等开关
 
 const isStage = (s: unknown): s is StageId => STAGE_ORDER.includes(s as StageId);
 
@@ -23,7 +23,7 @@ function normalize(raw: any): Ledger {
     answers: raw?.answers && typeof raw.answers === 'object' ? raw.answers : {},
     entities: Array.isArray(raw?.entities) ? raw.entities.filter((e: any) => e && e.name).map((e: any) => ({ name: String(e.name), kind: String(e.kind || ''), ref: e.ref ? String(e.ref) : undefined, status: e.status ? String(e.status) : undefined })) : [],
     clips: Array.isArray(raw?.clips) ? raw.clips.filter((c: any) => c && Number.isFinite(Number(c.no))).map((c: any) => ({ no: Number(c.no), seconds: Number(c.seconds) || 0, shots: c.shots ? String(c.shots) : undefined, docId: c.docId ? String(c.docId) : undefined, mediaId: c.mediaId ? String(c.mediaId) : undefined, status: c.status ? String(c.status) : undefined })) : [],
-    notes: String(raw?.notes || ''), updatedAt: Number(raw?.updatedAt) || Date.now(),
+    notes: String(raw?.notes || ''), confirmed: (Array.isArray(raw?.confirmed) ? raw.confirmed : []).map(String), flags: raw?.flags && typeof raw.flags === 'object' ? Object.fromEntries(Object.entries(raw.flags).map(([k, v]) => [k, !!v])) : {}, updatedAt: Number(raw?.updatedAt) || Date.now(),
   };
 }
 function write(ledger: Ledger) {
@@ -41,7 +41,7 @@ export function ensureLedger(format?: string): { ledger: Ledger; created: boolea
     if (format && existing.skill !== skill.id && existing.stage === 'brief') { const next = { ...existing, skill: skill.id, updatedAt: Date.now() }; write(next); return { ledger: next, created: false }; }
     return { ledger: existing, created: false };
   }
-  const ledger: Ledger = { skill: skillFor(format).id, stage: 'brief', done: [], answers: {}, entities: [], clips: [], notes: '', updatedAt: Date.now() };
+  const ledger: Ledger = { skill: skillFor(format).id, stage: 'brief', done: [], answers: {}, entities: [], clips: [], notes: '', confirmed: [], flags: {}, updatedAt: Date.now() };
   write(ledger); return { ledger, created: true };
 }
 
@@ -57,6 +57,8 @@ export function updateLedger(patch: Record<string, any>): Ledger {   // 补丁�
   if (Array.isArray(patch.entities)) { const merged = cur.entities.slice(); for (const e of normalize({ entities: patch.entities }).entities) { const i = merged.findIndex(x => x.name === e.name); if (i >= 0) merged[i] = { ...merged[i], ...compact(e) }; else merged.push(e); } next.entities = merged; }
   if (Array.isArray(patch.clips)) { const merged = cur.clips.slice(); for (const c of normalize({ clips: patch.clips }).clips) { const i = merged.findIndex(x => x.no === c.no); if (i >= 0) merged[i] = { ...merged[i], ...compact(c) }; else merged.push(c); } next.clips = merged.sort((a, b) => a.no - b.no); }
   if (typeof patch.notes === 'string') next.notes = patch.notes.slice(0, 2000);
+  if (Array.isArray(patch.confirmed)) next.confirmed = Array.from(new Set([...cur.confirmed, ...patch.confirmed.map(String)]));
+  if (patch.flags && typeof patch.flags === 'object') next.flags = { ...cur.flags, ...Object.fromEntries(Object.entries(patch.flags).map(([k, v]) => [k, !!v])) };
   if (typeof patch.skill === 'string' && skillFor(patch.skill).id === patch.skill) next.skill = patch.skill;
   write(next); return next;
 }

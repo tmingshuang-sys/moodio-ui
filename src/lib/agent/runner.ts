@@ -13,6 +13,7 @@ import { toast } from '../../components/Toast';
 import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
+import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick } from '../director';
 import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
 
@@ -24,6 +25,7 @@ const chats = () => useChats.getState();
 
 interface PendingPlan { plan: Action[]; text: string; chatId: string; steps: PlanStep[]; }
 const pendingPlans = new Map<string, PendingPlan>();
+const executedPlans = new Map<string, PendingPlan>();   // 已执行的计划，供「重试这一步」取回动作
 let logLines: string[] = [];
 let pendingMessage: Message | null = null;
 const lastToolContents: { title: string; content: string }[] = [];
@@ -102,6 +104,9 @@ function begin(pending: Message) {
 }
 function end() { agent().set({ busy: false, controller: null, writing: null }); glow(false); pendingMessage = null; }
 
+// 每轮结束后交给导演：推进阶段；一键模式下自动发出下一步（检查点会停）
+function afterTurn() { try { directorTick(); } catch { /* ignore */ } window.dispatchEvent(new CustomEvent('moodio:director-changed')); setTimeout(() => { try { autopilotTick(); } catch (e) { console.warn('autopilot', e); } }, 400); }
+
 export async function send(text: string, { quote = null as { text: string; source?: string } | null, attachments = [] as string[], fromSuggestion = false, display = undefined as string | undefined } = {}) {
   const t = text.trim(); if (!t && !quote) return;
   if (agent().busy) { toast('上一条指令还在执行，等它完成或点「停止」'); return; }
@@ -163,7 +168,8 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
       const steps = planSteps(plan);
       pendingPlans.set(key, { plan, text, chatId: c.id, steps });
       const destructive = plan.filter(a => DESTRUCTIVE_TOOLS.has(a.tool)).length;
-      const auto = genMode() === 'auto' && plan.every(a => GENERATE_TOOLS.has(a.tool) || NO_CONFIRM_TOOLS.has(a.tool));
+      // 自动执行：生成模式为自动且全是生成类；或一键模式且没有删除类操作
+      const auto = (genMode() === 'auto' && plan.every(a => GENERATE_TOOLS.has(a.tool) || NO_CONFIRM_TOOLS.has(a.tool))) || (isAutopilot() && !destructive);
       out.text = (autoLog.length ? autoLog.map(r => '✓ ' + r).join('\n') + '\n' : '') + (message ? message + '\n' : '') + (auto ? '自动模式：直接开始生成。' : destructive ? `以下操作包含 ${destructive} 项删除，请确认：` : '我准备执行以下操作，确认后开始：');
       out.plan = { key, steps, state: 'pending', destructive };
       out.actions = auto ? null : [{ id: 'plan-confirm:' + key, label: destructive ? `确认执行（含 ${destructive} 项删除）` : '确认执行' }, { id: 'plan-cancel:' + key, label: '取消' }];
@@ -175,7 +181,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
   end();
   if (logLines.length) out.text = logLines.join('\n') + '\n\n' + out.text;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, text, c.id); cc.messages.push(out); cc.at = Date.now(); });
-  if (autoKey) void executePlan(autoKey, out.at);
+  if (autoKey) void executePlan(autoKey, out.at); else if (!out.questions?.length) afterTurn();
 }
 
 export function cancelPlan(key: string, messageAt: number) {
@@ -186,7 +192,7 @@ export function cancelPlan(key: string, messageAt: number) {
 export async function executePlan(key: string, messageAt: number) {
   const p = pendingPlans.get(key); if (!p) { toast('计划已失效，请重新发送请求后确认。'); return; }
   if (agent().busy) { toast('请等待当前任务完成。'); return; }
-  pendingPlans.delete(key);
+  pendingPlans.delete(key); executedPlans.set(key, p);
   chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.plan?.key === key) { m.actions = null; m.plan.state = 'confirmed'; } });
   const c = chats().chats.find(x => x.id === p.chatId) || chats().chat();
   const steps: PlanStep[] = p.steps.map(s => ({ ...s, status: 'pending', result: '', logs: [] }));
@@ -207,7 +213,7 @@ export async function executePlan(key: string, messageAt: number) {
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });
-  out.plan = { steps, state: steps.some(s => s.status === 'failed') ? 'error' : steps.some(s => s.status === 'skipped') ? 'stopped' : 'done' };
+  out.plan = { key, steps, state: steps.some(s => s.status === 'failed') ? 'error' : steps.some(s => s.status === 'skipped') ? 'stopped' : 'done' };
   if (logLines.length) out.log = logLines.slice();
   // 执行后的下一步：出错给「再试一次」；生成了参考图请用户确认；生成了多段视频建议合成
   const extra: FollowUp[] = []; const arts = out.artifacts || [];
@@ -219,6 +225,16 @@ export async function executePlan(key: string, messageAt: number) {
   if (videos >= 2) extra.push({ label: '按顺序合成成片', prompt: `把刚生成的 ${videos} 段视频按分镜顺序用 compose_video 合成一条成片，先给方案。` });
   out.followUps = extra;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, p.text + '\n' + results.join('\n'), c.id); cc.messages.push(out); cc.at = Date.now(); });
+  afterTurn();
+}
+
+// 重试已执行计划里出错的那一步：单独作为一个新计划执行
+export function retryStep(planKey: string, index: number) {
+  const p = executedPlans.get(planKey); const action = p?.plan[index]; if (!p || !action) { toast('找不到这一步的操作，请重新发送请求'); return; }
+  if (agent().busy) { toast('请等待当前任务完成。'); return; }
+  const key = 'r' + Date.now().toString(36); const steps = planSteps([action]);
+  pendingPlans.set(key, { plan: [action], text: p.text, chatId: p.chatId, steps });
+  void executePlan(key, 0);
 }
 
 // 片段校验与修正：校验有错且连着模型时，把错误清单发回模型，只允许它改文稿与台账，执行完再校验，最多两轮
@@ -269,7 +285,7 @@ export function answerQuestions(messageAt: number, decide: boolean) {
     if (value) { answered++; lines.push(`${q.text}：${value}`); if (q.key) record[q.key] = value; } else lines.push(`${q.text}：（未回答，由你决定）`);
   });
   const text = decide ? '这些问题由你来定，按专业判断处理，之后不必再问。' : answered ? '我已确认以上信息：\n' + lines.join('\n') : ''; if (!text) return;
-  if (!decide && Object.keys(record).length) { try { const fmt = useFiles.getState().brief?.format; if (readLedger() || fmt) { if (!readLedger()) ensureLedger(fmt); updateLedger({ answers: record }); } } catch { /* ignore */ } }
+  if (!decide && Object.keys(record).length) { try { const fmt = useFiles.getState().brief?.format; if (readLedger() || fmt) { if (!readLedger()) ensureLedger(fmt); updateLedger({ answers: record }); applyAnswersToBrief(record); } } catch { /* ignore */ } }
   chats().mutate(all => { for (const cc of all) for (const mm of cc.messages) if (mm.at === messageAt) mm.questionsUsed = true; });
   void send(text, { display: decide ? undefined : '我已确认以上信息' });
 }
@@ -296,3 +312,5 @@ export function restoreTrash(trashId: string, messageAt: number) {
   chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt) { m.actions = (m.actions || []).filter(x => x.id !== 'restore-trash:' + trashId); m.text += `\n已恢复「${name}」`; } });
   useFiles.getState().openInPane(entry.doc?.id || entry.media?.id || null);
 }
+
+setSender(text => { void send(text, { fromSuggestion: true }); });   // 导演的一键模式通过它发出下一步

@@ -49,7 +49,7 @@ export interface UiPrefs {
 export interface FollowUp { label: string; prompt: string; }
 // 追问：single 单选 / multi 多选 / text 填空；选项可带一行说明；key 用来把答案记进台账
 export interface QuestionOption { label: string; hint?: string; }
-export interface Question { text: string; type?: 'single' | 'multi' | 'text'; options: QuestionOption[]; multi: boolean; placeholder?: string; key?: string; }
+export interface Question { text: string; type?: 'single' | 'multi' | 'text'; options: QuestionOption[]; multi: boolean; placeholder?: string; key?: string; recommended?: number[]; }   // recommended：推荐选项下标，本地问卷会预选
 export interface Artifact { id: string; kind: 'doc' | 'image' | 'video'; name: string; prompt?: string; }   // 执行结果里的产物卡片；生成类带上提示词供质检
 export interface ImageCheck { id: string; name: string; verdict: '通过' | '需重生成'; description: string; issues: string[]; }   // 视觉模型对参考图的质检结果
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';

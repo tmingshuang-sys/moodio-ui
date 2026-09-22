@@ -5,6 +5,7 @@ import { AGENT_TOOLS } from './tools';
 import { buildSystemPrompt, hasScriptDoc } from './prompt';
 import { readLedger } from '../ledger';
 import type { ChatKind } from '../model';
+import { nextStep } from '../director';
 
 // 请求用哪类模型：分镜 / 片段提示词 / 台账阶段在片段方案时走「编译」（强模型、低温度），其他创意请求走写作，剩下走规划
 export function kindForRequest(text: string): ChatKind {
@@ -47,6 +48,8 @@ export function fallbackFollowUps(text: string): FollowUp[] {
 export function attachFollowUps(message: Message, request: string, chatId: string) {
   message.followUpContext = { chatId };
   const options = normalizeFollowUps(message.followUps);
+  // 导演算出的标准下一步永远排第一，用户不用猜下一步点什么
+  try { const step = nextStep(); if (step.kind === 'agent' && step.prompt && !options.some(o => o.prompt === step.prompt)) options.unshift({ label: step.label.slice(0, 24), prompt: step.prompt }); } catch { /* ignore */ }
   for (const option of fallbackFollowUps(request + '\n' + message.text)) {
     if (options.length === 3) break;
     if (!options.some(x => x.label === option.label || x.prompt === option.prompt)) options.push(option);

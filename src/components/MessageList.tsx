@@ -6,7 +6,8 @@ import remarkGfm from 'remark-gfm';
 import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard, ChevronLeft, ChevronRight, Film, Music } from 'lucide-react';
 import type { Artifact, Chat, Message, Plan, PlanStep, Question } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
-import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, useFollowUp, reviewFix, restoreTrash } from '../lib/agent/runner';
+import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, useFollowUp, reviewFix, restoreTrash, retryStep, send } from '../lib/agent/runner';
+import { skipLintGate } from '../lib/director';
 import { mediaUrl } from '../lib/storage';
 import { clock } from '../lib/time';
 import { toast } from './Toast';
@@ -39,6 +40,7 @@ function PlanCard({ plan }: { plan: Plan }) {
           {showPreview && <pre className="plan-preview">{s.preview}</pre>}
           {s.status === 'running' && s.logs?.length > 0 && <ul className="plan-log">{s.logs.map((l, j) => <li key={j}>{l}</li>)}</ul>}
           {s.result && ['done', 'failed', 'skipped'].includes(s.status) && <p className="plan-result">{s.result}</p>}
+          {s.status === 'failed' && plan.key && !['running', 'reviewing'].includes(state) && <button type="button" className="plan-retry" onClick={() => retryStep(plan.key!, i)}>{t('重试这一步')}</button>}
         </div>
       </li>
     );
@@ -104,7 +106,7 @@ function QuestionCard({ m, live }: { m: Message; live: boolean }) {
             return (
               <button key={oi} type="button" className={`q-row${on ? ' on' : ''}`} disabled={!live} aria-pressed={on} onClick={() => pick(oi)}>
                 <span className={type === 'multi' ? 'q-check' : 'q-num'} aria-hidden="true">{type === 'multi' ? (on && <Check size={13} strokeWidth={3} />) : oi + 1}</span>
-                <span className="q-body"><span className="q-label">{o.label}</span>{o.hint && <span className="q-hint">{o.hint}</span>}</span>
+                <span className="q-body"><span className="q-label">{o.label}{q.recommended?.includes(oi) && <em className="q-rec">{t('推荐')}</em>}</span>{o.hint && <span className="q-hint">{o.hint}</span>}</span>
               </button>
             );
           })}
@@ -229,7 +231,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
             {m.questions && m.questions.length > 0 && <QuestionCard key={m.at} m={m} live={liveQ} />}
             {m.review && m.review.items?.length > 0 && <ReviewCard m={m} />}
             {m.imageReview && m.imageReview.length > 0 && <ImageReviewCard m={m} onOpen={openInPane} />}
-            {m.lint && <details className={`review lint-card${m.lint.ok ? ' ok' : ''}`} open={!m.lint.ok}><summary>片段校验 · {m.lint.ok ? '通过' : '有问题'}{m.lint.rounds ? ` · 已修正 ${m.lint.rounds} 轮` : ''}</summary><pre className="lint-text">{m.lint.text}</pre></details>}
+            {m.lint && <details className={`review lint-card${m.lint.ok ? ' ok' : ''}`} open={!m.lint.ok}><summary>片段校验 · {m.lint.ok ? '通过' : '有问题'}{m.lint.rounds ? ` · 已修正 ${m.lint.rounds} 轮` : ''}</summary><pre className="lint-text">{m.lint.text}</pre>{!m.lint.ok && latest && !busy && <div className="msg-actions"><button type="button" className="primary" onClick={() => void send('片段提示词校验还有问题，请按校验卡上的清单再修一轮，只改有问题的文稿。', { fromSuggestion: true })}>{t('让 Agent 再修')}</button><button type="button" onClick={skipLintGate}>{t('跳过校验继续')}</button></div>}</details>}
             {m.actions && m.actions.length > 0 && <div className="msg-actions">{m.actions.map(a => <button key={a.id} type="button" className={a.id.startsWith('plan-confirm') ? 'primary' : ''} onClick={() => onAction(a.id, m)}>{a.label}</button>)}</div>}
             {showFollowUps && (
               <div className="next-steps">

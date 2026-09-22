@@ -24,6 +24,7 @@ const EN: Record<string, string> = {
   '取消任务': 'Cancel task', '后台任务（点击可取消）': 'Background tasks (click to cancel)', '生成中': 'Generating',
   '音频': 'Audio', '上传图片 / 视频 / 音频': 'Upload image / video / audio', '配乐': 'Music',
   '当前阶段': 'Current stage', '更新于': 'Updated', '本阶段': 'This stage', '目标': 'Goal: ', '产物': 'Outputs: ', '进入下一阶段的条件': 'Gate: ', '已确认的信息': 'Confirmed info', '实体与参考图': 'Entities & references', '片段': 'Clips', '镜头': 'shots', '备注': 'Notes',
+  '下一步': 'Next step', '现在': 'Now', '还剩': 'left', '步': 'steps', '让 Agent 修改': 'Ask the Agent to change', '跳过参考图': 'Skip references', '跳过校验继续': 'Skip checks and continue', '执行中，点击停止': 'Running, click to stop', '一键模式': 'One-click mode', '开着时，除删除和四个检查点外的步骤都自动执行': 'When on, every step except deletions and the four checkpoints runs automatically', '重试这一步': 'Retry this step', '推荐': 'recommended', '让 Agent 再修': 'Ask the Agent to fix again', '选一个类型，回答几道题，剩下的交给 Agent；也可以直接在下面说。': 'Pick a type, answer a few questions and let the Agent do the rest, or just type below.',
   '新创作': 'New creation', '删除创作': 'Delete creation', '删除对话': 'Delete chat',
   '很高兴见到你': 'Good to see you', '想做什么？': 'What shall we make?',
   '共': 'Total', '个': '',

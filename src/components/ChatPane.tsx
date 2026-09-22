@@ -8,8 +8,11 @@ import { openMenuAt } from './Menu';
 import { confirmDialog } from './Dialogs';
 import { timeAgo } from '../lib/time';
 import { StageStrip } from './LedgerView';
+import NextStepBar, { FormatPicker, useNextStep } from './Director';
+import { startCreation } from '../lib/session';
 import { useT } from '../lib/i18n';
 import MessageList from './MessageList';
+import type { Chat } from '../lib/types';
 import Composer from './Composer';
 import { openModelSettings } from './Dialogs';
 import { toast } from './Toast';
@@ -32,8 +35,27 @@ function TasksIndicator() {
   return <button type="button" className="chip-btn tasks-chip" onClick={e => open(e.currentTarget)}><Loader2 size={15} className="spin" /><span>{t('生成中')}</span><em>{tasks.length}</em></button>;
 }
 
+// 卡住提醒：有待确认的计划 / 追问或导演给出的下一步，而用户 90 秒没动，就提醒一次
+function useStuckHint(chat: Chat, busy: boolean, step: ReturnType<typeof useNextStep>) {
+  useEffect(() => {
+    let last = Date.now(); let hinted = '';
+    const touch = () => { last = Date.now(); };
+    document.addEventListener('pointerdown', touch); document.addEventListener('keydown', touch);
+    const timer = window.setInterval(() => {
+      if (busy || Date.now() - last < 90_000) return;
+      const m = chat.messages[chat.messages.length - 1];
+      const pending = m?.plan?.state === 'pending' ? '确认或取消刚才的计划' : (m?.questions?.length && !m.questionsUsed) ? '回答上面的问题' : step.kind === 'confirm' || step.kind === 'agent' || step.kind === 'ask' ? step.label : '';
+      const key = pending + ':' + (m?.at || 0);
+      if (pending && hinted !== key) { hinted = key; toast(`还差一步：${pending}`); last = Date.now(); }
+    }, 15_000);
+    return () => { clearInterval(timer); document.removeEventListener('pointerdown', touch); document.removeEventListener('keydown', touch); };
+  }, [chat.id, chat.messages.length, busy, step.label, step.kind]);
+}
+
 export default function ChatPane() {
   const t = useT();
+  const step = useNextStep();
+  useEffect(() => { const fn = () => { startCreation(); }; window.addEventListener('moodio:new-creation', fn); return () => window.removeEventListener('moodio:new-creation', fn); }, []);
   const chat = useChats(s => s.chats.find(c => c.id === s.active) || s.chats[0]);
   const ui = useFiles(s => s.ui); const setUi = useFiles(s => s.setUi);
   const fileCount = useFiles(s => s.docs.length + s.media.length);
@@ -41,6 +63,7 @@ export default function ChatPane() {
   const listRef = useRef<HTMLDivElement>(null);
   const messages = chat.messages;
   const last = messages[messages.length - 1];
+  useStuckHint(chat, busy, step);
   useEffect(() => {
     const el = listRef.current; if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
@@ -60,14 +83,17 @@ export default function ChatPane() {
         </div>
       </header>
       <StageStrip />
+      <NextStepBar />
       <div className="chat-body" ref={listRef}>
         {messages.length ? <MessageList chat={chat} /> : (
           <div className="chat-empty">
             <h1 className="greeting">{t('很高兴见到你')}，<em>Thomas</em></h1>
-            <p className="greeting-sub">{t('想做什么？')}剧本、分镜、视频提示词都会生成到右侧工作区。</p>
-            <div className="suggestions">
-              {SUGGESTIONS.map(s => <button key={s.label} type="button" onClick={() => void send(s.prompt)}><Sparkles size={14} />{s.label}</button>)}
-            </div>
+            <p className="greeting-sub">{t('想做什么？')}{t('选一个类型，回答几道题，剩下的交给 Agent；也可以直接在下面说。')}</p>
+            {step.kind === 'start' ? <FormatPicker /> : (
+              <div className="suggestions">
+                {SUGGESTIONS.map(s => <button key={s.label} type="button" onClick={() => void send(s.prompt)}><Sparkles size={14} />{s.label}</button>)}
+              </div>
+            )}
           </div>
         )}
       </div>

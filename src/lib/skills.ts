@@ -7,7 +7,7 @@ import { BRIEF_FORMATS } from './guides';
 
 export type StageId = 'brief' | 'model' | 'script' | 'assets' | 'storyboard' | 'prompts' | 'video' | 'deliver';
 export interface StageDef { id: StageId; name: string; goal: string; outputs: string; gate: string; }
-export interface QuestionDef extends Question { key: string; }
+export interface QuestionDef extends Question { key: string; briefKey?: 'duration' | 'ratio' | 'audience' | 'tone' | 'platform'; }   // briefKey：答案同时写进创作纲领的哪个字段
 export interface Skill {
   id: string; name: string; title: string;
   modelTemplate?: string;       // 建模文稿的冻结格式（只在建模阶段注入）
@@ -106,9 +106,13 @@ export const OTHER_TEMPLATE = `「创作脑图.md」固定结构：## 目标　#
 // 脚本阶段：60 秒以内的广告 / 短视频直接写分镜脚本表，不再先写场景式剧本
 export const SHORT_SCRIPT_NOTE = '总时长 60 秒以内时，「故事脚本.md」直接写成分镜脚本表：列为 镜号 | 时长(秒) | 画面描述 | 景别 | 光影氛围 | 对白·旁白 | 音效 | 运镜，每镜一行，人物首次出场在画面描述里给年龄与一句外形并加粗，产品每次露出都写明看得见的部位；表后加「## 全片 BGM」段（乐器、BPM、各段情绪、哪些段音乐是画面内声源）。镜头时长合计必须等于总时长。分镜阶段只做核对与微调。';
 const opt = (label: string, hint?: string) => ({ label, hint });
-const single = (key: string, text: string, options: { label: string; hint?: string }[]): QuestionDef => ({ key, text, type: 'single', multi: false, options });
-const multi = (key: string, text: string, options: { label: string; hint?: string }[]): QuestionDef => ({ key, text, type: 'multi', multi: true, options });
+const single = (key: string, text: string, options: { label: string; hint?: string }[], recommended = 0): QuestionDef => ({ key, text, type: 'single', multi: false, options, recommended: [recommended] });
+const multi = (key: string, text: string, options: { label: string; hint?: string }[], recommended: number[] = [0]): QuestionDef => ({ key, text, type: 'multi', multi: true, options, recommended });
 const text = (key: string, text: string, placeholder: string): QuestionDef => ({ key, text, type: 'text', multi: false, options: [], placeholder });
+const withBrief = (q: QuestionDef, briefKey: QuestionDef['briefKey']): QuestionDef => ({ ...q, briefKey });
+// 答案映射到纲领：时长 / 画幅 / 受众直接对应，风格 / 题材 / 情绪 / 内容类型对应「调性」
+const BRIEF_KEY_BY_QUESTION: Record<string, QuestionDef['briefKey']> = { duration: 'duration', ratio: 'ratio', audience: 'audience', style: 'tone', genre: 'tone', mood: 'tone', kind: 'tone', mvStyle: 'tone', goal: 'tone' };
+export function briefKeyOf(q: QuestionDef): QuestionDef['briefKey'] | undefined { return q.briefKey || BRIEF_KEY_BY_QUESTION[q.key]; }
 
 // 通用阶段骨架；每个技能只改建模阶段的名字与目标
 function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; clipSeconds: number }): StageDef[] {
@@ -125,9 +129,9 @@ function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; 
 }
 
 const COMMON_GENERAL: QuestionDef[] = [
-  single('duration', '成片总时长大概多长？', [opt('15 秒'), opt('30 秒'), opt('60 秒'), opt('3 分钟以内'), opt('5–15 分钟'), opt('更长')]),
-  single('ratio', '画幅选哪种？', [opt('竖屏 9:16', '抖音 / 快手 / Reels 等竖屏平台'), opt('横屏 16:9', 'YouTube / B 站 / 大屏'), opt('方屏 1:1', 'Instagram 等方屏')]),
-  text('audience', '主要给谁看？', '例如：18–30 岁的都市年轻人 / 新手爸妈 / 品牌老客户'),
+  withBrief(single('duration', '成片总时长大概多长？', [opt('15 秒'), opt('30 秒'), opt('60 秒'), opt('3 分钟以内'), opt('5–15 分钟'), opt('更长')], 2), 'duration'),
+  withBrief(single('ratio', '画幅选哪种？', [opt('竖屏 9:16', '抖音 / 快手 / Reels 等竖屏平台'), opt('横屏 16:9', 'YouTube / B 站 / 大屏'), opt('方屏 1:1', 'Instagram 等方屏')]), 'ratio'),
+  withBrief(single('audience', '主要给谁看？', [opt('18–30 岁都市年轻人'), opt('25–40 岁家庭用户'), opt('学生'), opt('中老年'), opt('专业人群 / B 端')]), 'audience'),
 ];
 
 export const SKILLS: Record<string, Skill> = {
@@ -148,7 +152,7 @@ export const SKILLS: Record<string, Skill> = {
       text('color', '主色和材质？', '比如：哑光黑 + 织物网面 / 白色磨砂塑料'),
       multi('sellingPoints', '最想让观众记住的卖点是什么？可多选', [opt('便携轻巧'), opt('性能强劲'), opt('外观好看'), opt('续航持久'), opt('智能黑科技'), opt('性价比高'), opt('防水耐用')]),
       single('scene', '故事发生在什么场景？', [opt('都市街头 / 通勤'), opt('聚会 / 派对'), opt('旅行 / 户外'), opt('居家生活'), opt('工作 / 创作场景')]),
-      single('productImage', '有没有产品实拍图？', [opt('有，稍后上传', '上传后所有画面以实拍图为准'), opt('没有，让 AI 生成', 'AI 推导的外观可能与真机不同，生成后需要你确认')]),
+      single('productImage', '有没有产品实拍图？', [opt('有，稍后上传', '上传后所有画面以实拍图为准'), opt('没有，让 AI 生成', 'AI 推导的外观可能与真机不同，生成后需要你确认')], 1),
     ],
     contracts: [
       '产品图契约：没有实拍图时不得直接把 AI 想象的产品写进片段；必须先在 message 里声明「AI 推导外观可能与真机不同」，生成产品三视图（正面 / 侧面 / 45 度）后请用户确认，确认后所有片段引用同一组三视图。',
@@ -168,14 +172,14 @@ export const SKILLS: Record<string, Skill> = {
       single('genre', '是什么类型？', [opt('剧情'), opt('悬疑 / 惊悚'), opt('爱情'), opt('科幻 / 奇幻'), opt('喜剧'), opt('其他')]),
       text('theme', '一句话说这个故事讲什么？', '比如：一个不肯回家的人，在雨夜被一只猫带回了家'),
       ...COMMON_GENERAL,
-      single('ending', '结局倾向？', [opt('圆满'), opt('悲剧'), opt('开放'), opt('由 Agent 决定')]),
+      single('ending', '结局倾向？', [opt('圆满'), opt('悲剧'), opt('开放'), opt('由 Agent 决定')], 3),
     ],
     modeling: [
       text('protagonist', '主角是谁，最想要什么？', '比如：林晚，26 岁，想在签字前得到一句道歉'),
       text('obstacle', '最大的阻碍或对手是什么？', '比如：她自己的骄傲 / 一个不肯认错的前任'),
       single('world', '故事世界是？', [opt('当代现实'), opt('近未来'), opt('历史时代'), opt('架空 / 奇幻')]),
       single('visual', '视觉风格倾向？', [opt('写实电影感', '自然光、手持、浅景深'), opt('高饱和风格化', '强色彩、构图严整'), opt('黑白 / 低饱和'), opt('动画 / 插画感')]),
-      single('castImage', '人物有没有参考图或演员照片？', [opt('有，稍后上传'), opt('没有，让 AI 生成人物形象图', '生成后需要你确认，之后所有镜头复用')]),
+      single('castImage', '人物有没有参考图或演员照片？', [opt('有，稍后上传'), opt('没有，让 AI 生成人物形象图', '生成后需要你确认，之后所有镜头复用')], 1),
     ],
     contracts: [
       '人物一致性契约：每个出场人物先有一段冻结的外形描述和一张确认过的形象图，之后所有片段引用同一段描述 / 同一张图，不得中途改外形。',
@@ -192,15 +196,15 @@ export const SKILLS: Record<string, Skill> = {
     scriptNote: '每集一个主线目标加一条 B 线，集尾必须留钩子；竖屏短剧前 10 秒进冲突，每 30 秒一个新信息。',
     general: [
       single('kind', '是哪种剧集？', [opt('竖屏短剧', '每集 1–3 分钟'), opt('网剧 / 迷你剧', '每集 10–30 分钟'), opt('长剧', '每集 40 分钟以上')]),
-      text('episodes', '计划多少集，每集多长？', '比如：12 集，每集 2 分钟'),
+      withBrief(single('episodes', '每集多长？', [opt('1–3 分钟', '竖屏短剧'), opt('5–10 分钟'), opt('20 分钟以上')]), 'duration'),
       single('genre', '题材？', [opt('都市情感'), opt('悬疑'), opt('古装 / 历史'), opt('喜剧'), opt('科幻 / 奇幻'), opt('其他')]),
-      single('ratio', '画幅选哪种？', [opt('竖屏 9:16'), opt('横屏 16:9')]),
-      text('audience', '主要给谁看？', '例如：25–40 岁女性 / 下沉市场男性观众'),
+      withBrief(single('ratio', '画幅选哪种？', [opt('竖屏 9:16'), opt('横屏 16:9')]), 'ratio'),
+      withBrief(single('audience', '主要给谁看？', [opt('25–40 岁女性'), opt('18–30 岁年轻人'), opt('下沉市场观众'), opt('全年龄')]), 'audience'),
     ],
     modeling: [
       text('protagonist', '主角是谁，整季想要什么？', '比如：梦雨，22 岁记忆搜查科新人，想证明人可以比 AI 更懂人'),
       text('hook', '第一集的钩子是什么？', '比如：她在第一起案子里查到的凶手是自己'),
-      single('castImage', '人物有没有参考图？', [opt('有，稍后上传'), opt('没有，让 AI 生成人物形象图')]),
+      single('castImage', '人物有没有参考图？', [opt('有，稍后上传'), opt('没有，让 AI 生成人物形象图')], 1),
     ],
     contracts: [
       '人物一致性契约：同故事片，所有集共用同一组人物形象图。',
@@ -223,7 +227,7 @@ export const SKILLS: Record<string, Skill> = {
     modeling: [
       text('topic', '选题一句话是什么？', '比如：加班到凌晨的人，怎么用 5 分钟把家变成电影院'),
       single('hookType', '开头用哪种钩子？', [opt('冲突或反差画面'), opt('直接抛问题'), opt('结果先行', '先给最终效果再倒叙'), opt('悬念', '故意不说完')]),
-      single('cast', '是否需要真人 / 角色出镜？', [opt('需要，有参考图'), opt('需要，让 AI 生成形象'), opt('不需要出镜')]),
+      single('cast', '是否需要真人 / 角色出镜？', [opt('需要，有参考图'), opt('需要，让 AI 生成形象'), opt('不需要出镜')], 1),
     ],
     contracts: [
       '钩子契约：钩子账本第一条时间点 ≤ 3 秒并落在第 1 段，第一段前 3 秒必须出现它的画面；系统会校验。',
@@ -242,13 +246,13 @@ export const SKILLS: Record<string, Skill> = {
       text('song', '歌名和艺人是？', '比如：《夜航》 / 独立乐队 The Lanterns'),
       single('mvStyle', 'MV 走哪种路线？', [opt('叙事型', '一条极简故事线'), opt('表演型', '艺人演唱 / 演奏为主'), opt('概念型', '一组反复出现的意象'), opt('混合')]),
       single('mood', '整体情绪？', [opt('温柔 / 治愈'), opt('孤独 / 忧郁'), opt('燃 / 释放'), opt('梦幻 / 迷离'), opt('复古 / 怀旧')]),
-      text('duration', '歌曲时长多少？', '比如：3 分 42 秒；先做副歌 60 秒版也可以'),
-      single('ratio', '画幅选哪种？', [opt('横屏 16:9'), opt('竖屏 9:16'), opt('宽银幕 2.35:1', '按 16:9 生成再裁切')]),
+      withBrief(single('duration', '先做多长的版本？', [opt('副歌 60 秒版', '先出一版最有把握的'), opt('完整歌曲', '按歌曲时长切片，段数多、耗时长'), opt('90 秒精华版')]), 'duration'),
+      withBrief(single('ratio', '画幅选哪种？', [opt('横屏 16:9'), opt('竖屏 9:16'), opt('宽银幕 2.35:1', '按 16:9 生成再裁切')]), 'ratio'),
     ],
     modeling: [
       text('structure', '歌曲段落和时间码？', '比如：前奏 0:00–0:15，主歌 A 0:15–0:45，副歌 0:45–1:10…'),
       multi('motifs', '想反复出现的核心意象？可多选', [opt('灯光 / 霓虹'), opt('水 / 雨'), opt('公路 / 行走'), opt('镜子 / 倒影'), opt('花 / 植物'), opt('窗 / 房间'), opt('人群 / 城市')]),
-      single('artistImage', '艺人有没有形象参考图？', [opt('有，稍后上传'), opt('没有，让 AI 生成形象'), opt('不出镜')]),
+      single('artistImage', '艺人有没有形象参考图？', [opt('有，稍后上传'), opt('没有，让 AI 生成形象'), opt('不出镜')], 1),
       single('palette', '色调？', [opt('冷色夜景'), opt('暖色胶片'), opt('高饱和霓虹'), opt('黑白')]),
     ],
     contracts: [

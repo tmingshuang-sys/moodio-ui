@@ -9,7 +9,7 @@ import { generateImage, generateVideo, mediaReadyReason, fallbackNote } from '..
 import type { GenResult } from '../mediagen';
 import type { RatioKey } from '../mediamodels';
 import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
-import { updateLedger } from '../ledger';
+import { updateLedger, readLedger } from '../ledger';
 import { skillFor, stageName } from '../skills';
 import { composeVideos } from '../compose';
 import { askAboutImages } from '../vision';
@@ -55,7 +55,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   // 台账：阶段推进 / 答案 / 实体 / 片段，免确认
   async update_ledger(args) {
     // 进入「生成成片」前把关：时长与卖点落地有错就不推进
-    if (args?.stage === 'video') { const r = lintClips(); if (r.errors.length) throw new Error(`还不能进入生成成片：${r.errors.join('；')}`); }
+    if (args?.stage === 'video' && !readLedger()?.flags?.skipLint) { const r = lintClips(); if (r.errors.length) throw new Error(`还不能进入生成成片：${r.errors.join('；')}（可在校验卡上选择跳过）`); }
     const l = updateLedger(args || {}); const parts = []; if (args?.stage) parts.push(`阶段 → ${stageName(skillFor(l.skill), l.stage)}`); if (args?.answers) parts.push(`答案 ${Object.keys(args.answers).length} 项`); if (args?.entities) parts.push(`实体 ${l.entities.length} 个`); if (args?.clips) parts.push(`片段 ${l.clips.length} 段`); return `台账已更新${parts.length ? '：' + parts.join('，') : ''}`; },
   // ---- 读取与打开（不需要确认）----
   async read_doc(args) { const d = requireDoc(args.id); return { summary: `已读取「${d.name}」（${wordCount(d.content)} 字）`, content: d.content.slice(0, 16000), actions: [openDocAction(d.id, d.name)] }; },

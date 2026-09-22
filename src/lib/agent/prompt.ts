@@ -21,7 +21,7 @@ export function skillBlock(): string {
   const brief = useFiles.getState().brief || {}; const ledger = readLedger();
   if (!ledger && !brief.format) return '【创作流程】还不知道创作类型。创意类请求先用 ask_user 问清类型（广告 / 故事片 / 剧集 / 短片短视频 / MV / 其他）和总时长、画幅、受众等基本纲领，答案用 save_brief 记录（format 用 ad|film|series|short|mv|other），系统会随后加载对应的创作流程。';
   const skill = skillFor(ledger?.skill || brief.format);
-  const l: Ledger = ledger || { skill: skill.id, stage: 'brief', done: [], answers: {}, entities: [], clips: [], notes: '', updatedAt: 0 };
+  const l: Ledger = ledger || { skill: skill.id, stage: 'brief', done: [], answers: {}, entities: [], clips: [], notes: '', confirmed: [], flags: {}, updatedAt: 0 };
   const bank = l.stage === 'brief' ? skill.general : l.stage === 'model' ? skill.modeling : [];
   const pending = bank.filter(q => !l.answers[q.key] && !(q.key === 'duration' && brief.duration) && !(q.key === 'ratio' && brief.ratio) && !(q.key === 'audience' && brief.audience));
   const qJson = pending.length ? JSON.stringify(pending.map(q => ({ key: q.key, text: q.text, type: q.type, options: q.options.map(o => o.hint ? { label: o.label, hint: o.hint } : o.label), placeholder: q.placeholder }))) : '';

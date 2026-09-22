@@ -607,3 +607,28 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 /* 片段校验卡 */
 .lint-card.ok summary { color: #2f6b45; }
 .lint-text { margin: 6px 0 0; white-space: pre-wrap; font: 12.5px/1.6 var(--font-ui); color: var(--ink-2); }
+
+/* ===== 导演条：唯一的下一步 + 一键模式；类型选择；推荐标记；重试按钮 ===== */
+.next-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 24px; border-bottom: 1px solid var(--line); background: #fff; }
+.next-bar.is-confirm { background: #fbfbfa; }
+.next-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.next-stage { font-size: 13px; font-weight: 600; color: var(--ink); }
+.next-stage small { font-weight: 400; color: var(--ink-3); }
+.next-detail { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+.next-actions { flex: none; display: flex; align-items: center; gap: 8px; }
+.next-primary { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 500; }
+.next-primary:hover { background: #000; }
+.next-primary.busy { background: var(--ink-2); }
+.next-primary .plan-spin { border-color: rgba(255, 255, 255, .35); border-top-color: #fff; }
+.next-secondary { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff; color: var(--ink); font-size: 12.5px; }
+.next-secondary:hover { background: var(--panel); }
+.next-auto { display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.next-auto input { accent-color: var(--ink); }
+.format-picker { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 10px; margin-top: 18px; max-width: 560px; }
+.format-picker button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 500; text-align: left; }
+.format-picker button small { font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.format-picker button:hover { border-color: var(--line-strong); background: var(--panel); }
+.format-picker button svg { color: var(--ink-3); }
+.q-rec { margin-left: 8px; padding: 0 6px; border-radius: 999px; background: var(--panel); color: var(--ink-3); font: 500 10.5px/16px var(--font-ui); font-style: normal; vertical-align: middle; }
+.plan-retry { margin-top: 4px; height: 26px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--ink); font-size: 12px; }
+.plan-retry:hover { background: var(--panel); }

@@ -231,16 +231,35 @@ export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { sig
   return content;
 }
 
+// 无进展超时：连续 IDLE_MS 没收到任何字节就中止（流式按每次 onText 重置），避免请求挂死让页面一直「正在思考」
+const IDLE_MS = 150_000;
+const TRANSIENT_RE = /超时|timed? ?out|Failed to fetch|Load failed|NetworkError|返回 (429|500|502|503|504)/i;
+async function callOnce(c: ModelConfig, sys: string, t: string, opts: CallOptions): Promise<string> {
+  const ctrl = new AbortController(); let timer = 0;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(new Error('模型响应超时（150 秒无进展）')), IDLE_MS) as unknown as number; };
+  const onOuter = () => ctrl.abort(opts.signal?.reason); opts.signal?.addEventListener('abort', onOuter, { once: true });
+  const inner: CallOptions = { ...opts, signal: ctrl.signal, onText: opts.onText ? (x => { arm(); opts.onText!(x); }) : undefined, onReasoning: opts.onReasoning ? (x => { arm(); opts.onReasoning!(x); }) : undefined };
+  arm();
+  try { return modelProvider(c) === 'claude' ? await callClaude(c, sys, t, inner) : await callOpenAI(c, sys, t, inner); }
+  catch (e: any) { if (ctrl.signal.aborted && !opts.signal?.aborted && ctrl.signal.reason instanceof Error) throw ctrl.signal.reason; throw e; }
+  finally { clearTimeout(timer); opts.signal?.removeEventListener('abort', onOuter); }
+}
 export async function callModel(cfg: ModelConfig & { candidates?: string[] }, sys: string, t: string, opts: CallOptions = {}): Promise<string> {
   const chain = cfg.candidates?.length ? cfg.candidates : [cfg.model || ''];
   let lastError: any = null;
   for (let i = 0; i < chain.length; i++) {
     const c = { ...cfg, model: chain[i] || cfg.model }; delete (c as any).candidates;
-    try { return modelProvider(c) === 'claude' ? await callClaude(c, sys, t, opts) : await callOpenAI(c, sys, t, opts); }
-    catch (e: any) {
-      lastError = e;
-      if (e?.name === 'AbortError' || i === chain.length - 1 || !MODEL_UNAVAILABLE_RE.test(String(e?.message || ''))) break;   // 只有「模型不可用」才换下一个
+    for (let attempt = 0; attempt < 2; attempt++) {   // 瞬时错误（超时 / 断网 / 5xx / 429）自动重试一次
+      try { return await callOnce(c, sys, t, opts); }
+      catch (e: any) {
+        lastError = e;
+        if (e?.name === 'AbortError' || opts.signal?.aborted) throw explainModelError(e);
+        const msg = String(e?.message || '');
+        if (attempt === 0 && TRANSIENT_RE.test(msg) && !MODEL_UNAVAILABLE_RE.test(msg)) { opts.onText?.(''); continue; }   // 模型不可用不重试同一个，直接换下一个
+        break;
+      }
     }
+    if (i === chain.length - 1 || !MODEL_UNAVAILABLE_RE.test(String(lastError?.message || ''))) break;   // 只有「模型不可用」才换下一个
   }
   throw explainModelError(lastError);
 }
