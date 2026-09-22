@@ -1,20 +1,35 @@
 {
   "name": "moodio-ui",
   "private": true,
+  "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.cjs",
-    "serve": "python3 -m http.server 8765",
+    "dev": "vite --port 5174 --strictPort false",
+    "build": "vite build && node scripts/postbuild.mjs",
+    "preview": "vite preview --port 5174",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "gateway:login": "wrangler login --config gateway/wrangler.toml",
     "gateway:deploy": "wrangler deploy --config gateway/wrangler.toml",
     "gateway:dev": "wrangler dev --config gateway/wrangler.toml",
-    "deploy": "wrangler deploy",
-    "preview": "wrangler dev",
-    "site:build": "node scripts/build.mjs && node --check dist/src/app.js",
-    "site:deploy": "npm run check && npm run site:build && wrangler deploy --config site/wrangler.toml",
-    "check": "for f in src/*.js; do node --check \"$f\" || exit 1; done && echo \"js ok\""
+    "site:build": "npm run check && npm run build",
+    "site:deploy": "npm run site:build && wrangler deploy --config site/wrangler.toml"
+  },
+  "dependencies": {
+    "idb-keyval": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "latest",
+    "remark-gfm": "latest",
+    "zustand": "latest"
   },
   "devDependencies": {
-    "acorn": "^8.18.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
     "wrangler": "^4.131.1"
   }
 }

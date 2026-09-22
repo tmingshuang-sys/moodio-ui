@@ -1,25 +1,15 @@
 # src 目录
 
-开发时由 `loader.js` 按 `manifest.json` 的顺序取回并拼成一段脚本执行，发布时构建成 `app.js`（共享全局作用域，函数提升跨文件有效，顺序不能改）：
-
-- `00-projects.js` 项目层：项目索引、按项目隔离的存储键、新建 / 切换 / 重命名 / 删除、旧数据迁移
-- `01-data.js` 图标、初始数据、全局 state、本地存储恢复、通用工具函数
-- `02-story-canvas.js` 故事结构板与灵感画布：渲染、缩放、拖拽、连线
-- `03-script-render.js` 剧本块模型、剧本渲染、制作表（顺场表 / 通告单 / 日报）渲染
-- `04-files-export.js` 项目备份、文件创建 / 选择 / 重命名 / 删除、视图切换、导出文档
-- `05-canvas-actions.js` 画布动作、制作表交互、部分全局事件
-- `06-storyboard.js` 分镜表、镜头记录、生成单元、页面板块切换
-- `07-create-assets.js` 创作页生成节点与连线、资产页与资产搜索
-- `08-writing-sidebar.js` 侧栏文件夹树、剧集、上下文面板、导入文档、全局搜索
-- `09-cloud-doc.js` 云文档编辑器（富文本 / 媒体 / 评论）、表格、画布、思维导图
-- `10-editor-interactions.js` 云文档交互、剧本撤销与格式、剧本行手柄、资产详情抽屉
-- `11-agent.js` Moodio Agent 浮窗：对话、规划与确认执行、识别工作流、模型调用
-- `12-effects.js` 工作区背景（已停用）、渐变光标、渐变聚焦光圈、主动提示气泡
-- `13-versions.js` 版本层：文档快照（IndexedDB）、侧栏历史版本面板、恢复
-- `14-writing-guides.js` 分类型写作规范（剧集 / 电影 / 短片 / 广告），按创作纲领类型注入提示
-- `00-menu-motion.js` 下拉菜单开合动效助手 `moodioMenuFx`（open / close / settle / isOpen），放最前面加载；样式在 styles.css 末尾的 `.fx-menu` 规则
-- `17-i18n.js` 界面语言层：中 / EN 词典与正则、渲染后替换引擎、右上角切换按钮
-- `16-shot-rules.js` 分镜规范（按类型）、结构化镜头字段规整、草案预检（查重 / 错配 / 覆盖）、规则检查、用户风格样例
-- `15-script-rules.js` 剧本格式规则（美式 / 中式标题、虚写与不可拍词表、镜头术语）与校验器
-- `18-home.js` 首页（参考正式版）：左侧栏（素材库 / 项目）+ 主区三视图 `state.homeView`（agent 问候语与输入框 / projects 项目总览 / library 素材库）；入口（顶栏 logo / 返回项目列表）在这里，面板的闲置 / 全屏两态在 11 的 `agentHomeMode` / `homeSync`，页面切换在 06 的 render 覆盖
-- `styles.css` 全部样式；新增覆盖规则追加到文件末尾
+- `main.tsx` 挂载；`App.tsx` 布局（侧栏 | 对话 | 分栏把手 | 工作区），全局宿主（Toast / Menu / Dialog / AgentLive）
+- `lib/types.ts` 数据模型（Doc / MediaItem / Chat / Message / Plan …）
+- `lib/projects.ts` 项目索引与按项目隔离的存储键
+- `lib/store.ts` zustand 仓库：`useFiles`（文稿 / 媒体 / 回收站 / 纲领 / 界面偏好）、`useChats`、`useAgent`（运行态）
+- `lib/storage.ts` localStorage JSON、IndexedDB blob、对象 URL 缓存、下载
+- `lib/markdown.ts` 章节切分 / 按标题替换 / 追加 / 纯文本 / 文件名与类别
+- `lib/guides.ts` 写作规范、剧本格式硬规则与轻量校验、分镜规范、提示词规范、纲领字段
+- `lib/model.ts` 模型调用（Claude / OpenAI 兼容，流式）、配置存取、JSON 解析
+- `lib/migrate.ts` 旧版数据迁移；`lib/sample.ts` 示例文稿；`lib/upload.ts` 上传；`lib/i18n.ts` 中 / EN；`lib/time.ts`
+- `lib/agent/tools.ts` 工具层 + 计划卡步骤；`prompt.ts` 系统提示；`planner.ts` 规划 / 追问 / 下一步；`runner.ts` 回复流程、确认执行、逐行写入、自审
+- `components/` Sidebar、ChatPane、MessageList、Composer、ResourcePane、Dialogs、Menu、Toast、AgentLive
+- `styles.css` 全部样式
+- `*.test.ts` Vitest 单元测试（与被测模块同目录）

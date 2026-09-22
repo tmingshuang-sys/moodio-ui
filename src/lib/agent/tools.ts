@@ -1,0 +1,126 @@
+// ===== Agent 的「手」：能对工作区里的文件做的操作。执行前必须确认（NO_CONFIRM_TOOLS 除外），删除类进回收站可撤销 =====
+import type { Action, MessageAction, PlanStep } from '../types';
+import { useFiles, findDoc, findMedia } from '../store';
+import { projects } from '../projects';
+import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
+import { downloadText } from '../storage';
+import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
+
+export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; }
+export interface ToolContext {
+  request: string; chatId: string;
+  typeInto: (docId: string, from: string, to: string) => Promise<void>;   // 在工作区里逐行写入（执行器提供）
+  step: (label: string, fn?: () => Promise<void> | void) => Promise<void>;   // 子步骤记录
+}
+export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
+
+export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief']);
+export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
+
+function requireDoc(id: unknown) { const d = findDoc(String(id || '').trim()); if (!d) throw new Error(`找不到 id 为「${id}」的文稿，请从文件清单里选择`); return d; }
+function requireMedia(id: unknown) { const m = findMedia(String(id || '').trim()); if (!m) throw new Error(`找不到 id 为「${id}」的图片或视频`); return m; }
+const openDocAction = (id: string, name: string): MessageAction => ({ id: 'open-doc:' + id, label: `打开「${baseName(name).slice(0, 14)}」` });
+
+export function saveBrief(fields: Record<string, any>): string[] {
+  const next: Record<string, any> = {}; const saved: string[] = [];
+  BRIEF_FIELDS.forEach(([k, label]) => {
+    if (fields[k] === undefined || fields[k] === null) return;
+    let v = String(fields[k]).trim();
+    if (k === 'format') { const key = Object.keys(BRIEF_FORMATS).find(x => x === v || BRIEF_FORMATS[x] === v); v = key || v; }
+    next[k] = v; if (v) saved.push(label);
+  });
+  useFiles.getState().setBrief(next);
+  return saved;
+}
+
+export const AGENT_TOOLS: Record<string, ToolFn> = {
+  // ---- 追问与纲领 ----
+  async save_brief(args) { const saved = saveBrief(args || {}); return saved.length ? `已记录创作纲领：${saved.join('、')}` : '创作纲领没有变化'; },
+  async ask_user() { return '（追问已展示给用户）'; },
+  // ---- 读取与打开（不需要确认）----
+  async read_doc(args) { const d = requireDoc(args.id); return { summary: `已读取「${d.name}」（${wordCount(d.content)} 字）`, content: d.content.slice(0, 16000), actions: [openDocAction(d.id, d.name)] }; },
+  async open_doc(args) { const d = requireDoc(args.id); useFiles.getState().openInPane(d.id); return `已打开「${d.name}」`; },
+  async open_media(args) { const m = requireMedia(args.id); useFiles.getState().openInPane(m.id); return `已打开「${m.name}」`; },
+  async export_doc(args) { const d = requireDoc(args.id); downloadText(d.name, d.content, d.kind === 'json' ? 'application/json' : 'text/markdown'); return `已下载「${d.name}」`; },
+  // ---- 文稿 ----
+  async write_doc(args, ctx) {
+    const name = ensureExt(sanitizeName(String(args.name || '未命名')), 'md');
+    const content = String(args.content || '').trim(); if (!content) throw new Error('缺少文稿内容');
+    const files = useFiles.getState();
+    const existing = files.docs.find(d => d.name.toLowerCase() === name.toLowerCase());
+    if (existing && args.overwrite) {
+      await ctx.step(`重写「${existing.name}」`, () => ctx.typeInto(existing.id, '', content + '\n'));
+      return { summary: `已重写「${existing.name}」（${wordCount(content)} 字）`, actions: [openDocAction(existing.id, existing.name)], review: docRole(existing.name) === 'script' ? { docId: existing.id, title: existing.name } : null };
+    }
+    const doc = files.addDoc({ name, content: '', by: 'agent', chatId: ctx.chatId });
+    await ctx.step(`新建「${doc.name}」并写入正文`, () => ctx.typeInto(doc.id, '', content + '\n'));
+    return { summary: `已写入「${doc.name}」（${wordCount(content)} 字）`, actions: [openDocAction(doc.id, doc.name)], review: docRole(doc.name) === 'script' ? { docId: doc.id, title: doc.name } : null };
+  },
+  async append_doc(args, ctx) {
+    const d = requireDoc(args.id); const extra = String(args.content || '').trim(); if (!extra) throw new Error('缺少要追加的内容');
+    const next = appendMarkdown(d.content, extra);
+    await ctx.step(`在「${d.name}」末尾续写`, () => ctx.typeInto(d.id, d.content, next));
+    return { summary: `已在「${d.name}」末尾追加 ${wordCount(extra)} 字`, actions: [openDocAction(d.id, d.name)], review: docRole(d.name) === 'script' ? { docId: d.id, title: d.name } : null };
+  },
+  async replace_section(args, ctx) {
+    const d = requireDoc(args.id); const heading = String(args.heading || '').trim(); const content = String(args.content || '').trim();
+    if (!heading) throw new Error('缺少要替换的章节标题'); if (!content) throw new Error('缺少新的章节内容');
+    const s = findSection(d.content, heading); if (!s) throw new Error(`「${d.name}」里找不到标题「${heading}」，请先 read_doc 确认标题`);
+    const next = replaceSection(d.content, s, content);
+    await ctx.step(`改写「${d.name}」的「${s.heading}」`, () => ctx.typeInto(d.id, d.content, next));
+    return { summary: `已改写「${d.name}」的章节「${s.heading}」`, actions: [openDocAction(d.id, d.name)], review: docRole(d.name) === 'script' ? { docId: d.id, title: d.name } : null };
+  },
+  async rename_doc(args) { const d = requireDoc(args.id); const name = String(args.name || '').trim(); if (!name) throw new Error('缺少新名称'); const old = d.name; useFiles.getState().renameDoc(d.id, name); const now = findDoc(d.id)!; return { summary: `已把「${old}」重命名为「${now.name}」`, actions: [openDocAction(d.id, now.name)] }; },
+  async delete_doc(args) { const d = requireDoc(args.id); const entry = useFiles.getState().removeDoc(d.id); return { summary: `已删除「${d.name}」，已放入回收站，7 天内可恢复`, actions: entry ? [{ id: 'restore-trash:' + entry.trashId, label: '撤销删除' }] : [] }; },
+  // ---- 媒体 ----
+  async rename_media(args) { const m = requireMedia(args.id); const name = sanitizeName(String(args.name || '')); if (!name) throw new Error('缺少新名称'); const ext = m.name.includes('.') ? m.name.slice(m.name.lastIndexOf('.')) : ''; const finalName = /\.[a-z0-9]{2,5}$/i.test(name) ? name : name + ext; useFiles.getState().updateMedia(m.id, { name: finalName }); return { summary: `已把「${m.name}」重命名为「${finalName}」`, actions: [{ id: 'open-media:' + m.id, label: '查看' }] }; },
+  async tag_media(args) { const m = requireMedia(args.id); const group = sanitizeName(String(args.group || '其他')); useFiles.getState().updateMedia(m.id, { group }); return `已把「${m.name}」归入「${group}」分区`; },
+  async delete_media(args) { const m = requireMedia(args.id); const entry = useFiles.getState().removeMedia(m.id); return { summary: `已删除「${m.name}」，已放入回收站，7 天内可恢复`, actions: entry ? [{ id: 'restore-trash:' + entry.trashId, label: '撤销删除' }] : [] }; },
+  // ---- 项目 ----
+  async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
+  async switch_project(args) { const p = projects.list().find(x => x.id === String(args.id || '')); if (!p) throw new Error(`找不到 id 为「${args.id}」的项目`); projects.switchTo(p.id); return `正在切换到项目「${p.title}」`; },
+  async rename_project(args) { const p = projects.list().find(x => x.id === String(args.id || '')) || projects.active(); const title = String(args.title || '').trim(); if (!title) throw new Error('缺少新名称'); const old = p.title; projects.rename(p.id, title); return `已把项目「${old}」重命名为「${title}」`; },
+};
+
+// ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief' };
+export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
+
+export function describeAction(a: Action): string {
+  const g = a?.args || {}; const docName = (id: unknown) => findDoc(String(id || ''))?.name || String(id || '');
+  const mediaName = (id: unknown) => findMedia(String(id || ''))?.name || String(id || '');
+  switch (a?.tool) {
+    case 'write_doc': { const name = ensureExt(sanitizeName(String(g.name || '未命名')), 'md'); const exists = useFiles.getState().docs.some(d => d.name.toLowerCase() === name.toLowerCase()); return `${exists && g.overwrite ? '重写' : '新建'}文稿「${name}」` + (g.content ? `（约 ${wordCount(String(g.content))} 字）` : ''); }
+    case 'append_doc': return `在「${docName(g.id)}」末尾续写` + (g.content ? `（约 ${wordCount(String(g.content))} 字）` : '');
+    case 'replace_section': return `改写「${docName(g.id)}」的章节「${g.heading || ''}」`;
+    case 'rename_doc': return `把「${docName(g.id)}」重命名为「${g.name || ''}」`;
+    case 'delete_doc': return `删除文稿「${docName(g.id)}」（进回收站，可撤销）`;
+    case 'read_doc': return `读取「${docName(g.id)}」`;
+    case 'open_doc': return `打开「${docName(g.id)}」`;
+    case 'export_doc': return `下载「${docName(g.id)}」`;
+    case 'open_media': return `查看「${mediaName(g.id)}」`;
+    case 'rename_media': return `把「${mediaName(g.id)}」重命名为「${g.name || ''}」`;
+    case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
+    case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;
+    case 'save_brief': return '记录创作纲领';
+    case 'ask_user': return '向你确认几个问题';
+    case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;
+    case 'switch_project': { const p = projects.list().find(x => x.id === String(g.id || '')); return `切换到项目「${p ? p.title : g.id}」（页面会重新加载）`; }
+    case 'rename_project': { const p = projects.list().find(x => x.id === String(g.id || '')) || projects.active(); return `把项目「${p.title}」重命名为「${g.title || ''}」`; }
+    default: return '执行 ' + (a?.tool || '未知操作');
+  }
+}
+
+export function previewAction(a: Action): string {
+  const g = a?.args || {};
+  if (['write_doc', 'append_doc', 'replace_section'].includes(a?.tool) && g.content) {
+    const lines = String(g.content).split('\n').map(l => l.trim()).filter(Boolean);
+    const shown = lines.slice(0, 6).map(l => l.slice(0, 60)); if (lines.length > 6) shown.push(`…（共 ${lines.length} 行）`);
+    return shown.join('\n');
+  }
+  return '';
+}
+
+export function planSteps(plan: Action[]): PlanStep[] {
+  return (Array.isArray(plan) ? plan : []).map(a => ({ tool: a.tool, kind: planKind(a.tool), title: describeAction(a), preview: previewAction(a), destructive: DESTRUCTIVE_TOOLS.has(a.tool), status: 'pending', result: '', logs: [] }));
+}

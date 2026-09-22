@@ -1,0 +1,161 @@
+// ===== 状态仓库（zustand）：文件（文稿 / 媒体 / 回收站 / 纲领 / 界面偏好）、对话、Agent 运行态 =====
+// 文件与对话按项目持久化到 localStorage（键见 projects.key），媒体 blob 在 IndexedDB（storage.ts）。
+import { create } from 'zustand';
+import type { Brief, Chat, Doc, DocKind, MediaItem, Message, Origin, TrashEntry, UiPrefs } from './types';
+import { uid } from './types';
+import { projects } from './projects';
+import { readJSON, writeJSON, putBlob, dataUrlToBlob, cacheUrl } from './storage';
+import { ensureExt, kindFromName, uniqueName, sanitizeName } from './markdown';
+import { migrateLegacyWorkspace } from './migrate';
+import { sampleDocs } from './sample';
+
+const FILES_KEY = projects.key('moodio-files-v1');
+const CHATS_KEY = projects.key('moodio-agent-chats');
+const DEFAULT_UI: UiPrefs = { paneOpen: true, paneWidth: 0, view: 'grid', openId: null, sidebarCollapsed: false };
+
+interface FilesSnapshot { docs: Doc[]; media: MediaItem[]; trash: TrashEntry[]; brief: Brief; ui: UiPrefs; }
+
+let filesNeedSave = false;   // 迁移或示例生成的首份数据要立刻落盘，否则每次刷新都会重新迁移、id 变化
+function loadFiles(): FilesSnapshot {
+  const saved = readJSON<FilesSnapshot | null>(FILES_KEY, null);
+  if (saved && Array.isArray(saved.docs)) return { docs: saved.docs, media: saved.media || [], trash: saved.trash || [], brief: saved.brief || {}, ui: { ...DEFAULT_UI, ...(saved.ui || {}) } };
+  filesNeedSave = true;
+  // 第一次用新版打开这个项目：先把旧版原型的剧本 / 文档 / 资产迁移成文件；没有旧数据的全新项目给一组示例文稿
+  const legacy = migrateLegacyWorkspace(projects.active().id);
+  if (legacy) {
+    const pending = legacy.media;
+    queueMicrotask(async () => { for (const m of pending) { const blob = dataUrlToBlob(m.dataUrl); if (!blob) continue; try { await putBlob(m.meta.id, blob); cacheUrl(m.meta.id, blob); } catch { /* ignore */ } } });
+    return { docs: legacy.docs, media: legacy.media.map(m => m.meta), trash: [], brief: legacy.brief || {}, ui: { ...DEFAULT_UI } };
+  }
+  const fresh = localStorage.getItem('moodio-project-fresh::' + projects.active().id) === '1';
+  try { localStorage.removeItem('moodio-project-fresh::' + projects.active().id); } catch { /* ignore */ }
+  return { docs: fresh ? [] : sampleDocs(), media: [], trash: [], brief: {}, ui: { ...DEFAULT_UI } };
+}
+
+interface FilesState extends FilesSnapshot {
+  addDoc(input: { name: string; content?: string; kind?: DocKind; by?: Origin; chatId?: string | null }): Doc;
+  updateDoc(id: string, patch: Partial<Doc>): void;
+  renameDoc(id: string, name: string): boolean;
+  removeDoc(id: string): TrashEntry | null;
+  addMedia(meta: MediaItem): void;
+  updateMedia(id: string, patch: Partial<MediaItem>): void;
+  removeMedia(id: string): TrashEntry | null;
+  restoreTrash(trashId: string): TrashEntry | null;
+  setBrief(patch: Brief): void;
+  setUi(patch: Partial<UiPrefs>): void;
+  openInPane(id: string | null): void;
+}
+
+let saveTimer = 0;
+function persistFiles(get: () => FilesState) {
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => { const s = get(); writeJSON(FILES_KEY, { docs: s.docs, media: s.media, trash: s.trash, brief: s.brief, ui: s.ui }); projects.touch(); }, 120);
+}
+const pruneTrash = (trash: TrashEntry[]) => trash.filter(e => Date.now() - e.deletedAt < 7 * 864e5).slice(0, 60);
+
+export const useFiles = create<FilesState>((set, get) => ({
+  ...loadFiles(),
+  addDoc({ name, content = '', kind, by = 'user', chatId = null }) {
+    const finalKind = kind || kindFromName(name);
+    const finalName = uniqueName(get().docs.map(d => d.name), ensureExt(sanitizeName(name), finalKind));
+    const doc: Doc = { id: uid('d'), name: finalName, kind: finalKind, content, createdAt: Date.now(), updatedAt: Date.now(), by, chatId };
+    set(s => ({ docs: [doc, ...s.docs] })); persistFiles(get); return doc;
+  },
+  updateDoc(id, patch) {
+    set(s => ({ docs: s.docs.map(d => d.id === id ? { ...d, ...patch, updatedAt: patch.content !== undefined && patch.content !== d.content ? Date.now() : (patch.updatedAt ?? d.updatedAt) } : d) }));
+    persistFiles(get);
+  },
+  renameDoc(id, name) {
+    const doc = get().docs.find(d => d.id === id); if (!doc) return false;
+    const finalName = uniqueName(get().docs.filter(d => d.id !== id).map(d => d.name), ensureExt(sanitizeName(name), doc.kind));
+    set(s => ({ docs: s.docs.map(d => d.id === id ? { ...d, name: finalName, kind: kindFromName(finalName) } : d) })); persistFiles(get); return true;
+  },
+  removeDoc(id) {
+    const doc = get().docs.find(d => d.id === id); if (!doc) return null;
+    const entry: TrashEntry = { trashId: uid('t'), deletedAt: Date.now(), doc };
+    set(s => ({ docs: s.docs.filter(d => d.id !== id), trash: pruneTrash([entry, ...s.trash]), ui: s.ui.openId === id ? { ...s.ui, openId: null } : s.ui }));
+    persistFiles(get); return entry;
+  },
+  addMedia(meta) { set(s => ({ media: [meta, ...s.media.filter(m => m.id !== meta.id)] })); persistFiles(get); },
+  updateMedia(id, patch) { set(s => ({ media: s.media.map(m => m.id === id ? { ...m, ...patch } : m) })); persistFiles(get); },
+  removeMedia(id) {
+    const media = get().media.find(m => m.id === id); if (!media) return null;
+    const entry: TrashEntry = { trashId: uid('t'), deletedAt: Date.now(), media };
+    set(s => ({ media: s.media.filter(m => m.id !== id), trash: pruneTrash([entry, ...s.trash]), ui: s.ui.openId === id ? { ...s.ui, openId: null } : s.ui }));
+    persistFiles(get); return entry;
+  },
+  restoreTrash(trashId) {
+    const entry = get().trash.find(e => e.trashId === trashId); if (!entry) return null;
+    set(s => ({
+      trash: s.trash.filter(e => e !== entry),
+      docs: entry.doc ? [{ ...entry.doc, name: uniqueName(s.docs.map(d => d.name), entry.doc.name) }, ...s.docs] : s.docs,
+      media: entry.media ? [entry.media, ...s.media] : s.media,
+    }));
+    persistFiles(get); return entry;
+  },
+  setBrief(patch) { set(s => ({ brief: { ...s.brief, ...patch, updatedAt: Date.now() } })); persistFiles(get); },
+  setUi(patch) { set(s => ({ ui: { ...s.ui, ...patch } })); persistFiles(get); },
+  openInPane(id) { set(s => ({ ui: { ...s.ui, openId: id, paneOpen: true } })); persistFiles(get); },
+}));
+
+if (filesNeedSave) persistFiles(useFiles.getState);
+
+export const findDoc = (id: string | null | undefined) => (id ? useFiles.getState().docs.find(d => d.id === id) || null : null);
+export const findMedia = (id: string | null | undefined) => (id ? useFiles.getState().media.find(m => m.id === id) || null : null);
+export const findDocByName = (name: string) => { const n = String(name || '').trim().toLowerCase(); return useFiles.getState().docs.find(d => d.name.toLowerCase() === n || d.name.toLowerCase() === n + '.md') || null; };
+
+// ===== 对话 =====
+interface ChatsSnapshot { chats: Chat[]; active: string; }
+function loadChats(): ChatsSnapshot {
+  const saved = readJSON<any>(CHATS_KEY, null);
+  if (saved && Array.isArray(saved.chats) && saved.chats.length) {
+    const chats: Chat[] = saved.chats.map((c: any) => ({ id: String(c.id), title: String(c.title || '新对话'), messages: Array.isArray(c.messages) ? c.messages : [], at: Number(c.at) || Date.now() }));
+    const active = chats.some(c => c.id === saved.active) ? saved.active : chats[0].id;
+    return { chats, active };
+  }
+  const first: Chat = { id: uid('c'), title: '新对话', messages: [], at: Date.now() };
+  return { chats: [first], active: first.id };
+}
+interface ChatsState extends ChatsSnapshot {
+  chat(): Chat;
+  newChat(): Chat;
+  setActive(id: string): void;
+  renameChat(id: string, title: string): void;
+  deleteChat(id: string): void;
+  push(chatId: string, message: Message): void;
+  mutate(fn: (chats: Chat[]) => void): void;   // 原地修改后提交（流式更新用）
+}
+let chatsTimer = 0;
+function persistChats(get: () => ChatsState) {
+  clearTimeout(chatsTimer);
+  chatsTimer = window.setTimeout(() => { const s = get(); writeJSON(CHATS_KEY, { chats: s.chats.slice(0, 60), active: s.active }); }, 120);
+}
+export const useChats = create<ChatsState>((set, get) => ({
+  ...loadChats(),
+  chat() { const s = get(); return s.chats.find(c => c.id === s.active) || s.chats[0]; },
+  newChat() {
+    const current = get().chat();
+    if (current && !current.messages.length) { set({ active: current.id }); return current; }   // 当前已是空对话就直接复用
+    const c: Chat = { id: uid('c'), title: '新对话', messages: [], at: Date.now() };
+    set(s => ({ chats: [c, ...s.chats].slice(0, 60), active: c.id })); persistChats(get); return c;
+  },
+  setActive(id) { if (get().chats.some(c => c.id === id)) { set({ active: id }); persistChats(get); } },
+  renameChat(id, title) { const t = String(title || '').trim(); if (!t) return; set(s => ({ chats: s.chats.map(c => c.id === id ? { ...c, title: t } : c) })); persistChats(get); },
+  deleteChat(id) {
+    set(s => { const chats = s.chats.filter(c => c.id !== id); if (!chats.length) chats.push({ id: uid('c'), title: '新对话', messages: [], at: Date.now() }); return { chats, active: s.active === id ? chats[0].id : s.active }; });
+    persistChats(get);
+  },
+  push(chatId, message) {
+    set(s => ({ chats: s.chats.map(c => c.id === chatId ? { ...c, messages: [...c.messages, message], at: Date.now(), title: c.title === '新对话' && message.role === 'user' ? (message.text.replace(/\s+/g, ' ').slice(0, 24) || '新对话') : c.title } : c) }));
+    persistChats(get);
+  },
+  mutate(fn) { const chats = get().chats; fn(chats); set({ chats: chats.slice() }); persistChats(get); },
+}));
+
+// ===== Agent 运行态（不持久化）=====
+export interface Writing { docId: string; text: string; }
+interface AgentState {
+  busy: boolean; live: string; glow: boolean; writing: Writing | null; abortRequested: boolean; controller: AbortController | null;
+  set(patch: Partial<AgentState>): void;
+}
+export const useAgent = create<AgentState>(set => ({ busy: false, live: '', glow: false, writing: null, abortRequested: false, controller: null, set: patch => set(patch) }));

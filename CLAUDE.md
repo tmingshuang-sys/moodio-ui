@@ -2,91 +2,67 @@
 
 ## 这是什么
 
-Moodio 3.0 的剧本 / 分镜 / 资产创作原型，带内置 AI Agent。零依赖、无框架、无构建步骤的静态页面：
-`Moodio-UI-Refined-Storyboard.html` 只保留页面结构（约 220 行），样式在 `src/styles.css`，
-脚本按功能拆成 `src/01-data.js` … `src/12-effects.js` 共 12 个文件，开发时由 `src/loader.js` 按 `src/manifest.json` 的顺序取回后拼成一段脚本执行，发布时由 `scripts/build.mjs` 拼成 `dist/src/app.js`，
-因此它们共享同一个全局作用域，函数提升在文件之间同样有效（后面文件定义的函数，前面的文件也能在加载期调用）。
-不是 ES module，不要写 import / export；新增文件必须加进 `src/manifest.json`。每个文件的职责见 `src/README.md`。
-浏览器报错时的位置显示为 `moodio-app.js`，按错误附近的 `/* ===== src/xx.js ===== */` 分隔注释找到对应文件。
+Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局）：左侧导航（创作 / 资源 / 创作纲领 / 创作历史）、中间与 Agent 对话、右侧是文件工作区。
+所有产物都是文件：剧本、分镜表、视频生成提示词、人物小传、营销文案等是 Markdown 文稿（.md，也支持 .json / .txt），图片和视频在媒体区单独分区。旧版的剧本稿纸、资产板块、创作画布已整体去掉（保留在分支 `main` / `split-workspace`）。
+
+技术栈：**Vite + React 19 + TypeScript**，状态用 zustand，Markdown 渲染用 react-markdown + remark-gfm，媒体 blob 用 idb-keyval 存 IndexedDB，图标用 lucide-react。没有后端：数据只在浏览器本地（localStorage + IndexedDB）。
 
 目录：
 
-- `Moodio-UI-Refined-Storyboard.html` 页面结构；`src/styles.css` 样式；`src/*.js` 脚本（见 src/README.md）
-- `assets/` 图片等静态资源（样式里用 `../assets/` 引用，构建时整目录复制到 dist/assets）
-- `gateway/` Cloudflare Worker 模型网关（持有模型 API key，对外 OpenAI 兼容接口）
-- `site/` 页面发布配置（静态资源 Worker）
-- `dist/` 发布时临时生成，已 gitignore
-- `package.json` 脚本：`serve`、`gateway:deploy`、`site:deploy`
+- `index.html` 入口；`src/main.tsx` 挂载；`src/App.tsx` 布局（侧栏 | 对话 | 可拖拽分栏的工作区）
+- `src/lib/` 逻辑层：`types.ts` 数据模型；`projects.ts` 项目层（索引 `moodio-projects-v1`，数据键 = 基础键 `::` 项目id）；`store.ts` 状态仓库（`useFiles` 文稿 / 媒体 / 回收站 / 纲领 / 界面偏好，`useChats` 对话，`useAgent` 运行态）；`storage.ts` localStorage / IndexedDB / 下载；`markdown.ts` 章节切分、按标题替换、纯文本、文件名；`guides.ts` 写作规范 / 剧本格式硬规则 / 分镜规范 / 提示词规范；`model.ts` 模型调用（Claude 直连 / OpenAI 兼容，流式）；`migrate.ts` 旧版数据迁移；`sample.ts` 新项目示例文稿；`upload.ts` 上传；`i18n.ts` 中 / EN；`time.ts`
+- `src/lib/agent/`：`tools.ts` 工具层与计划卡步骤；`prompt.ts` 系统提示（MD 约定、文件清单、相关文稿上下文）；`planner.ts` 模型规划、追问、下一步建议；`runner.ts` 回复流程、确认执行、逐步状态、逐行写入、自审
+- `src/components/`：`Sidebar` `ChatPane` `MessageList`（消息、计划卡、追问卡、自审卡、下一步）`Composer` `ResourcePane`（分区网格 / 列表、文稿预览与编辑、媒体预览、拖拽上传）`Dialogs`（确认 / 输入 / 模型设置 / 创作纲领）`Menu` `Toast` `AgentLive`（流光与状态胶囊）
+- `src/styles.css` 全部样式；`public/moodio-logo.png` logo；`*.test.ts` 与源码同目录（Vitest）
+- `gateway/` Cloudflare Worker 模型网关（持有模型 API key，对外 OpenAI 兼容接口）；`site/` 页面发布配置（静态资源 Worker，目录 `dist`）
+- `dist/` 构建产物，已 gitignore；`scripts/postbuild.mjs` 构建后把 index.html 复制一份为旧链接的文件名
 
 线上地址：页面 https://moodio-ui.moodio-ui.workers.dev ，网关 https://moodio-gateway.moodio-ui.workers.dev
 
 ## 运行与验证
 
 ```bash
-python3 -m http.server 8765        # 本地预览，访问 http://127.0.0.1:8765/Moodio-UI-Refined-Storyboard.html
+npm run dev            # Vite 开发服务器 http://localhost:5174（.claude/launch.json 的 moodio-ui 配置）
+npm run check          # tsc --noEmit
+npm test               # vitest run
+npm run build          # vite build → dist/
 ```
 
-不要用 file:// 直接打开，浏览器会拦截模型请求。
+每次改完代码：`npm run check` 和 `npm test` 必须通过；改 UI 后在浏览器里实际看一眼再交付；改 Agent 逻辑后用真实模型发一条消息验证。
 
-每次改完 JS 必须做语法检查：
-
-```bash
-npm run check          # 对 src/*.js 逐个 node --check
-```
-
-改 UI 后在浏览器里实际看一眼再交付；改 Agent 逻辑后用真实模型发一条消息验证。
-
-发布：`npm run site:deploy`（页面）、`npm run gateway:deploy`（网关）。这台电脑上访问 GitHub / Cloudflare 需要代理：
+发布：`npm run site:deploy`（页面）、`npm run gateway:deploy`（网关）。这台电脑上访问 GitHub / Cloudflare / npm 需要代理：
 `export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890`。仓库已设置 `git config http.proxy`。
 
 ## 修改约定
 
-- **样式**：都在 `src/styles.css`。不要改动早期规则，新的覆盖规则追加到文件末尾、带一行中文注释说明用途。品牌渐变用 `var(--brand)`；SVG 线条渐变引用 `#moodio-brand-gradient`。
-- **加载期陷阱**：初始 `render()` 在 src/07 里执行，早于 08–13 的其余顶层语句；此后才初始化的 `const`/`let` 在渲染路径里用 `typeof` 探测也会抛 TDZ 错误。需要被早期渲染路径探测的模块用 `var` 声明（如 `moodioVersions`）。
-- **JS**：先用 `grep -n` 在 `src/` 里定位到具体文件，再用精确字符串替换或小段插入；新增顶层函数放在相关文件里即可，不需要导出。`src/11-agent.js` 里的 `agentWindow` IIFE 内部函数在外部不可见。
-- **Agent 执行前必须确认**：`reply()` 只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。例外：`NO_CONFIRM_TOOLS`（read_doc / open_doc / locate_scene）直接执行，read_doc 的结果会交回模型再规划一轮。`DESTRUCTIVE_TOOLS`（delete_doc / delete_scene / delete_shot）在计划里标 ⚠，确认按钮显示删除计数；delete_doc 进 `state.trash`（7 天），结果里带「撤销删除」按钮。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`previewAction()`（如有内容预览）、`remotePlan()` 的系统提示，以及必要时 `NO_CONFIRM_TOOLS` / `DESTRUCTIVE_TOOLS`。
-- **Agent 上下文**：`remotePlan()` 通过 `briefText()` 注入项目级创作纲领（`state.brief`，✦ 菜单里填写），通过 `agentInventoryText()` 把文档清单（含 id）、剧本场次、镜头、资产、剧集、项目塞给模型；模型只能引用清单里的 id，找不到要反问。
-- **剧本上下文**：不再只给最近 40 段。`remotePlan()` 注入全部场次的一句话梗概（`sceneSummaryLines()`，缓存在 `file.sceneSummaries[场景块id]={hash,text}`，内容变了才用模型重算，`refreshSceneSummaries()` 在规划前和 Agent 执行后调用，无模型时用本地摘要）+ 与请求相关的场次全文（`relevantSceneText()`：提到的场次号、提到的人物出现的场、最后一场，最多 3 场 / 70 段）+ 请求里提到的资产卡（`mentionedAssetText()`）。另有 `read_asset` 工具供模型按需读人物卡。
-- **写完自审与模型分工**：写作类工具（write_script / rewrite_scene / insert_scene）返回 `review:{fileId,sceneNo}`，`executePlan()` 执行完调用 `selfReview()` 用写作模型按当前类型的自查清单审读，结果存在消息的 `review` 字段并由 `reviewHtml()` 渲染（含「按自审建议修改这一场」按钮，action `review-fix:`）。`isCreativeRequest()` 命中的请求在 `remotePlan()` 里改用 `writerCfg()`（设置里的写作模型与写作思考模式，留空则同默认模型）。
-- **格式硬规则**：`src/15-script-rules.js` 的 `MOODIO_SCRIPT_RULES`（两种排版的场景标题正则、虚写 / 不可拍 / 镜头术语词表），`formatRulesText()` 注入提示，`lintScriptBlocks()` 校验。Agent 的 write_script / rewrite_scene / insert_scene 写入前经 `lintAndFix()`：不合规就把问题清单发回模型修正，最多两轮，剩余问题写进结果。当前剧本的格式问题只在 Agent 对话框显示（`refreshAgentFormatNotice()`），点击定位原文，无问题时隐藏，不追加聊天历史；侧栏只保留导航。词表调整只改 15 文件。
-- **分镜识别的纠错与质量**（src/16-shot-rules.js + src/11 `analyzeWorkflow()` / `executeWorkflow()`）：分析输入带上已有镜头（`workflowExistingShots()`）、资产卡、用户改过的镜头样例（`state.shotStyleSamples`，由 `recordShotStyleSample()` 在用户改 Agent 写的镜头时记录），系统提示注入 `shotGuideText(state.brief?.format)` 与纲领，用写作模型；模型先出 `scene_plans`（每场意图 / 节拍 / 覆盖方案）再出结构化 `shots`（size / angle / movement / duration / description / purpose / dialogue，`normalizeShotFields()` 规整成 camera + tags）。规整后 `lintShotDrafts()`（覆盖 / 定场 / 跨段 / 字段 / 数量），有 error 就把清单发回模型修一轮；再 `precheckShotDrafts()` 标 新增 / 重复 / 待确认（重复与待确认默认不勾选），卡片显示镜头策略、预检徽标、规则提示，确认按钮文案由 `confirmLabel()` 生成。写完调用 `reviewWorkflowShots()` 复核（错配 / 遗漏 / 不可拍），结果存 `w.review`，「按复核建议修改镜头」走 `review-fix` 动作发 update_shot 请求。对话路径 `create_shots` 同样预检：段落 id 找不到不再猜、重复跳过、支持结构化字段。
-- **写作规范**：`src/14-writing-guides.js` 的 `MOODIO_WRITING_GUIDES` 按类型（series / film / short / ad / other）给出结构、格式、对白与节奏、自查清单，`writingGuideText()` 只注入当前纲领类型那一份。多场内容分两轮：先大纲后逐场。
-- **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染问题卡片（`questionsHtml()`，消息字段 `questions` / `answers` / `questionsUsed`），不执行其他动作；点选答案只更新原卡片（`refreshQuestionSelection()`），不重绘聊天框、不滚动、不自动发送，点击「发送回答」后才提交。用户给出的纲领信息由 `save_brief` 记录。
-- **下拉菜单动效**：由 JS 开合的菜单（剧集 / 剧本格式 / 资产切换 / 文件右键 / 云文档块菜单）统一走 `moodioMenuFx`（src/00-menu-motion.js）：先摆位、移除 hidden，再 `open(menu)`；关闭用 `close(menu, () => menu.classList.add('hidden'))`，判断是否打开用 `isOpen(menu)`（收起中途视为已关闭）。随 render 重建的菜单（标签、媒体、画布操作、云文档小弹层）只用 styles.css 末尾的关键帧入场。新增下拉菜单沿用同一套。
-- **界面语言（中 / EN）**：`src/17-i18n.js` 的 `moodioI18n`。不改各处代码：渲染后用 MutationObserver 按词典 `MOODIO_I18N_EN`（精确）和 `MOODIO_I18N_PATTERNS`（带数字 / 名称的正则）把系统文案替换成英文，并记住原文以便切回中文；可编辑区、输入控件、模型正文（用户内容）不动。右上角 `#lang-toggle` 切换，偏好存 localStorage `moodio-lang`。**新增系统文案时在词典里补一条**（带数字的用正则）。
-- **不显示模拟鼠标**：显式化操作只用元素高亮与逐行写入。执行期间（`executePlan()`、`executeWorkflow()`、`reply()` 里免确认工具的自动执行）通过 `agentGlow(true/false)` 在工作区表面盖一层淡蓝紫流光 `#agent-glow`（z-index 460，在 Agent 面板之下，不可点击），同时 `agentExecMode()` 收起对话面板、把状态胶囊 `#agent-live` 变成吉祥物旁的气泡（`.as-bubble`，`positionLiveBubble()` 按 `#agent-fab` 定位、带小三角）；`agentEnd()` 关掉流光、气泡复原，面板若执行前是开着的就重新打开。
-- **模型调用**只经过 `callOpenAI()` / `callClaude()`；两者都支持 `{signal,onText,onReasoning}` 流式回调。OpenAI 兼容通道按 `cfg.thinking` 发送 DeepSeek 的 `thinking` / `reasoning_effort`。
-- **密钥**：任何 API key 不得进入仓库、备份文件或对话；页面里的 key 只存 localStorage `moodio-agent-model`（备份时跳过）。
-- **数据**：多项目。索引在 localStorage `moodio-projects-v1`；每个项目的工作区在 `moodio-ui-refined-storyboard-v1::<项目id>`，对话在 `moodio-agent-chats::<项目id>`（键由 `moodioProjects.key()` 生成，见 src/00-projects.js）；媒体在 IndexedDB `moodio-cdoc-media`（全局）；文档快照在 IndexedDB `moodio-versions`（按项目和文档索引，见 src/13-versions.js：每 2 分钟自动、Agent 执行前后、恢复前，内容相同不重复，每文档最多 100 条，自动快照 30 天后清理；只作安全网，UI 不展示）。**文档版本**：每类文档（空白页面按 lineageId）最新一份可编辑、自动保存，旧版本只读（稿纸顶部只读栏，可「恢复为最新版本」= 用旧版内容覆盖最新版）；新建版本只由用户点「新建版本」或明确要求 Agent（create_version）。`persistWorkspace()` 是唯一的保存入口。切换 / 新建项目会整页重新加载；新建的项目通过 `moodio-project-fresh::<id>` 标记在首次加载时重置为空白（逻辑在 src/08 的 episodes 闭包末尾）。
+- **状态**：只通过 zustand 仓库改数据（`useFiles` / `useChats` / `useAgent`），仓库自己负责持久化（文件 `moodio-files-v1::<项目id>`，对话 `moodio-agent-chats::<项目id>`，媒体 blob IndexedDB `moodio-media`）。组件里用 hook 选择需要的字段；逻辑层用 `useX.getState()`。流式更新对话用 `useChats.getState().mutate(fn)` 原地改后提交。
+- **Agent 执行前必须确认**：`reply()`（runner.ts）只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。例外：`NO_CONFIRM_TOOLS`（read_doc / open_doc / open_media / export_doc / save_brief）直接执行，read_doc 的结果交回模型再规划一轮（最多四轮）。`DESTRUCTIVE_TOOLS`（delete_doc / delete_media）在计划卡里标「删除」，确认按钮显示删除计数；删除进回收站 7 天，结果里带「撤销删除」。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`previewAction()`、`PLAN_KIND`、`buildSystemPrompt()` 里的工具说明，必要时 `NO_CONFIRM_TOOLS` / `DESTRUCTIVE_TOOLS`。
+- **写入文稿的显式化**：写作类工具（write_doc / append_doc / replace_section）不直接改内容，而是调 `ctx.typeInto(docId, from, to)`：在右侧工作区打开该文稿、逐行显示变化的部分（`useAgent.writing`），完成后再提交；期间工作区盖流光（`AgentLive`）、状态胶囊显示「写入第 k/n 行」、左侧计划卡逐步更新。
+- **文稿约定**（模型与工具都遵守，见 prompt.ts）：剧本每场一个 `## INT./EXT. 地点 - 时间`，对白 `**人物**` 独占一行；分镜表是固定列的 Markdown 表格；提示词一镜一份 `视频生成Prompt-01.md`；人物在 `人物小传.md` 每人一个二级标题。改已有文稿优先 `replace_section` / `append_doc`，整份重写才 `write_doc` + `overwrite`。`docRole(name)` 按文件名判断类别，剧本类写完会用写作模型自审（`selfReview`），结果渲染成自审卡。
+- **上下文注入**：`buildSystemPrompt()` 注入文件清单（含 id）、`relevantDocs()`（打开中的文稿、请求里提到的文件名、按请求类型自动补的剧本 / 分镜 / 人物文稿，总量约 16k 字）、创作纲领、当前类型的写作规范；提到分镜 / 提示词 / 剧本时分别加分镜规范 / 提示词规范 / 格式硬规则。模型只能引用清单里的 id，找不到要反问。
+- **追问协议**：系统提示里的「意图澄清协议」要求创意类请求信息不足时先用 `ask_user`（最多 3 问、给选项）；`reply()` 遇到 ask_user 只渲染追问卡（消息字段 `questions` / `answers` / `questionsUsed`），点选答案只改选中态，点「发送回答」才提交。纲领信息由 `save_brief` 记录。
+- **模型调用**只经过 `model.ts` 的 `callModel()`（内部按 provider 走 `callClaude` / `callOpenAI`），支持 `{signal,onText,onReasoning}`。密钥只存 localStorage `moodio-agent-model`，任何 API key 不得进入仓库或对话。创意类请求（`isCreativeRequest`）用写作模型 `writerCfg()`。
+- **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，品牌渐变 `var(--brand)`；新规则追加到对应区块或文件末尾并加中文注释。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
+- **界面语言**：系统文案用 `useT()` / `t()`（i18n.ts 的 `EN` 词典），用户内容与模型正文不翻译。新增系统文案时在词典里补一条。
+- **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；由「新建项目」建的项目（`moodio-project-fresh::<id>` 标记）为空白。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`。
-- **不要编辑** `~/Downloads` 里的旧副本；不要把 `dist/`、`node_modules/`、`.wrangler/` 提交进仓库。
+- **不要提交** `dist/`、`node_modules/`、`.wrangler/`；不要编辑 `~/Downloads` 里的旧副本。
 
-## 代码地标（在 src/ 里 grep 函数名）
+## 代码地标
 
 | 功能 | 入口 |
 |---|---|
-| 全局重绘 | `function render()` |
-| 首页（顶栏 logo / 返回项目列表） | 参考正式版首页：左侧栏（素材库 / 项目）+ 主区，`state.homeView` = agent（问候语 + 居中输入框）/ projects（项目总览，「新建项目」直接建项目并重载进剧本工作区）/ library（当前项目的人物 / 场景 / 道具）。`state.projectPage==='home'`：src/06 的 render 覆盖切 `body.home-page` 与 `#home-surface`，并调用 `renderHomePage()`（src/18）；面板首页模式 `agentHomeMode()`（src/11：把 `#agent-panel` 搬进 `#home-agent-slot`，无对话时只露输入框，有消息或看历史时 `body.home-chatting` 铺满整页盖住侧栏；离开首页搬回 body）；样式在 styles.css 末尾「首页」段 |
-| 保存 / 新建剧集 | `persistWorkspace()`、`freshWorkspace()` |
-| 封面页 | `renderCover()`（空白封面用 `file.blank` 与 `data-placeholder`） |
-| 资产侧栏 | `.project-rail`，`alignAssetsRail()` 已改为固定内边距 |
-| Agent 面板 | `(function agentWindow(){ ... })()` |
-| 聊天规划 | `remotePlan()`（模型）、`localPlan()`（本地回退）、`partialPlanMessage()`（流式取 message） |
-| 计划卡 / 执行卡 | `planSteps()` 把待确认的 actions 变成步骤（标题 `describeAction()`、预览 `previewAction()`、图标 `PLAN_KIND`），`planHtml()` 按消息字段 `plan`{steps,state} 渲染：pending / confirmed / cancelled（后两者折叠）/ running / reviewing / done / stopped / error；`runActions(actions,req,steps)` 逐步标 running → done / failed / skipped，`agentLog()` 把子步骤挂到当前步骤；执行记录存消息字段 `log`，由 `planLogHtml()` 折叠显示。新增工具时可在 `PLAN_KIND` 里补图标类别（缺省为圆点） |
-| 执行工具 | `AGENT_TOOLS`：追问 ask_user / save_brief；读取 read_asset / read_doc / open_doc / locate_scene；文档 create_doc / rename_doc / duplicate_doc / delete_doc；剧本 write_cover / write_script / rewrite_scene / insert_scene / delete_scene / move_scene；镜头 create_shots / update_shot / delete_shot / move_shot / create_chunk；资产 create_asset / update_asset / merge_assets / delete_asset；剧集 create_episode / switch_episode / rename_episode（通过 `episodesApi`，定义在 src/08）；项目 create_project / switch_project / rename_project（`moodioProjects`）；版本 list_versions / restore_version / create_version（文档版本链，见 src/08）；导出 export_docs / export_backup |
-| 文档版本 | 侧栏文件夹展开区（src/08 `renderWritingFolders()`）：`docVersionsOf()` / `latestVersionOf()` / `isHistoricalFile()`；恢复 `restoreVersionToLatest()`（入口 `data-version-restore-file`，确认弹窗 `data-version-restore-confirm`）；新建 `createVersionFromCurrent()`；历史稿纸只读由 `applyHistoricalReadonly()` 包在 render 上 |
-| 内容快照（安全网） | `moodioVersions`（src/13）：`snapshot()` / `snapshotAll()` / `restore()` / `restoreFromFile()`，只给 Agent 执行前后与恢复前留底，不在侧栏展示 |
-| 回收站 | `state.trash`，文档用 `trashPut()`、资产用 `trashPutAsset()`，`trashRestore()` 统一恢复；入口是消息里的 `restore-trash:` 按钮 |
-| 识别分镜 / 资产工作流 | `agentWorkflowClient`、`analyzeWorkflow()`、`executeWorkflow()` |
-| 模型设置对话框 | `[data-agent-model-settings]` 处理器，`PROVIDER_DEFAULTS` |
-| 吉祥物气泡 | `agentHintController`（约 10 秒一轮） |
-| 渐变聚焦光圈 / 渐变光标 | `#gradient-focus-ring`、`#gradient-caret` 两个 IIFE |
-| 项目备份 | `buildProjectBackup()`、`applyProjectBackup()`，入口在导出窗口底部 |
-| 导出文档 | `openExportDialog()`；Word `downloadDocuments()`、PDF `exportPdfDocuments()`（把 `exportPaperMarkup()` 的稿纸放进 `.pdf-export-stage` 离屏渲染，与页面同一套样式；按叶子块分页不切行，html2canvas 逐页栅格化写入 jsPDF A4；两个库只在首次导出 PDF 时从 cdnjs 加载，是零依赖原则的唯一例外）、文本 `downloadTextDocuments()` |
-| 通用对话框 | `openFlowDialog()` / `closeFlowDialog()` / `flowButton()`。**弹窗规范**（以「导入文档到哪个板块」为准）：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、两列卡片只显示名称（不放名称下的说明文字）、底栏 14/22 按钮靠右；非 flow 的弹窗（导出窗口）用样式对齐到同样尺寸 |
+| 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle` |
+| 发送 / 回复 / 确认执行 | `runner.ts`：`send()` → `reply()`；`executePlan()` / `cancelPlan()`；`runActions()` 逐步标状态；`stopAgent()` |
+| 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / create_project / switch_project / rename_project）、`planSteps()` |
+| 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
+| 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`、拖拽上传；上传逻辑 `upload.ts` |
+| 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、创作历史按今天 / 昨天 / 更早分组、底部设置菜单（模型设置 / 语言） |
+| 弹窗 | `Dialogs.tsx`：`confirmDialog()` / `promptDialog()` / `openModelSettings()` / `openBrief()` |
+| 模型 | `model.ts`：`modelCfg()` / `saveModelCfg()` / `PROVIDER_DEFAULTS` / `probeModel()` / `parsePlanJSON()` / `partialPlanMessage()` |
 
 ## 已知限制
 
-- 单文件、全局 state、整体 innerHTML 重绘；流式回复靠 `renderAgentSoon()` 按帧合并。
-- textarea（Agent 输入框、分镜描述）无法使用渐变光标，只有 contenteditable 区域可以。
-- 数据只在浏览器本地，多端同步和登录尚未实现；下一阶段计划见 README。
+- 数据只在浏览器本地，多端同步和登录尚未实现；分享按钮是占位。
+- 图片 / 视频只能上传，Agent 还不能生成媒体；语音输入未做。
+- 剧本格式校验只做轻量提示（`lintScriptMarkdown`），不再退回模型自动修正。
