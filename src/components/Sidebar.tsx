@@ -6,12 +6,13 @@ import { projects } from '../lib/projects';
 import { startCreation, switchProject, deleteCreation, otherProjectsHistory, chatCount, renameHistoryChat, deleteHistoryChat } from '../lib/session';
 import type { HistoryEntry } from '../lib/session';
 import { dayGroup } from '../lib/time';
+import { useLayout, NAV_MIN } from '../lib/layout';
 import { useT, useLang } from '../lib/i18n';
 import { openMenuAt } from './Menu';
 import { confirmDialog, promptDialog, openModelSettings } from './Dialogs';
 import { toast } from './Toast';
 import { modelCfg, modelLabel } from '../lib/model';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 
 export default function Sidebar() {
   const t = useT(); const lang = useLang(s => s.lang); const toggleLang = useLang(s => s.toggle);
@@ -19,6 +20,19 @@ export default function Sidebar() {
   const setActive = useChats(s => s.setActive);
   const ui = useFiles(s => s.ui); const setUi = useFiles(s => s.setUi);
   const page = useNav(s => s.page); const go = useNav(s => s.go);
+  // 侧栏宽度与导航区高度：全局偏好，拖右缘改宽度，拖创作历史上方的分界线改导航区高度（都可双击复位）
+  const navHeight = useLayout(s => s.navHeight); const setSidebarWidth = useLayout(s => s.setSidebarWidth); const setNavHeight = useLayout(s => s.setNavHeight); const resetLayout = useLayout(s => s.reset);
+  const asideRef = useRef<HTMLElement>(null); const navRef = useRef<HTMLElement>(null);
+  const drag = (e: React.PointerEvent, onMove: (ev: PointerEvent) => void) => {
+    e.preventDefault();
+    const up = () => { document.removeEventListener('pointermove', onMove); document.removeEventListener('pointerup', up); document.body.classList.remove('is-resizing'); };
+    document.body.classList.add('is-resizing'); document.addEventListener('pointermove', onMove); document.addEventListener('pointerup', up);
+  };
+  const onResizeDown = (e: React.PointerEvent) => { const left = asideRef.current?.getBoundingClientRect().left || 0; drag(e, ev => setSidebarWidth(ev.clientX - left)); };
+  const onSplitDown = (e: React.PointerEvent) => {
+    const top = navRef.current?.getBoundingClientRect().top || 0; const asideH = asideRef.current?.getBoundingClientRect().height || 800;
+    drag(e, ev => setNavHeight(Math.max(NAV_MIN, ev.clientY - top), Math.max(NAV_MIN, asideH - 260)));
+  };
   const busy = useAgent(s => s.busy);
   const [version, bump] = useState(0);
   useEffect(() => projects.subscribe(() => bump(x => x + 1)), []);
@@ -60,18 +74,19 @@ export default function Sidebar() {
 
   const collapsed = ui.sidebarCollapsed;
   return (
-    <aside className={`sidebar${collapsed ? ' collapsed' : ''}`} aria-label="导航">
+    <aside ref={asideRef} className={`sidebar${collapsed ? ' collapsed' : ''}`} aria-label="导航">
       <div className="sb-head">
         <button type="button" className="sb-logo" onClick={() => { go('chat'); startCreation(); }} title={t('返回主页')}>
           <img src="./moodio-logo.svg" alt="" /><span className="sb-brand">Moodio</span>
         </button>
         <button type="button" className="icon-btn" onClick={() => setUi({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? '展开侧栏' : '收起侧栏'} title={collapsed ? '展开侧栏' : '收起侧栏'}><PanelLeft size={18} /></button>
       </div>
-      <nav className="sb-nav" aria-label="板块">
+      <nav className="sb-nav" aria-label="板块" ref={navRef} style={navHeight ? { minHeight: navHeight } : undefined}>
         <button type="button" className={`sb-item${page === 'chat' && !chats.find(c => c.id === active)?.messages.length ? ' active' : ''}`} onClick={() => { go('chat'); startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
         {/* 资源 = 素材库页面：所有创作里生成 / 上传的图片与视频 */}
         <button type="button" className={`sb-item${page === 'library' ? ' active' : ''}`} onClick={() => go('library')} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
       </nav>
+      {!collapsed && <div className="sb-split" role="separator" aria-orientation="horizontal" aria-label="调整创作历史的位置" title="拖动调整，双击复位" onPointerDown={onSplitDown} onDoubleClick={() => resetLayout('nav')} />}
       {!collapsed && (
         <div className="sb-history">
           <div className="sb-history-head"><span>{t('创作历史')}</span></div>
@@ -100,6 +115,7 @@ export default function Sidebar() {
           </div>
         </div>
       )}
+      {!collapsed && <div className="sb-resize" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" title="拖动调整，双击复位" onPointerDown={onResizeDown} onDoubleClick={() => resetLayout('sidebar')} />}
       <div className="sb-foot">
         <button type="button" className="sb-user" onClick={e => openSettingsMenu(e.currentTarget)} title={modelLabel(modelCfg())}>
           <span className="sb-avatar">T</span><span className="sb-user-name">Thomas</span>

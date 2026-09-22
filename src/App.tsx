@@ -9,6 +9,7 @@ import { MenuHost } from './components/Menu';
 import { DialogHost } from './components/Dialogs';
 import AgentLive from './components/AgentLive';
 import { useFiles, useNav } from './lib/store';
+import { useLayout } from './lib/layout';
 import { resumeOnLoad } from './lib/session';
 import { useLang } from './lib/i18n';
 
@@ -40,11 +41,12 @@ export default function App() {
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
   };
 
-  const total = mainRef.current?.getBoundingClientRect().width || Math.max(900, window.innerWidth - (ui.sidebarCollapsed ? 64 : 280));
+  const sidebarWidth = useLayout(s => s.sidebarWidth);
+  const total = mainRef.current?.getBoundingClientRect().width || Math.max(900, window.innerWidth - (ui.sidebarCollapsed ? 64 : sidebarWidth));
   const width = paneWidth(total);
 
   return (
-    <div className={`app${ui.sidebarCollapsed ? ' sidebar-collapsed' : ''}${paneOpen ? ' pane-open' : ''}`}>
+    <div className={`app${ui.sidebarCollapsed ? ' sidebar-collapsed' : ''}${paneOpen ? ' pane-open' : ''}`} style={{ ['--sidebar' as string]: `${sidebarWidth}px` }}>
       <Sidebar />
       <main className="main" ref={mainRef}>
         {page === 'library' ? <Library /> : <ChatPane />}
