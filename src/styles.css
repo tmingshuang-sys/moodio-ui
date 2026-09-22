@@ -646,7 +646,7 @@ button.lg-chip-btn:hover { color: var(--ink); }
 /* 首页（还没选类型、没有消息）：对话框放画面中间，四个类型卡排成一行缩小放在它下面，整体居中 */
 .chat-body.is-home { display: flex; flex-direction: column; justify-content: center; }
 .chat-empty.home { width: 100%; max-width: 880px; padding: 0 12px 6vh; }
-.chat-empty.home .composer-wrap { max-width: none; padding: 0; margin-top: 22px; }
+.chat-empty.home .composer-wrap { max-width: none; padding: 0; margin-top: 44px; }   /* 问候语与对话框之间留开一点，问候语整体往上 */
 .chat-empty.home .composer-tip { text-align: left; }
 .format-picker.home { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px auto 0; max-width: none; }
 .format-picker.home button { flex: 0 0 auto; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 8px 14px; font-size: 13px; border-radius: 10px; white-space: nowrap; }

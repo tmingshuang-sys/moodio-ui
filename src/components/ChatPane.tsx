@@ -89,7 +89,6 @@ export default function ChatPane() {
         {messages.length ? <MessageList chat={chat} /> : (
           <div className={`chat-empty${home ? ' home' : ''}`}>
             <h1 className="greeting">{t('很高兴见到你')}，<em>Thomas</em></h1>
-            <p className="greeting-sub">{t('想做什么？')}{t('选一个类型，回答几道题，剩下的交给 Agent；也可以直接在下面说。')}</p>
             {home ? <><Composer /><FormatPicker home /></> : (
               <div className="suggestions">
                 {SUGGESTIONS.map(s => <button key={s.label} type="button" onClick={() => void send(s.prompt)}><Sparkles size={14} />{s.label}</button>)}
