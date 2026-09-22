@@ -10,6 +10,8 @@ import type { Skill, QuestionDef, StageId } from './skills';
 import { lintClips, parseSeconds, CLIP_DOC_RE } from './lint';
 import { docRole } from './markdown';
 import { currentVideoModel, effectivePreset } from './mediagen';
+import { projects, NEW_PROJECT_TITLE } from './projects';
+import { BRIEF_FORMATS } from './guides';
 
 export type Checkpoint = 'script' | 'assets' | 'prompts' | 'deliver';
 export const CHECKPOINTS: Checkpoint[] = ['script', 'assets', 'prompts', 'deliver'];
@@ -159,6 +161,11 @@ export function applyAnswersToBrief(record: Record<string, string>) {
   const skill = skillFor(brief!.format); const patch: Record<string, string> = {};
   for (const q of [...skill.general, ...skill.modeling]) { const bk = briefKeyOf(q); const v = record[q.key]; if (bk && v && !has((brief as any)[bk])) patch[bk] = v; }
   if (Object.keys(patch).length) useFiles.getState().setBrief(patch);
+  // 创作还叫「新创作」时按类型和主题起名：广告 · 实物产品 / 故事片 · 一个不肯回家的人…
+  const subject = record.subject || record.theme || record.song || record.topic || record.goal || record.genre || record.kind || '';
+  const name = `${BRIEF_FORMATS[brief!.format!] || '创作'}${subject ? ' · ' + String(subject).replace(/\s+/g, ' ').slice(0, 18) : ''}`;
+  if (projects.active().title === NEW_PROJECT_TITLE) projects.rename(projects.active().id, name);
+  const chat = useChats.getState().chat(); if (chat.title === '新对话') useChats.getState().renameChat(chat.id, name);
 }
 
 // 一键模式：每轮结束后由导演决定是否自动发出下一步；同一提示连续两次没推进就停，检查点必停

@@ -164,7 +164,7 @@ export const useChats = create<ChatsState>((set, get) => ({
     const named = { title: '' };
     set(s => ({ chats: s.chats.map(c => {
       if (c.id !== chatId) return c;
-      const title = c.title === '新对话' && message.role === 'user' ? (message.text.replace(/\s+/g, ' ').slice(0, 24) || '新对话') : c.title;
+      const title = c.title === '新对话' && message.role === 'user' && !message.display ? (message.text.replace(/\s+/g, ' ').slice(0, 24) || '新对话') : c.title;   // 问卷提交（有 display）不拿来当标题，由导演按类型和主题命名
       if (title !== c.title) named.title = title;
       return { ...c, messages: [...c.messages, message], at: Date.now(), title };
     }) }));
