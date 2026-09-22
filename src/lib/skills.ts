@@ -7,7 +7,7 @@ import { BRIEF_FORMATS } from './guides';
 
 export type StageId = 'brief' | 'model' | 'script' | 'assets' | 'storyboard' | 'prompts' | 'video' | 'deliver';
 export interface StageDef { id: StageId; name: string; goal: string; outputs: string; gate: string; }
-export interface QuestionDef extends Question { key: string; briefKey?: 'duration' | 'ratio' | 'audience' | 'tone' | 'platform'; }   // briefKey：答案同时写进创作纲领的哪个字段
+export interface QuestionDef extends Question { key: string; briefKey?: 'duration' | 'ratio' | 'audience' | 'tone' | 'platform' | 'visualStyle'; }   // briefKey：答案同时写进创作纲领的哪个字段
 export interface Skill {
   id: string; name: string; title: string;
   modelTemplate?: string;       // 建模文稿的冻结格式（只在建模阶段注入）
@@ -327,6 +327,8 @@ const withBrief = (q: QuestionDef, briefKey: QuestionDef['briefKey']): QuestionD
 // 答案映射到纲领：时长 / 画幅 / 受众直接对应，风格 / 题材 / 情绪 / 内容类型对应「调性」
 const BRIEF_KEY_BY_QUESTION: Record<string, QuestionDef['briefKey']> = { duration: 'duration', ratio: 'ratio', audience: 'audience', style: 'tone', genre: 'tone', mood: 'tone', kind: 'tone', mvStyle: 'tone', goal: 'tone' };
 export function briefKeyOf(q: QuestionDef): QuestionDef['briefKey'] | undefined { return q.briefKey || BRIEF_KEY_BY_QUESTION[q.key]; }
+// 画风是所有类型通用的纲领题：答案回写纲领 visualStyle，参考图提示词与质检门禁都以它为准（默认写实真人）
+const LOOK_QUESTION = (): QuestionDef => withBrief(single('look', '画风走哪种？', [opt('写实真人', '真人实拍质感，不卡通'), opt('3D 动画', '皮克斯那种'), opt('2D 手绘 / 插画'), opt('其他 / 我来描述')], 0), 'visualStyle');
 
 // 通用阶段骨架；每个技能只改建模阶段的名字与目标
 function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; clipSeconds: number }): StageDef[] {
@@ -498,6 +500,7 @@ export const SKILLS: Record<string, Skill> = {
     clipSeconds: 10,
   },
 };
+for (const s of Object.values(SKILLS)) { if (!s.general.some(q => q.key === 'look')) s.general.splice(Math.min(1, s.general.length), 0, LOOK_QUESTION()); }
 
 export function skillFor(format?: string): Skill {
   const s = SKILLS[String(format || '')] || SKILLS.other;

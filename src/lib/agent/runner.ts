@@ -12,6 +12,7 @@ import { docRole, splitLines } from '../markdown';
 import { toast } from '../../components/Toast';
 import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
+import { styleBaseline } from '../guides';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
 import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, recommendedAnswers } from '../director';
 import { findMedia } from '../store';
@@ -209,7 +210,7 @@ export async function executePlan(key: string, messageAt: number) {
     if (touchedClips && !aborted()) { try { out.lint = await lintFixRounds(c.id, p.text); } catch (e) { console.warn('片段校验修正失败', e); } }
     // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
     const images = run.artifacts.filter(a => a.kind === 'image');
-    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal, skillFor(useFiles.getState().brief?.format).imageQA); } catch (e) { console.warn('参考图质检失败', e); } }
+    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal, `${skillFor(useFiles.getState().brief?.format).imageQA || ''}画风基线：${styleBaseline(useFiles.getState().brief?.visualStyle)}——这一创作的所有参考图必须是同一种画风，人物是真人却出成卡通 / 3D / 插画（或反过来）一律判「需重生成」。`); } catch (e) { console.warn('参考图质检失败', e); } }
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });

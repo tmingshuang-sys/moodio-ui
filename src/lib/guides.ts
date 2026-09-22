@@ -1,5 +1,14 @@
 // ===== 写作规范 / 剧本格式硬规则 / 分镜规范：按创作纲领的类型注入 Agent 提示（从旧版 14 / 15 / 16 移植） =====
 export const BRIEF_FORMATS: Record<string, string> = { ad: '广告', film: '故事片', series: '剧集', short: '短片 / 短视频', mv: 'MV', other: '其他' };
+// 画风基线：纲领的 visualStyle 归一成一句中英双语的画风约束，附在每张参考图提示词末尾、也进质检门禁；没选就按写实真人
+export const DEFAULT_LOOK = '写实真人';
+export function styleBaseline(visualStyle?: string): string {
+  const v = String(visualStyle || '').trim();
+  if (!v || /写实|真人|实拍|photo/i.test(v)) return '写实真人摄影，真实皮肤纹理与毛孔，不磨皮，不卡通、不 3D 渲染、不插画（photorealistic photograph, real skin texture, not cartoon, not 3D render, not illustration）';
+  if (/3D|三维|皮克斯|动画/i.test(v)) return '3D 动画渲染，皮克斯质感，全片同一套角色造型比例（3D animated render, Pixar-like, consistent character proportions）';
+  if (/手绘|2D|插画|漫画|水彩/i.test(v)) return '2D 手绘插画，统一线条与上色方式（2D hand-drawn illustration, consistent line and coloring）';
+  return `${v}（全部参考图保持同一画风 / keep every reference in this exact style）`;
+}
 export const BRIEF_FIELDS: [string, string][] = [['format', '类型'], ['duration', '时长'], ['platform', '平台'], ['ratio', '画幅'], ['audience', '受众'], ['tone', '调性'], ['references', '参考作品'], ['visualStyle', '视觉风格'], ['taboos', '禁忌'], ['notes', '备注']];
 export const BRIEF_KEY_FIELDS = ['format', 'duration', 'audience', 'tone'];
 

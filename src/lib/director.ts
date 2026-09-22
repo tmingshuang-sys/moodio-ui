@@ -99,10 +99,10 @@ export function nextStep(): NextStep {
     }
     case 'assets': {
       const ents = ledger?.entities || []; const required = requiredEntities(ledger);
-      if (!ents.length) return { ...base, kind: 'agent', label: '列实体并生成参考图', detail: cur.goal, prompt: `进入素材检查：列出脚本里需要参考图的实体（${skill.entities.join(' / ')}），按契约处理产品图 / 人物图，先把实体写进台账 entities，再生成参考图；生成完把参考图 id 写进对应实体的 ref。` };
+      if (!ents.length) return { ...base, kind: 'agent', label: '列实体并生成参考图', detail: cur.goal, prompt: `进入素材检查：列出脚本里需要参考图的实体（${skill.entities.join(' / ')}），按契约处理产品图 / 人物图，先把实体写进台账 entities，再生成参考图（提示词只写外形、构图与光线，画风基线由系统按纲领自动附在每条提示词末尾，全部参考图同一画风）；生成完把参考图 id 写进对应实体的 ref。` };
       const noRef = required.filter(e => !e.ref); const spare = unlinkedImages(ledger);
       if (noRef.length && spare.length) return { ...base, kind: 'agent', label: `绑定 ${spare.length} 张已生成的参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `已经生成了这些参考图但还没绑定到实体：${spare.map(m => `${m.id}（${m.name}）`).join('、')}。产品的多张视图先用 make_sheet 拼成一张三视图，然后用 update_ledger 把参考图 id 写进对应实体的 ref（${noRef.map(e => e.name).join('、')}），不要重新生成；确实缺的再补生成。` };
-      if (noRef.length) return { ...base, kind: 'agent', label: `生成 ${noRef.length} 张参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `为还没有参考图的实体生成参考图：${noRef.map(e => `${e.name}（${e.kind}）`).join('、')}；产品先出三视图再用 make_sheet 拼成一张；生成完用 update_ledger 把参考图 id 写进对应实体的 ref。` };
+      if (noRef.length) return { ...base, kind: 'agent', label: `生成 ${noRef.length} 张参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `为还没有参考图的实体生成参考图：${noRef.map(e => `${e.name}（${e.kind}）`).join('、')}；产品先出三视图再用 make_sheet 拼成一张；提示词只写外形、构图与光线，画风基线由系统自动附上；生成完用 update_ledger 把参考图 id 写进对应实体的 ref。` };
       const voices = voiceCandidates(ledger);
       if (voices.length) return { ...base, kind: 'agent', label: `生成 ${voices.length} 个音色样本`, detail: voices.map(v => v.name).join('、'), billable: true, prompt: `为有对白的角色设计音色样本，每个角色一次 generate_voice：${voices.map(v => `${v.name}（entity 写「${v.name}」，description 写「${v.desc}」）`).join('；')}；sample 用该角色在脚本里的一句台词（旁白用第一句旁白）。样本会自动绑定到台账实体，不用再 update_ledger。` };
       if (skill.id === 'mv' && !ledger?.flags?.skipSong && !songAudio()) return { ...base, kind: 'upload', label: '上传歌曲音频', detail: '成片直接用它铺满全片；没有文件也可以先跳过', accept: 'audio/*' };

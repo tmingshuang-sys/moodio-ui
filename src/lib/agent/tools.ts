@@ -4,7 +4,7 @@ import { useFiles, findDoc, findMedia } from '../store';
 import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
-import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
+import { BRIEF_FIELDS, BRIEF_FORMATS, styleBaseline } from '../guides';
 import { generateImage, generateVideo, designVoice, generateSpeech, mediaReadyReason, fallbackNote, videoProfile, DEFAULT_VOICE_ID } from '../mediagen';
 import { captureFrame } from '../frames';
 import type { GenResult } from '../mediagen';
@@ -125,12 +125,15 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   // ---- 生成图片 / 视频（经网关调用 fal，结果直接进媒体库）----
   async generate_image(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
+    // 画风基线固定附在提示词末尾：不管模型怎么写，同一创作的参考图都是同一种画风（真人就都真人，不会一张真人一张卡通）
+    const baseline = styleBaseline(useFiles.getState().brief?.visualStyle);
+    const raw = String(args.prompt || '').trim(); const prompt = raw.includes('画风基线') ? raw : `${raw}\n画风基线：${baseline}`;
     let r!: GenResult;
     await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      r = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
+      r = await generateImage({ prompt, name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name, prompt: String(args.prompt || '') } };
+    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}（画风基线：${baseline.replace(/（.*$/, '')}）`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name, prompt } };
   },
   async generate_video(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);

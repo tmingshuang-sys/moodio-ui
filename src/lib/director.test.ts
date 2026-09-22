@@ -25,8 +25,9 @@ describe('director', () => {
     const chat = store.useChats.getState().chat(); const card = chat.messages[chat.messages.length - 1];
     expect(card.questions!.length).toBeGreaterThanOrEqual(4); expect(card.answers![0]).toEqual([0]);   // 推荐项预选
     expect(director.nextStep()).toMatchObject({ stage: 'brief', kind: 'ask' });
-    director.applyAnswersToBrief({ duration: '60 秒', ratio: '竖屏 9:16', audience: '18–30 岁都市年轻人', style: '剧情故事型' });
-    ledger.updateLedger({ answers: { subject: '实物产品', style: '剧情故事型', duration: '60 秒', ratio: '竖屏 9:16', audience: '18–30 岁都市年轻人' } });
+    director.applyAnswersToBrief({ duration: '60 秒', ratio: '竖屏 9:16', audience: '18–30 岁都市年轻人', style: '剧情故事型', look: '写实真人' });
+    ledger.updateLedger({ answers: { subject: '实物产品', look: '写实真人', style: '剧情故事型', duration: '60 秒', ratio: '竖屏 9:16', audience: '18–30 岁都市年轻人' } });
+    expect(files().brief.visualStyle).toBe('写实真人');   // 画风回写纲领
     expect(files().brief.duration).toBe('60 秒'); expect(files().brief.tone).toBe('剧情故事型');
     expect(director.tick()).toBe(true); expect(ledger.readLedger()!.stage).toBe('model');
   });

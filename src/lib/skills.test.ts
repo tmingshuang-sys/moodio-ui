@@ -7,6 +7,7 @@ let ledger: typeof import('./ledger');
 let store: typeof import('./store');
 let prompt: typeof import('./agent/prompt');
 let lint: typeof import('./lint');
+let guides: typeof import('./guides');
 
 beforeAll(async () => {
   (globalThis as any).localStorage = { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => memory.set(k, v), removeItem: (k: string) => memory.delete(k) };
@@ -14,7 +15,7 @@ beforeAll(async () => {
   (globalThis as any).window = Object.assign(globalThis, { setTimeout, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } });
   (globalThis as any).CustomEvent = class { constructor(public type: string, public init?: any) {} };
   (globalThis as any).location = { reload() {} };
-  skills = await import('./skills'); ledger = await import('./ledger'); store = await import('./store'); prompt = await import('./agent/prompt'); lint = await import('./lint');
+  skills = await import('./skills'); ledger = await import('./ledger'); store = await import('./store'); prompt = await import('./agent/prompt'); lint = await import('./lint'); guides = await import('./guides');
 });
 
 describe('skill packs', () => {
@@ -29,6 +30,9 @@ describe('skill packs', () => {
       for (const q of [...s.general, ...s.modeling]) { expect(q.key).toBeTruthy(); expect(q.text).toBeTruthy(); if (q.type !== 'text') expect(q.options.length).toBeGreaterThan(1); else expect(q.placeholder).toBeTruthy(); }
     }
     expect(skills.skillFor('nope').id).toBe('other');
+    // 画风题在每个类型的通用问卷里，答案回写纲领 visualStyle；画风基线默认写实真人
+    for (const id of ['ad', 'film', 'series', 'short', 'mv', 'other']) { const q = skills.skillFor(id).general.find(x => x.key === 'look'); expect(q && skills.briefKeyOf(q)).toBe('visualStyle'); expect(q!.recommended).toEqual([0]); }
+    expect(guides.styleBaseline(undefined)).toContain('photorealistic'); expect(guides.styleBaseline('3D 动画')).toContain('3D animated'); expect(guides.styleBaseline('赛博朋克油画')).toContain('赛博朋克油画');
     expect(skills.skillFor('ad').name).toBe('营销视频大师'); expect(skills.skillFor('mv').modelDocs).toContain('歌曲分析.md');
     expect(skills.skillStages(skills.skillFor('ad'))[1].name).toBe('商品建模');
     expect(skills.skillStages(skills.skillFor('film'))[1].name).toBe('人物与世界建模');

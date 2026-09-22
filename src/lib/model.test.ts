@@ -75,3 +75,11 @@ describe('plan json sanitising', () => {
   });
 });
 
+describe('temperature rejection', () => {
+  it('recognises the Kimi error so the call is retried without temperature', async () => {
+    const { rejectsTemperature } = await import('./model');
+    expect(rejectsTemperature('invalid temperature: only 1 is allowed for this model')).toBe(true);
+    expect(rejectsTemperature('rate limit exceeded')).toBe(false);
+  });
+});
+

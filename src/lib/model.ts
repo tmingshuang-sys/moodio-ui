@@ -211,15 +211,27 @@ async function readOpenAIStream(res: Response, { signal, onText, onReasoning }: 
   } finally { signal?.removeEventListener('abort', onAbort); cancelReader(); try { reader.releaseLock(); } catch { /* ignore */ } }
 }
 
+// 有的模型（Kimi K3）不接受 temperature（只允许 1）：第一次被拒就去掉重发一次，并记住这个模型以后不再发
+const NO_TEMPERATURE = new Set<string>();
+export const rejectsTemperature = (message: string) => /temperature/i.test(String(message || ''));
 export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning, images }: CallOptions = {}): Promise<string> {
   const streaming = typeof onText === 'function';
-  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };   // 不发 max_tokens：思考型模型会把思维链算进上限，固定 8192 曾把写剧本那一轮截断
+  const model = cfg.model || PROVIDER_DEFAULTS.openai.model;
+  const body: any = { model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };   // 不发 max_tokens：思考型模型会把思维链算进上限，固定 8192 曾把写剧本那一轮截断
   const think = String(cfg.thinking || '');
   if (think === 'off') body.thinking = { type: 'disabled' };
   else if (['low', 'high', 'max'].includes(think)) { body.thinking = { type: 'enabled' }; body.reasoning_effort = think; delete body.temperature; }
+  if (NO_TEMPERATURE.has(model)) delete body.temperature;
   if (streaming) body.stream = true;
-  const res = await fetch((cfg.baseUrl || PROVIDER_DEFAULTS.openai.baseUrl).replace(/\/+$/, '') + '/chat/completions', { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (cfg.apiKey || '') }, body: JSON.stringify(body) });
-  if (!res.ok) throw await readModelError(res);
+  const url = (cfg.baseUrl || PROVIDER_DEFAULTS.openai.baseUrl).replace(/\/+$/, '') + '/chat/completions';
+  const post = () => fetch(url, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (cfg.apiKey || '') }, body: JSON.stringify(body) });
+  let res = await post();
+  if (!res.ok) {
+    const err = await readModelError(res);
+    if (body.temperature === undefined || !rejectsTemperature(err.message)) throw err;
+    NO_TEMPERATURE.add(model); delete body.temperature; res = await post();
+    if (!res.ok) throw await readModelError(res);
+  }
   if (streaming && !/\bjson\b/i.test(res.headers?.get('content-type') || '') && res.body?.getReader) return readOpenAIStream(res, { signal, onText, onReasoning });
   const data: any = await res.json();
   if (streaming && data.error) throw new Error('模型服务返回错误：' + (data.error.message || data.error.type || '请求失败'));
