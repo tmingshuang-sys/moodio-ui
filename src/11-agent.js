@@ -6,7 +6,7 @@
       if(!store.active||!store.chats.some(c=>c.id===store.active)) store.active=store.chats[0].id;
       const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(store));}catch(e){}};
       const panel=$('#agent-panel'); if(!panel) return;
-      let homeMode=false, panelHiddenBeforeHome=false, homePlaceholder=null;   // 首页模式，见下方 agentHomeMode / homeSync
+      let homeMode=false, panelHiddenBeforeHome=false, homePlaceholder=null, homeBackLabel=null;   // 首页模式，见下方 agentHomeMode / homeSync
       const HOME_PLACEHOLDER='想做什么？例如：帮我续写一场雨夜重逢的戏';   // 首页问候页输入框的占位文案
       // 面板从隐藏变为显示时滚到最新消息（隐藏状态下 scrollHeight 为 0，渲染时的滚动不生效）
       function agentScrollToLatest(){ requestAnimationFrame(()=>{ const body=$('#agent-body'), msgs=$('#agent-messages'); if(msgs) msgs.scrollTop=msgs.scrollHeight; if(body) body.scrollTop=body.scrollHeight; }); }
@@ -265,6 +265,8 @@
         document.body.classList.toggle('home-chatting',chatting);
         const ta=$('#agent-input'), want=homeMode&&!chatting?HOME_PLACEHOLDER:'输入消息...';
         if(ta&&homePlaceholder!==want){ homePlaceholder=want; ta.setAttribute('placeholder',want); }
+        const back=$('#agent-back'), label=homeMode?'回到首页':'对话列表';   // 首页全屏对话里「‹」= 回到问候页；浮窗里仍是对话列表
+        if(back&&homeBackLabel!==label){ homeBackLabel=label; back.setAttribute('aria-label',label); }
       }
       agentHomeMode=function(on){
         on=!!on; if(on===homeMode) return; homeMode=on;
@@ -1417,7 +1419,9 @@
         if(runningWorkflow&&t.closest('#agent-new,#agent-back,[data-agent-chat]')){showToast('请先停止当前 Agent 任务，再切换对话。');return;}
         if(t.closest('#agent-close')){ if(runningWorkflow){const w=findWorkflow(runningWorkflow.id)?.w;if(w)stopWorkflow(w);}panel.classList.add('hidden'); return; }
         if(t.closest('#agent-new')){ newChat(); return; }
-        if(t.closest('#agent-back')){ const b=$('#agent-back'); b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true'); renderAgent(); return; }
+        if(t.closest('#agent-back')){ const b=$('#agent-back');
+          if(homeMode){ b.setAttribute('aria-pressed','false'); if(chat().messages.length) newChat(); else renderAgent(); return; }   // 首页：回到问候页，有内容的对话另起新对话、旧对话留在历史里
+          b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true'); renderAgent(); return; }
         if(t.closest('#agent-pin')){ store.pinned=!store.pinned; save(); renderAgent(); return; }
         if(t.closest('#agent-quick')){
           const pop=cdocPop('agent-quick-pop','cdoc-float-pop agent-quick-pop');if(!pop.classList.contains('hidden'))return pop.classList.add('hidden');

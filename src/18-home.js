@@ -48,7 +48,7 @@
       const openHome=view=>{ state.homeView=view; if(state.projectPage==='home') render(); else selectProjectPage('home'); };
       const goHome=()=>{
         if(state.projectPage==='home'){
-          if(document.body.classList.contains('home-chatting')){ const back=$('#agent-back'); if(back?.getAttribute('aria-pressed')==='true') back.click(); else $('#agent-new')?.click(); return; }   // 对话中再点 logo：开始新对话回到问候页，旧对话留在历史里
+          if(document.body.classList.contains('home-chatting')){ $('#agent-back')?.click(); return; }   // 对话中再点 logo：同全屏对话里的「‹」，回到问候页（旧对话留在历史里）
           if((state.homeView||'agent')!=='agent'){ openHome('agent'); return; }
           $('#agent-input')?.focus({preventScroll:true}); return;
         }
