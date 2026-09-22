@@ -1,6 +1,6 @@
-// ===== 左侧导航：logo / 项目、创作、资源、创作纲领、创作历史（今天 / 昨天 / 更早）、底部用户与设置 =====
+// ===== 左侧导航：logo（回主页）/ 项目、创作、资源、创作历史（今天 / 昨天 / 更早）、底部用户与设置 =====
 // 「创作」= 新建一个空白创作（项目）并切换过去；创作历史列出所有项目里有内容的对话，点一条切回那个项目（不刷新页面）
-import { Sparkles, FolderOpen, Compass, PanelLeft, MoreHorizontal, ChevronDown, FileText, Settings, Languages, Plus, Check } from 'lucide-react';
+import { Sparkles, FolderOpen, PanelLeft, MoreHorizontal, ChevronDown, FileText, Settings, Languages, Plus, Check } from 'lucide-react';
 import { useChats, useFiles, useAgent, useNav } from '../lib/store';
 import { projects } from '../lib/projects';
 import { startCreation, switchProject, deleteCreation, otherProjectsHistory, chatCount, renameHistoryChat, deleteHistoryChat } from '../lib/session';
@@ -8,7 +8,7 @@ import type { HistoryEntry } from '../lib/session';
 import { dayGroup } from '../lib/time';
 import { useT, useLang } from '../lib/i18n';
 import { openMenuAt } from './Menu';
-import { confirmDialog, promptDialog, openBrief, openModelSettings } from './Dialogs';
+import { confirmDialog, promptDialog, openModelSettings } from './Dialogs';
 import { toast } from './Toast';
 import { modelCfg, modelLabel } from '../lib/model';
 import { useEffect, useMemo, useState } from 'react';
@@ -85,7 +85,6 @@ export default function Sidebar() {
         <button type="button" className={`sb-item${page === 'chat' && !chats.find(c => c.id === active)?.messages.length ? ' active' : ''}`} onClick={() => { go('chat'); startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
         {/* 资源 = 素材库页面：所有创作里生成 / 上传的图片与视频 */}
         <button type="button" className={`sb-item${page === 'library' ? ' active' : ''}`} onClick={() => go('library')} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
-        <button type="button" className="sb-item" onClick={openBrief} title={t('创作纲领')}><Compass size={18} /><span>{t('创作纲领')}</span></button>
       </nav>
       {!collapsed && (
         <div className="sb-history">

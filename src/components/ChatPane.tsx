@@ -1,5 +1,5 @@
 // ===== 中间对话区：头部（对话文件 / 分享 / 设置）、消息列表（空状态是问候语与建议）、输入框 =====
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FolderOpen, Sparkles, Loader2 } from 'lucide-react';
 import { useChats, useFiles, useAgent } from '../lib/store';
 import { useTasks } from '../lib/tasks';
@@ -61,6 +61,37 @@ export default function ChatPane() {
   const listRef = useRef<HTMLDivElement>(null);
   const messages = chat.messages;
   const home = messages.length === 0 && step.kind === 'start';   // 首页：对话框居中，类型卡放在它下面
+  // 首页 → 对话的过渡：首页期间随时记下问候语 / 对话框 / 类型卡的位置；离开首页那一刻，底部的对话框从原位置滑过去（FLIP），问候语与类型卡原地淡出，消息列表淡入
+  const sectionRef = useRef<HTMLElement>(null);
+  const homeSnap = useRef<{ composer: DOMRect; greeting: DOMRect | null; picker: DOMRect | null } | null>(null);
+  const [leaving, setLeaving] = useState<{ greeting: DOMRect | null; picker: DOMRect | null } | null>(null);
+  const wasHome = useRef(home);
+  useEffect(() => {
+    if (!home) return;
+    const root = sectionRef.current; if (!root) return;
+    const snap = () => { const c = root.querySelector('.chat-empty.home .composer'); if (!c) return; homeSnap.current = { composer: c.getBoundingClientRect(), greeting: root.querySelector('.chat-empty.home .greeting')?.getBoundingClientRect() || null, picker: root.querySelector('.format-picker.home')?.getBoundingClientRect() || null }; };
+    snap();
+    const target = root.querySelector('.chat-empty.home'); const ro = typeof ResizeObserver !== 'undefined' && target ? new ResizeObserver(snap) : null; ro?.observe(target!);
+    window.addEventListener('resize', snap);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', snap); };
+  }, [home]);
+  useLayoutEffect(() => {
+    const left = wasHome.current && !home; wasHome.current = home;
+    if (!left) return;
+    const snap = homeSnap.current; if (!snap || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    setLeaving({ greeting: snap.greeting, picker: snap.picker });
+    const timer = setTimeout(() => setLeaving(null), 460);
+    const el = sectionRef.current?.querySelector(':scope > .composer-wrap .composer') as HTMLElement | null;
+    if (el) {
+      const now = el.getBoundingClientRect();
+      const dx = (snap.composer.left + snap.composer.width / 2) - (now.left + now.width / 2), dy = snap.composer.top - now.top;
+      const sx = snap.composer.width / now.width, sy = snap.composer.height / now.height;
+      el.style.transition = 'none'; el.style.transformOrigin = 'top center'; el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transition = 'transform 480ms cubic-bezier(.2, .8, .2, 1)'; el.style.transform = 'none'; }));
+      setTimeout(() => { el.style.transition = ''; el.style.transform = ''; el.style.transformOrigin = ''; }, 540);
+    }
+    return () => clearTimeout(timer);
+  }, [home]);
   const last = messages[messages.length - 1];
   useStuckHint(chat, busy, step);
   useEffect(() => {
@@ -70,7 +101,7 @@ export default function ChatPane() {
   }, [messages.length, last?.text, last?.plan?.state, last?.plan?.steps?.map(s => s.status).join(), busy, chat.id]);
 
   return (
-    <section className="chat" aria-label="对话">
+    <section className="chat" aria-label="对话" ref={sectionRef}>
       <header className="chat-head">
         <div className="chat-title" title={chat.title}>{chat.title}</div>
         <div className="chat-tools">
@@ -81,7 +112,7 @@ export default function ChatPane() {
       </header>
       <StageStrip />
       <NextStepBar />
-      <div className={`chat-body${home ? ' is-home' : ''}`} ref={listRef}>
+      <div className={`chat-body${home ? ' is-home' : ''}${leaving ? ' is-entering' : ''}`} ref={listRef}>
         {messages.length ? <MessageList chat={chat} /> : (
           <div className={`chat-empty${home ? ' home' : ''}`}>
             <h1 className="greeting">{t('很高兴见到你')}，<em>Thomas</em></h1>
@@ -94,6 +125,12 @@ export default function ChatPane() {
         )}
       </div>
       {!home && <Composer />}
+      {leaving && (
+        <div className="home-leaving" aria-hidden="true">
+          {leaving.greeting && <h1 className="greeting" style={{ position: 'fixed', left: leaving.greeting.left, top: leaving.greeting.top, width: leaving.greeting.width, margin: 0 }}>{t('很高兴见到你')}，<em>Thomas</em></h1>}
+          {leaving.picker && <div style={{ position: 'fixed', left: leaving.picker.left, top: leaving.picker.top, width: leaving.picker.width }}><FormatPicker home /></div>}
+        </div>
+      )}
     </section>
   );
 }

@@ -676,3 +676,12 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .composer { z-index: 1; }
 @keyframes glow-spin { to { --glow-angle: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .composer-wrap::before { animation: none; } }
+
+/* 首页 → 对话的过渡：问候语与类型卡原地淡出上移（固定定位的快照，不响应点击），消息列表淡入上移；对话框的位移由 ChatPane 用 FLIP 直接写在元素上 */
+.home-leaving { position: fixed; inset: 0; z-index: 5; pointer-events: none; animation: home-out 420ms ease both; }
+.home-leaving .greeting { text-align: center; }
+.home-leaving .format-picker.home { margin-top: 0; }
+@keyframes home-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-14px); } }
+.chat-body.is-entering .messages { animation: msgs-in 520ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes msgs-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .home-leaving, .chat-body.is-entering .messages { animation: none; } }

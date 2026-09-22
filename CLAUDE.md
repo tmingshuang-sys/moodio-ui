@@ -2,7 +2,7 @@
 
 ## 这是什么
 
-Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局）：左侧导航（创作 / 资源 / 创作纲领 / 创作历史）、中间与 Agent 对话、右侧是文件工作区。
+Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局）：左侧导航（创作 / 资源 / 创作历史；创作纲领入口已按要求去掉，纲领仍由 Agent 的 save_brief 与问卷写入）、中间与 Agent 对话、右侧是文件工作区。
 所有产物都是文件：剧本、分镜表、视频生成提示词、人物小传、营销文案等是 Markdown 文稿（.md，也支持 .json / .txt），图片和视频在媒体区单独分区。旧版的剧本稿纸、资产板块、创作画布已整体去掉（保留在分支 `main` / `split-workspace`）。
 
 技术栈：**Vite + React 19 + TypeScript**，状态用 zustand，Markdown 渲染用 react-markdown + remark-gfm，媒体 blob 用 idb-keyval 存 IndexedDB，图标用 lucide-react。没有后端：数据只在浏览器本地（localStorage + IndexedDB）。
@@ -73,7 +73,7 @@ npm run build          # vite build → dist/
 
 | 功能 | 入口 |
 |---|---|
-| 对话头部 | `ChatPane.tsx`：标题、后台任务指示、「对话文件」按钮；分享与模型设置两个按钮已按要求去掉，模型设置从侧栏底部的设置菜单进 |
+| 对话头部 | `ChatPane.tsx`：标题、后台任务指示、「对话文件」按钮；分享与模型设置两个按钮已按要求去掉，模型设置从侧栏底部的设置菜单进。首页 → 对话的过渡也在这里：首页期间用 ResizeObserver 记下问候语 / 对话框 / 类型卡的位置（`homeSnap`），离开首页那一刻底部对话框用 FLIP 从原位置滑过去（直接写 transform 与 transition），`.home-leaving` 固定定位的快照让问候语与类型卡原地淡出，`.chat-body.is-entering` 让消息列表淡入；减少动效偏好下全部跳过 |
 | 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle`。**项目里一个文件都没有时工作区不展开**（`paneOpen = page === 'chat' && ui.paneOpen && fileCount > 0`），对话头部的「对话文件」按钮与右缘把手也不出现；Agent 生成或上传第一个文件时 `openInPane()` 才打开 |
 | 发送 / 回复 / 确认执行 | `runner.ts`：`send()` → `reply()`；`executePlan()` / `cancelPlan()`；`runActions()` 逐步标状态；`stopAgent()` |
 | 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / update_ledger / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / generate_image / generate_video / compose_video / create_project / switch_project / rename_project）、`planSteps()` |
