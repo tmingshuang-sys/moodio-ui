@@ -20,11 +20,14 @@ export function useNextStep(): NextStep {
 }
 
 // 类型选择：六个类型，点一个就建纲领、建台账、弹本地问卷
-export function FormatPicker({ compact = false }: { compact?: boolean }) {
+// 首页只放四个主类型排成一行（剧集 / 其他仍可通过纲领或对话选择）
+const HOME_FORMATS = ['ad', 'film', 'short', 'mv'];
+export function FormatPicker({ compact = false, home = false }: { compact?: boolean; home?: boolean }) {
   const t = useT();
+  const entries = Object.entries(BRIEF_FORMATS).filter(([id]) => !home || HOME_FORMATS.includes(id));
   return (
-    <div className={`format-picker${compact ? ' compact' : ''}`}>
-      {Object.entries(BRIEF_FORMATS).map(([id, name]) => <button key={id} type="button" onClick={() => chooseFormat(id)}><Sparkles size={14} />{t(name)}<small>{skillFor(id).name}</small></button>)}
+    <div className={`format-picker${compact ? ' compact' : ''}${home ? ' home' : ''}`}>
+      {entries.map(([id, name]) => <button key={id} type="button" onClick={() => chooseFormat(id)}><Sparkles size={14} />{t(name)}<small>{skillFor(id).name}</small></button>)}
     </div>
   );
 }

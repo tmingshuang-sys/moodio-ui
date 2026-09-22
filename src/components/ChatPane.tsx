@@ -62,6 +62,7 @@ export default function ChatPane() {
   const busy = useAgent(s => s.busy);
   const listRef = useRef<HTMLDivElement>(null);
   const messages = chat.messages;
+  const home = messages.length === 0 && step.kind === 'start';   // 首页：对话框居中，类型卡放在它下面
   const last = messages[messages.length - 1];
   useStuckHint(chat, busy, step);
   useEffect(() => {
@@ -84,12 +85,12 @@ export default function ChatPane() {
       </header>
       <StageStrip />
       <NextStepBar />
-      <div className="chat-body" ref={listRef}>
+      <div className={`chat-body${home ? ' is-home' : ''}`} ref={listRef}>
         {messages.length ? <MessageList chat={chat} /> : (
-          <div className="chat-empty">
+          <div className={`chat-empty${home ? ' home' : ''}`}>
             <h1 className="greeting">{t('很高兴见到你')}，<em>Thomas</em></h1>
             <p className="greeting-sub">{t('想做什么？')}{t('选一个类型，回答几道题，剩下的交给 Agent；也可以直接在下面说。')}</p>
-            {step.kind === 'start' ? <FormatPicker /> : (
+            {home ? <><Composer /><FormatPicker home /></> : (
               <div className="suggestions">
                 {SUGGESTIONS.map(s => <button key={s.label} type="button" onClick={() => void send(s.prompt)}><Sparkles size={14} />{s.label}</button>)}
               </div>
@@ -97,7 +98,7 @@ export default function ChatPane() {
           </div>
         )}
       </div>
-      <Composer />
+      {!home && <Composer />}
     </section>
   );
 }
