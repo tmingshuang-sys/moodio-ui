@@ -33,7 +33,12 @@ describe('skill packs', () => {
     expect(skills.skillStages(skills.skillFor('ad'))[1].name).toBe('商品建模');
     expect(skills.skillStages(skills.skillFor('film'))[1].name).toBe('人物与世界建模');
     // 样例：广告与故事片各有建模 + 片段样例，样例本身要过我们自己的冻结格式（时段相接、参考音频、无 BGM 尾注）
-    for (const id of ['ad', 'film', 'series']) { const s = skills.skillFor(id); expect(s.samples?.model).toBeTruthy(); expect(s.samples?.clip).toMatch(/full-film range/); expect(s.samples?.clip).toContain('不生成 BGM'); }
+    for (const id of ['ad', 'film', 'series', 'mv']) { const s = skills.skillFor(id); expect(s.samples?.model).toBeTruthy(); expect(s.samples?.clip).toMatch(/full-film range/); expect(s.samples?.clip).toMatch(/不生成(人声与)? ?BGM/); }
+    // MV 样例：段落表能被解析成乐段、片段贴着段落边界、艺人冻结描述逐字复用、有正面咬字镜头
+    const segs = lint.songSegments(skills.MV_MODEL_SAMPLE); expect(segs.map(x => [x.start, x.end])).toEqual([[0, 15], [15, 30], [30, 45], [45, 60]]);
+    const mvFrozen = lint.frozenDescriptions(skills.MV_MODEL_SAMPLE); expect(mvFrozen.map(f => f.name)).toEqual(['艺人']);
+    const mvLint = lint.lintClipDocs([{ name: '视频生成Prompt-03.md', content: skills.MV_CLIP_SAMPLE }], [], null, { frozen: mvFrozen, segments: segs, maxClip: 15 }); expect(mvLint.errors).toEqual([]);
+    expect(skills.MV_CLIP_SAMPLE).toContain('精准咬字口型：{'); expect(skills.skillFor('mv').imageQA).toContain('单人');
     expect(skills.skillFor('film').samples!.clip).toContain('音色参考@音频1');
     expect(lint.voiceDescriptions(skills.FILM_MODEL_SAMPLE).map(v => v.name)).toEqual(['老周', '女孩', '旁白']);
     expect(lint.voiceDescriptions('## 甲\n音色：无\n## 乙\n- 音色：清亮少年音')).toEqual([{ name: '乙', desc: '清亮少年音' }]);

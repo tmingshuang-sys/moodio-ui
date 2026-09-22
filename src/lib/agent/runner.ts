@@ -209,7 +209,7 @@ export async function executePlan(key: string, messageAt: number) {
     if (touchedClips && !aborted()) { try { out.lint = await lintFixRounds(c.id, p.text); } catch (e) { console.warn('片段校验修正失败', e); } }
     // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
     const images = run.artifacts.filter(a => a.kind === 'image');
-    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal); } catch (e) { console.warn('参考图质检失败', e); } }
+    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal, skillFor(useFiles.getState().brief?.format).imageQA); } catch (e) { console.warn('参考图质检失败', e); } }
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });

@@ -10,7 +10,7 @@ import { mediaUrl, getBlob, putBlob, cacheUrl } from './storage';
 export interface Subtitle { start: number; end: number; text: string; }
 export interface VoiceTrack { id: string; start: number; volume?: number; }   // 配音：媒体库里的音频，start 是它在成片时间轴上的起点（秒）
 interface LoadedVoice { blob: Blob; start: number; volume: number; }
-export interface ComposeOptions { name?: string; onProgress?: (text: string) => void; signal?: AbortSignal; musicId?: string; musicVolume?: number; subtitles?: Subtitle[]; voices?: VoiceTrack[]; format?: 'mp4' | 'webm'; }
+export interface ComposeOptions { name?: string; onProgress?: (text: string) => void; signal?: AbortSignal; musicId?: string; musicVolume?: number; clipVolume?: number; subtitles?: Subtitle[]; voices?: VoiceTrack[]; format?: 'mp4' | 'webm'; }   // clipVolume = 片段自带声音的音量（MV 用 0）
 
 export function mp4Supported(): boolean { return typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined' && typeof VideoFrame !== 'undefined'; }
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
@@ -59,7 +59,7 @@ async function realDuration(v: HTMLVideoElement): Promise<number> {
   return new Promise(resolve => { const onT = () => { v.ontimeupdate = null; v.currentTime = 0; resolve(isFinite(v.duration) ? v.duration : 0); }; v.ontimeupdate = onT; v.currentTime = 1e6; });
 }
 
-function drawFrame(g: CanvasRenderingContext2D, canvas: HTMLCanvasElement, v: HTMLVideoElement, subtitle: Subtitle | null) {
+function drawFrame(g: CanvasRenderingContext2D, canvas: HTMLCanvasElement, v: HTMLVideoElement, subtitle: Subtitle | null, t = 0) {
   const r = Math.min(canvas.width / v.videoWidth, canvas.height / v.videoHeight); const w = v.videoWidth * r, h = v.videoHeight * r;
   g.fillStyle = '#000'; g.fillRect(0, 0, canvas.width, canvas.height); g.drawImage(v, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
   if (!subtitle) return;
@@ -67,16 +67,17 @@ function drawFrame(g: CanvasRenderingContext2D, canvas: HTMLCanvasElement, v: HT
   g.font = `600 ${size}px "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
   g.lineJoin = 'round'; g.lineWidth = Math.max(3, size / 7); g.strokeStyle = 'rgba(0, 0, 0, .85)'; g.fillStyle = '#fff';
   g.shadowColor = 'rgba(0, 0, 0, .5)'; g.shadowBlur = size / 4;
+  g.globalAlpha = Math.max(0, Math.min(1, (t - subtitle.start) / 0.25, (subtitle.end - t) / 0.2));   // 250ms 淡入、200ms 淡出
   lines.forEach((line, i) => { const y = canvas.height * 0.9 - (lines.length - 1 - i) * size * 1.3; g.strokeText(line, canvas.width / 2, y); g.fillText(line, canvas.width / 2, y); });
-  g.shadowBlur = 0;
+  g.globalAlpha = 1; g.shadowBlur = 0;
 }
 
 // 离线混音：各段原声按顺序排开，配音按起点放置，配乐循环铺底、结尾 2 秒淡出
-async function mixAudio(clips: { blob: Blob; duration: number }[], music: Blob | null, volume: number, total: number, voices: LoadedVoice[] = []): Promise<AudioBuffer> {
+async function mixAudio(clips: { blob: Blob; duration: number }[], music: Blob | null, volume: number, total: number, voices: LoadedVoice[] = [], clipVolume = 1): Promise<AudioBuffer> {
   const off = new OfflineAudioContext(2, Math.max(1, Math.ceil(total * SAMPLE_RATE)), SAMPLE_RATE);
   let t = 0;
   for (const c of clips) {
-    try { const buf = await off.decodeAudioData(await c.blob.arrayBuffer()); const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start(t); src.stop(t + c.duration); } catch { /* 没有音轨就静音 */ }
+    if (clipVolume > 0) { try { const buf = await off.decodeAudioData(await c.blob.arrayBuffer()); const src = off.createBufferSource(); src.buffer = buf; const gain = off.createGain(); gain.gain.value = clipVolume; src.connect(gain).connect(off.destination); src.start(t); src.stop(t + c.duration); } catch { /* 没有音轨就静音 */ } }
     t += c.duration;
   }
   for (const v of voices) {
@@ -129,18 +130,19 @@ export async function composeVideos(ids: string[], opts: ComposeOptions = {}): P
   const music = opts.musicId ? (await getBlob(opts.musicId)) || null : null;
   const volume = Math.max(0, Math.min(1, Number(opts.musicVolume ?? 0.3)));
   const voices = await loadVoices(opts.voices, total);
+  const clipVolume = Math.max(0, Math.min(1, Number(opts.clipVolume ?? 1)));
   const useMp4 = (opts.format || 'mp4') === 'mp4' && mp4Supported();
   let stop = false; const onAbort = () => { stop = true; }; signal?.addEventListener('abort', onAbort);
   try {
-    if (useMp4) return await composeMp4({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, name, onProgress, isStopped: () => stop });
-    return await composeWebm({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, name, onProgress, isStopped: () => stop });
+    if (useMp4) return await composeMp4({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, clipVolume, name, onProgress, isStopped: () => stop });
+    return await composeWebm({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, clipVolume, name, onProgress, isStopped: () => stop });
   } finally {
     signal?.removeEventListener('abort', onAbort);
     videos.forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
   }
 }
 
-interface Job { videos: HTMLVideoElement[]; blobs: Blob[]; durations: number[]; total: number; canvas: HTMLCanvasElement; g: CanvasRenderingContext2D; subs: Subtitle[]; music: Blob | null; voices: LoadedVoice[]; volume: number; name: string; onProgress?: (t: string) => void; isStopped: () => boolean; }
+interface Job { videos: HTMLVideoElement[]; blobs: Blob[]; durations: number[]; total: number; canvas: HTMLCanvasElement; g: CanvasRenderingContext2D; subs: Subtitle[]; music: Blob | null; voices: LoadedVoice[]; clipVolume: number; volume: number; name: string; onProgress?: (t: string) => void; isStopped: () => boolean; }
 
 // 逐段实时播放，每一帧回调里画到 canvas 并交给 onFrame
 async function playThrough(job: Job, onFrame: (globalTime: number) => void) {
@@ -154,7 +156,7 @@ async function playThrough(job: Job, onFrame: (globalTime: number) => void) {
         if (isStopped() || v.ended) { resolve(); return; }
         const local = meta && typeof meta.mediaTime === 'number' ? meta.mediaTime : v.currentTime;
         const gt = elapsed + Math.min(local, durations[i]);
-        drawFrame(g, canvas, v, activeSubtitle(subs, gt)); onFrame(gt);
+        drawFrame(g, canvas, v, activeSubtitle(subs, gt), gt); onFrame(gt);
         onProgress?.(`合成中 · 第 ${i + 1}/${videos.length} 段 · ${Math.round(gt)}/${Math.round(total)}s`);
         schedule();
       };
@@ -167,7 +169,7 @@ async function playThrough(job: Job, onFrame: (globalTime: number) => void) {
 }
 
 async function composeMp4(job: Job): Promise<MediaItem> {
-  const { canvas, blobs, durations, total, music, volume, voices, name, onProgress } = job;
+  const { canvas, blobs, durations, total, music, volume, voices, clipVolume, name, onProgress } = job;
   const vconf = await pickVideoCodec(canvas.width, canvas.height); const aconf = await pickAudioCodec();
   // firstTimestampBehavior 用 offset：mp4-muxer 默认要求第一帧时间戳必须是 0，否则在编码器回调里抛错、帧被悄悄丢掉
   const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: canvas.width, height: canvas.height }, audio: aconf ? { codec: aconf.mux, sampleRate: SAMPLE_RATE, numberOfChannels: 2 } : undefined, fastStart: 'in-memory', firstTimestampBehavior: 'offset' });
@@ -187,7 +189,7 @@ async function composeMp4(job: Job): Promise<MediaItem> {
   if (!frames) throw new Error('没有录到画面');
   if (aconf) {
     onProgress?.('混音与编码音轨…');
-    const mixed = await mixAudio(blobs.map((blob, i) => ({ blob, duration: durations[i] })), music, volume, total, voices);
+    const mixed = await mixAudio(blobs.map((blob, i) => ({ blob, duration: durations[i] })), music, volume, total, voices, clipVolume);
     const aenc = new AudioEncoder({ output: (chunk, meta) => { try { muxer.addAudioChunk(chunk, meta); } catch (e) { encodeError = e; } }, error: e => { encodeError = e; } });
     aenc.configure(aconf.config);
     const step = 4096; const ch0 = mixed.getChannelData(0), ch1 = mixed.numberOfChannels > 1 ? mixed.getChannelData(1) : ch0;
@@ -208,10 +210,10 @@ async function composeMp4(job: Job): Promise<MediaItem> {
 
 // 退路：MediaRecorder 录 WebM（画面同样逐帧画 canvas，声音用实时 AudioContext 混）
 async function composeWebm(job: Job): Promise<MediaItem> {
-  const { videos, canvas, music, volume, voices, name, onProgress, total } = job;
+  const { videos, canvas, music, volume, voices, clipVolume, name, onProgress, total } = job;
   if (typeof MediaRecorder === 'undefined') throw new Error('当前浏览器不支持本地合成');
   const audio = new AudioContext(); const dest = audio.createMediaStreamDestination();
-  videos.forEach(v => { v.muted = false; try { audio.createMediaElementSource(v).connect(dest); } catch { /* ignore */ } });
+  videos.forEach(v => { if (clipVolume <= 0) { v.muted = true; return; } v.muted = false; try { const gain = audio.createGain(); gain.gain.value = clipVolume; audio.createMediaElementSource(v).connect(gain).connect(dest); } catch { /* ignore */ } });
   if (music) { try { const buf = await audio.decodeAudioData(await music.arrayBuffer()); const src = audio.createBufferSource(); src.buffer = buf; src.loop = true; const gain = audio.createGain(); gain.gain.value = volume; src.connect(gain).connect(dest); src.start(); setTimeout(() => { try { src.stop(); } catch { /* ignore */ } }, total * 1000); } catch { /* ignore */ } }
   for (const v of voices) { try { const buf = await audio.decodeAudioData(await v.blob.arrayBuffer()); const src = audio.createBufferSource(); src.buffer = buf; const gain = audio.createGain(); gain.gain.value = v.volume; src.connect(gain).connect(dest); src.start(audio.currentTime + v.start); } catch { /* ignore */ } }
   const stream = canvas.captureStream(30); dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));

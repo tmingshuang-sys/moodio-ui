@@ -13,12 +13,14 @@ describe('generation strategy', () => {
     expect(planClipSeconds({ clipSeconds: 15 }, long)).toBe(20); expect(planClipSeconds({ clipSeconds: 10 }, long)).toBe(20);
     expect(strategyLabel(long)).toBe('长片段优先');
     expect(strategyText(long)).toContain('长镜头'); expect(strategyText(long)).toContain('15–30 秒'); expect(strategyText(long)).toContain('承接');
+    expect(strategyText(long, 'mv')).toContain('不做末帧接续'); expect(strategyText(long)).not.toContain('MV：');
   });
   it('falls back to shot-by-shot chaining with keyframes elsewhere', () => {
     const kling = makeProfile(v('fal-ai/kling-video/v1/standard/text-to-video'), vi('fal-ai/kling-video/v1/standard/image-to-video'));
     expect(kling).toMatchObject({ longTake: false, maxClip: 10, minClip: 5, keyframes: 'first' });
     expect(planClipSeconds({ clipSeconds: 15 }, kling)).toBe(10); expect(strategyLabel(kling)).toBe('分镜接续');
     expect(strategyText(kling)).toContain('from_video_id'); expect(strategyText(kling)).toContain('5 / 10 秒'); expect(strategyText(kling)).not.toContain('to_media_id');
+    expect(strategyText(kling, 'mv')).not.toContain('首尾帧接续：'); expect(strategyText(kling, 'mv')).toContain('定妆照'); expect(strategyText(kling, 'mv')).toContain('不用 from_video_id');
     const pro = makeProfile(v('doubao-seedance-1-0-pro-250528'), vi('doubao-seedance-1-0-pro-250528'));
     expect(pro).toMatchObject({ longTake: false, maxClip: 10, keyframes: 'both' }); expect(strategyText(pro)).toContain('to_media_id');
     const veo = makeProfile(v('fal-ai/veo3'), vi('fal-ai/kling-video/v1/standard/image-to-video'));

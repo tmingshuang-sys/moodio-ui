@@ -35,15 +35,16 @@ export function planClipSeconds(skill: { clipSeconds: number }, p: VideoProfile)
 export function strategyLabel(p: VideoProfile): string { return p.longTake ? '长片段优先' : '分镜接续'; }
 
 // 注入系统提示的策略说明：分镜、片段方案、生成三个阶段都带
-export function strategyText(p: VideoProfile): string {
-  const m = p.model; const where = m.provider === 'ark' ? '方舟' : 'fal';
+export function strategyText(p: VideoProfile, skillId?: string): string {
+  const m = p.model; const where = m.provider === 'ark' ? '方舟' : 'fal'; const mv = skillId === 'mv';
+  const mvNote = mv ? '\n⑤ MV：片段按歌曲分析的段落表切、不跨段落边界（长片段时可以把相邻两段合成一段，但不超过上限）；段与段在边界硬切、不做末帧接续（不用 from_video_id），每段全量绑定定妆照 @图片1；有人声的段落至少一个正面咬字镜头。' : '';
   if (p.longTake) {
     const hi = Math.min(p.maxClip, 30);
     return `【生成策略 · 长片段优先】当前视频模型 ${m.name}（${where}）单段最长 ${p.maxClip} 秒，图生视频${p.keyframes === 'both' ? '收首帧图与尾帧图' : p.keyframes === 'first' ? '收首帧图' : '不收参考帧'}。规划原则：
 ① 片段尽量少而长：按场景与连续动作切段，单段 15–${hi} 秒（默认约 ${LONG_TARGET} 秒，最后一段可短），同一场景的连续动作放进同一段生成，靠模型自身保持人物、光线与空间一致；段数可少不可多。
 ② 剧情允许时多用长镜头：一镜到底、跟拍、缓慢推拉、场面调度，少切碎；一段里要换机位就在画面内容里写「镜头切换」，仍在同一段生成。
 ③ 段与段之间用承接镜头衔接：下一段开头延续上一段结尾的构图、动作与光线，在 full-film range 下一行写「承接：…」。
-④ 分镜表阶段就按这个原则排镜头时长与运镜，不要按 3–5 秒的碎镜头拆；片段文稿的「时长」就是 generate_video 的 duration。`;
+④ 分镜表阶段就按这个原则排镜头时长与运镜，不要按 3–5 秒的碎镜头拆；片段文稿的「时长」就是 generate_video 的 duration。${mvNote}`;
   }
   const fixed = m.durations?.length ? `，只能选 ${m.durations.join(' / ')} 秒` : '';
   const chain = p.keyframes === 'none'
@@ -51,7 +52,7 @@ export function strategyText(p: VideoProfile): string {
     : `生成第 N+1 段时用 generate_video 的 from_video_id 取上一段末帧当首帧（工具自动截帧存成关键帧图），或先用图片模型出本段首帧关键帧（人物带参考图与冻结描述）再图生视频${p.keyframes === 'both' ? '；模型收尾帧图，可以同时给 to_media_id，让两段在关键帧处无缝相接' : ''}`;
   return `【生成策略 · 分镜接续】当前视频模型 ${m.name}（${where}）单段最长 ${p.maxClip} 秒${fixed}，图生视频${p.keyframes === 'both' ? '收首帧图与尾帧图' : p.keyframes === 'first' ? '收首帧图' : '不收参考帧'}。规划原则：
 ① 按镜头拆段：单段 ${p.minClip}–${p.maxClip} 秒，一段一个动作或一个机位，不在一段里换场景。
-② 一致性靠首尾帧接续：${chain}；每段只生成一段，等上一段完成再接下一段。
+② 一致性靠${mv ? '定妆照与逐字相同的冻结描述，段与段在乐段边界硬切' : `首尾帧接续：${chain}；每段只生成一段，等上一段完成再接下一段`}。
 ③ 镜头以固定机位与简单运镜为主，动作幅度小；长镜头只在单段上限内安排。
-④ 分镜表阶段镜头时长按 ${p.minClip}–${p.maxClip} 秒排，切换处安排可衔接的构图（同景别、同侧、同光）；片段文稿的「时长」就是 generate_video 的 duration。`;
+④ 分镜表阶段镜头时长按 ${p.minClip}–${p.maxClip} 秒排，切换处安排可衔接的构图（同景别、同侧、同光）；片段文稿的「时长」就是 generate_video 的 duration。${mvNote}`;
 }

@@ -90,4 +90,16 @@ describe('director', () => {
     files().addMedia({ id: 'dub1', name: '旁白-01.mp3', kind: 'audio', mime: 'audio/mpeg', size: 1, group: '配音', createdAt: Date.now(), by: 'agent', duration: 4 });
     const step = director.nextStep(); expect(step.label).toBe('合成成片'); expect(step.prompt).toContain('dub1 旁白-01.mp3');
   });
+  it('asks for the song before the assets checkpoint of an MV, composes with the song filling the film, and never chains clips', () => {
+    const prevFormat = files().brief.format; files().setBrief({ format: 'mv' });
+    ledger.updateLedger({ stage: 'assets', flags: { skipVoice: true }, entities: [{ name: '艺人', kind: '艺人', ref: 'm1' }] });
+    expect(director.nextStep()).toMatchObject({ stage: 'assets', kind: 'upload', accept: 'audio/*' });
+    files().addMedia({ id: 'song1', name: '我们的时刻.mp3', kind: 'audio', mime: 'audio/mpeg', size: 1, group: '配乐', createdAt: Date.now(), by: 'user' });
+    expect(director.nextStep().kind).not.toBe('upload'); expect(director.songAudio()!.id).toBe('song1');
+    ledger.updateLedger({ stage: 'video', clips: [{ no: 1, mediaId: 'v1' }] });
+    const step = director.nextStep(); expect(step.label).toBe('合成成片'); expect(step.prompt).toContain('song1 我们的时刻.mp3'); expect(step.prompt).toContain('clip_volume 0'); expect(step.prompt).toContain('歌词时间轴');
+    files().removeMedia('song1'); ledger.updateLedger({ stage: 'assets' });
+    director.skipSong(); expect(ledger.readLedger()!.flags.skipSong).toBe(true);
+    files().setBrief({ format: prevFormat });
+  });
 });

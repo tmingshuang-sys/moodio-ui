@@ -17,8 +17,8 @@ import { BRIEF_FORMATS } from './guides';
 export type Checkpoint = 'script' | 'assets' | 'prompts' | 'deliver';
 export const CHECKPOINTS: Checkpoint[] = ['script', 'assets', 'prompts', 'deliver'];
 export interface NextStep {
-  stage: StageId; kind: 'start' | 'ask' | 'agent' | 'confirm' | 'done';
-  label: string; detail: string; prompt?: string; questions?: QuestionDef[]; checkpoint?: Checkpoint; billable?: boolean; remaining: number;
+  stage: StageId; kind: 'start' | 'ask' | 'agent' | 'confirm' | 'upload' | 'done';   // upload = 请用户上传文件（MV 的歌曲），主按钮直接打开文件选择
+  label: string; detail: string; prompt?: string; questions?: QuestionDef[]; checkpoint?: Checkpoint; billable?: boolean; accept?: string; remaining: number;
 }
 
 const AUTOPILOT_KEY = 'moodio-autopilot';
@@ -54,6 +54,8 @@ export function voiceCandidates(ledger: Ledger | null): { name: string; desc: st
 // 脚本里有旁白（排除分镜表表头的「对白·旁白」列名）
 const hasNarration = () => { const s = scriptDoc(); return !!s && s.content.split('\n').some(l => !/对白[·/]旁白/.test(l) && /\*\*旁白\*\*|^>?\s*旁白\s*[（(：:]|[|（(]\s*旁白\s*[）)：:]/.test(l)); };
 const narrationAudio = () => useFiles.getState().media.filter(m => m.kind === 'audio' && m.group === '配音');
+// MV 的歌曲：媒体库里除音色样本、配音之外的音频（用户上传的）
+export const songAudio = () => useFiles.getState().media.find(m => m.kind === 'audio' && m.group !== '音色' && m.group !== '配音') || null;
 
 // 还没回答的问卷题：台账答案里没有、纲领对应字段也空
 export function unansweredQuestions(skill: Skill, bank: QuestionDef[], ledger: Ledger | null, brief: Brief): QuestionDef[] {
@@ -102,6 +104,7 @@ export function nextStep(): NextStep {
       if (noRef.length) return { ...base, kind: 'agent', label: `生成 ${noRef.length} 张参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `为还没有参考图的实体生成参考图：${noRef.map(e => `${e.name}（${e.kind}）`).join('、')}；产品先出三视图再用 make_sheet 拼成一张；生成完用 update_ledger 把参考图 id 写进对应实体的 ref。` };
       const voices = voiceCandidates(ledger);
       if (voices.length) return { ...base, kind: 'agent', label: `生成 ${voices.length} 个音色样本`, detail: voices.map(v => v.name).join('、'), billable: true, prompt: `为有对白的角色设计音色样本，每个角色一次 generate_voice：${voices.map(v => `${v.name}（entity 写「${v.name}」，description 写「${v.desc}」）`).join('；')}；sample 用该角色在脚本里的一句台词（旁白用第一句旁白）。样本会自动绑定到台账实体，不用再 update_ledger。` };
+      if (skill.id === 'mv' && !ledger?.flags?.skipSong && !songAudio()) return { ...base, kind: 'upload', label: '上传歌曲音频', detail: '成片直接用它铺满全片；没有文件也可以先跳过', accept: 'audio/*' };
       if (!confirmed.includes('assets')) return { ...base, kind: 'confirm', checkpoint: 'assets', label: '参考图通过，进入分镜', detail: '不满意的告诉 Agent 重新生成' };
       return { ...base, kind: 'agent', label: '进入分镜', detail: '', prompt: '参考图已全部确认，用 update_ledger 把阶段推进到 storyboard，然后按分镜规范拆分镜表。' };
     }
@@ -122,16 +125,18 @@ export function nextStep(): NextStep {
       const made = clips.filter(c => c.mediaId).length;
       if (made < n) {
         const next = clips.find(c => !c.mediaId); const no = next ? next.no : made + 1; const p = videoProfile();
-        const prev = clips.find(c => c.no === no - 1); const chained = !p.longTake && p.keyframes !== 'none' && !!prev?.mediaId;   // 分镜接续：一次只生成一段，接上一段末帧
+        const prev = clips.find(c => c.no === no - 1); const chained = skill.id !== 'mv' && !p.longTake && p.keyframes !== 'none' && !!prev?.mediaId;   // 分镜接续：一次只生成一段，接上一段末帧
         const prompt = chained
           ? `只生成第 ${no} 段（分镜接续）：generate_video 的 prompt 照抄「视频生成Prompt-${String(no).padStart(2, '0')}.md」的正文，duration 用文稿的时长，from_video_id 写「${prev!.mediaId}」（接上一段末帧）；生成完用 update_ledger 把视频 id 写进 clips 第 ${no} 段的 mediaId。`
           : `按顺序生成还没生成的片段（从第 ${no} 段起${p.longTake ? '，一次可以安排全部剩余片段' : '，一次一段'}）：每段 generate_video 的 prompt 照抄对应「视频生成Prompt-NN.md」的正文，duration 用文稿的时长${p.keyframes !== 'none' ? '，有关键帧图就用 from_media_id 绑定' : ''}；每段生成完用 update_ledger 把视频 id 写进 clips 的 mediaId。`;
         return { ...base, kind: 'agent', label: `生成第 ${no} 段视频（${made}/${n}）`, detail: `约 ${estimateMinutes(n - made, b)} 分钟`, billable: true, prompt };
       }
       if (!composedFilm()) {
-        const dubs = narrationAudio(); const wantNarration = hasNarration() && !ledger?.flags?.skipVoice && !dubs.length;
+        const dubs = narrationAudio(); const wantNarration = skill.id !== 'mv' && hasNarration() && !ledger?.flags?.skipVoice && !dubs.length;
+        const song = skill.id === 'mv' ? songAudio() : null;
+        const mvNote = `这是 MV：${song ? `music_id 用歌曲「${song.id} ${song.name}」、music_volume 1` : '媒体库里没有歌曲音频，先不配乐'}，clip_volume 0 把片段自带的声音静掉，字幕逐行用「歌曲分析.md」的歌词时间轴（start / end 按时间轴换算成秒，只写歌词）`;
         if (wantNarration) return { ...base, kind: 'agent', label: '合成旁白配音', detail: '按片段分段，成片时按时间轴放置', billable: true, prompt: '所有片段已生成。脚本里有旁白：先用 generate_speech 把旁白按片段分段合成（entity 写「旁白」，一段一条，name 写「旁白-01」这样的序号，text 只写旁白原文）；视频模型不支持音频参考时，需要清晰听到的台词也可以一并合成（entity 写角色名）。合成完下一步再合成成片。' };
-        return { ...base, kind: 'agent', label: '合成成片', detail: `约 ${Math.ceil(totalSeconds(b) / 60)} 分钟`, prompt: `所有片段已生成，用 compose_video 按片段顺序合成 MP4 成片：字幕从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字，只写台词本身）${dubs.length ? `；媒体库里的配音（${dubs.map(d => `${d.id} ${d.name}`).join('、')}）用 voices 按成片时间轴放到对应片段的起点` : ''}；媒体清单里有上传的音频就作配乐；合成完用 update_ledger 把阶段推进到 deliver。` };
+        return { ...base, kind: 'agent', label: '合成成片', detail: `约 ${Math.ceil(totalSeconds(b) / 60)} 分钟`, prompt: `所有片段已生成，用 compose_video 按片段顺序合成 MP4 成片：${skill.id === 'mv' ? mvNote : '字幕从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字，只写台词本身）'}${dubs.length ? `；媒体库里的配音（${dubs.map(d => `${d.id} ${d.name}`).join('、')}）用 voices 按成片时间轴放到对应片段的起点` : ''}${skill.id === 'mv' ? '' : '；媒体清单里有上传的音频就作配乐'}；合成完用 update_ledger 把阶段推进到 deliver。` };
       }
       return { ...base, kind: 'agent', label: '交付', detail: '', prompt: '成片已合成，用 update_ledger 把阶段推进到 deliver，然后写交付说明：结构、每段承担的内容、核心信息如何落地，最后请我审阅。' };
     }
@@ -179,6 +184,7 @@ export function confirmCheckpoint(cp: Checkpoint) {
   updateLedger({ confirmed: [cp], entities: cp === 'assets' ? ledger.entities.filter(e => e.ref).map(e => ({ name: e.name, status: '已确认' })) : undefined });
   tick(); emit(); resume();
 }
+export function skipSong() { updateLedger({ flags: { skipSong: true }, notes: (readLedger()?.notes || '') + ' [没有歌曲音频]' }); tick(); emit(); resume(); }
 export function skipVoice() { updateLedger({ flags: { skipVoice: true }, notes: (readLedger()?.notes || '') + ' [跳过音色]' }); tick(); emit(); resume(); }
 export function skipAssets() { updateLedger({ confirmed: ['assets'], notes: (readLedger()?.notes || '') + ' [跳过参考图]' }); tick(); emit(); resume(); }
 export function skipLintGate() { updateLedger({ flags: { skipLint: true }, notes: (readLedger()?.notes || '') + ' [跳过片段校验]' }); tick(); emit(); resume(); }
