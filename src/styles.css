@@ -592,3 +592,14 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .lg-clip-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .lg-clip-links button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 12px; }
 .lg-clip-links button:hover { background: var(--panel); }
+
+/* ===== 状态胶囊：蓝紫渐变流动 + 一道扫过的高光（用户指定的例外：品牌位之外唯一用彩色的地方）===== */
+.agent-live { overflow: hidden; background: linear-gradient(120deg, #3a6fd8 0%, #5b5fe0 28%, #8a63dc 52%, #5f7be6 78%, #3a6fd8 100%); background-size: 300% 100%; box-shadow: 0 8px 24px rgba(74, 92, 214, .38), 0 2px 6px rgba(52, 63, 140, .22); animation: live-flow 5s linear infinite; }
+.agent-live::after { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, .30) 50%, transparent 75%); background-size: 250% 100%; animation: live-sheen 2.8s ease-in-out infinite; }
+.agent-live > * { position: relative; z-index: 1; }
+.agent-live-dot { background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .28), 0 0 12px rgba(255, 255, 255, .7); }
+.agent-live button { background: rgba(255, 255, 255, .24); }
+.agent-live button:hover { background: rgba(255, 255, 255, .4); }
+@keyframes live-flow { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
+@keyframes live-sheen { 0% { background-position: 200% 0; } 100% { background-position: -60% 0; } }
+@media (prefers-reduced-motion: reduce) { .agent-live, .agent-live::after { animation: none; } }
