@@ -109,11 +109,19 @@
   </div>
 
   <section id="home-surface" class="home-surface hidden" aria-label="首页">
-    <div class="home-idle" id="home-idle">
-      <h1 class="home-greeting">很高兴见到你，<em id="home-user-name">Thomas</em></h1>
-      <div class="home-agent-slot" id="home-agent-slot"></div>
-      <button type="button" class="home-history-link" id="home-history-link" data-home-history hidden>查看历史对话</button>
-      <div class="home-footer" aria-label="页脚"><button type="button" data-home-foot>条款</button><button type="button" data-home-foot>隐私</button><button type="button" data-home-foot>Cookie</button><button type="button" data-home-foot>DMCA</button><button type="button" data-home-foot>Cookie 偏好设置</button></div>
+    <aside class="home-side" aria-label="首页导航">
+      <button type="button" data-home-nav="library"><svg viewBox="0 0 24 24" class="icon"><path d="M4 5h5a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H4zM20 5h-5a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h6z"/></svg><span>素材库</span></button>
+      <button type="button" data-home-nav="projects"><svg viewBox="0 0 24 24" class="icon"><path d="M3 6h6l2 2h10v11H3z"/></svg><span>项目</span></button>
+    </aside>
+    <div class="home-main" id="home-main">
+      <div class="home-idle" id="home-idle">
+        <h1 class="home-greeting">很高兴见到你，<em id="home-user-name">Thomas</em></h1>
+        <div class="home-agent-slot" id="home-agent-slot"></div>
+        <button type="button" class="home-history-link" id="home-history-link" data-home-history hidden>查看历史对话</button>
+        <div class="home-footer" aria-label="页脚"><button type="button" data-home-foot>条款</button><button type="button" data-home-foot>隐私</button><button type="button" data-home-foot>Cookie</button><button type="button" data-home-foot>DMCA</button><button type="button" data-home-foot>Cookie 偏好设置</button></div>
+      </div>
+      <section class="home-view hidden" id="home-projects-view" aria-label="项目总览"></section>
+      <section class="home-view hidden" id="home-library-view" aria-label="素材库"></section>
     </div>
   </section>
 
