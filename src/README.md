@@ -21,5 +21,5 @@
 - `17-i18n.js` 界面语言层：中 / EN 词典与正则、渲染后替换引擎、右上角切换按钮
 - `16-shot-rules.js` 分镜规范（按类型）、结构化镜头字段规整、草案预检（查重 / 错配 / 覆盖）、规则检查、用户风格样例
 - `15-script-rules.js` 剧本格式规则（美式 / 中式标题、虚写与不可拍词表、镜头术语）与校验器
-- `18-home.js` 首页（参考正式版）：左侧栏（素材库 / 项目）+ 主区三视图 `state.homeView`（agent 问候语与输入框 / projects 项目总览 / library 素材库）；入口（顶栏 logo / 返回项目列表）在这里，面板的闲置 / 全屏两态在 11 的 `agentHomeMode` / `homeSync`，页面切换在 06 的 render 覆盖；审阅工作区头 `renderHomeWorkspaceHead()`（全屏对话里打开板块时对话停靠左栏、板块在右栏，进入规则在 06 的 `stagePage`）
+- `18-home.js` 首页（参考正式版）：左侧栏（素材库 / 项目）+ 主区三视图 `state.homeView`（agent 问候语与输入框 / projects 项目总览 / library 素材库）；入口（顶栏 logo / 返回项目列表）在这里，面板的闲置 / 全屏两态在 11 的 `agentHomeMode` / `homeSync`，页面切换在 06 的 render 覆盖
 - `styles.css` 全部样式；新增覆盖规则追加到文件末尾

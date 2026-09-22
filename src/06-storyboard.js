@@ -505,34 +505,18 @@
       </article>`;
     }
     renderStoryboard=()=>`<section class="board-shell" aria-label="分镜列表"><header class="board-head"><div><h1>分镜列表 <small style="font-size:12px;color:var(--tx2)">${state.shots.length} SHOTS</small></h1><p>每个镜头保留剧本来源，拖动手柄调整顺序。</p></div><div class="board-actions">${flowButton('script-selection','选取剧本创建')}${flowButton('agent-shots','Agent 拆分镜')}${flowButton('page-create','查看 生成单元')}</div></header><div class="board-selection"><label><input type="checkbox" data-select-all-shots ${state.selectedShots.size===state.shots.length&&state.shots.length?'checked':''} aria-label="全选镜头"> 全选</label><strong>已选 ${state.selectedShots.size} 个镜头</strong>${flowButton('combine-chunk','创建 生成单元',state.selectedShots.size?'':'disabled',true)}</div><div class="shot-list">${state.shots.map(renderShotRecord).join('')||`<div class="board-empty"><h2>从剧本的第一个画面开始</h2><p>选中正文创建分镜，或通过 Agent 导入拆分结果。</p>${flowButton('script-selection','打开剧本')}</div>`}</div></section>`;
-    // ===== 审阅工作区（body.home-split）：首页全屏对话里打开板块（Agent 执行时导航、消息里的「打开 …」按钮、识别工作流的「查看」）不离开对话，
-    // 而是把板块页面放到右栏、对话停靠左栏；从首页的项目总览 / 素材库进入板块、或点工作区头上的「进入工作区」（enterWorkspace）才是完整工作区。
-    // 工作区头由 src/18 renderHomeWorkspaceHead 渲染，样式见 styles.css 末尾「审阅工作区」段。 =====
-    var homeSplitRestore=null;   // 进入审阅工作区时记住写作侧栏的收起状态，关掉后恢复
-    function homeChatFullscreen(){ return state.projectPage==='home'&&!!(typeof document!=='undefined'&&document.body?.classList?.contains('home-chatting')); }
-    function stagePage(page,{full=false}={}){
-      const split=page!=='home'&&!full&&(!!state.homeSplit||homeChatFullscreen());
-      if(split&&!state.homeSplit){ homeSplitRestore={sidebarCollapsed:state.sidebarCollapsed}; if(typeof innerWidth==='number'&&innerWidth<1500)state.sidebarCollapsed=true; }   // 右栏不宽时先收起写作侧栏
-      if(!split&&state.homeSplit&&homeSplitRestore){ state.sidebarCollapsed=homeSplitRestore.sidebarCollapsed; homeSplitRestore=null; }
-      state.homeSplit=split; state.projectPage=page;
-    }
-    function enterWorkspace(page){ selectProjectPage(page,{full:true}); }
-    function openBoard(){captureVisibleEdits();stagePage('scripts');state.workspaceMode='document';state.currentDoc='storyboard';state.currentFileId=boardFile.id;state.view='focus';state.selectedPageSlot='left';state.createMenuVisible=false;render();}
-    function selectProjectPage(page,opts){captureVisibleEdits();stagePage(page,opts);hideCaretToolbar();hideAssetCard();closeAssetMenu();render();}
+    function openBoard(){captureVisibleEdits();state.projectPage='scripts';state.workspaceMode='document';state.currentDoc='storyboard';state.currentFileId=boardFile.id;state.view='focus';state.selectedPageSlot='left';state.createMenuVisible=false;render();}
+    function selectProjectPage(page){captureVisibleEdits();state.projectPage=page;hideCaretToolbar();hideAssetCard();closeAssetMenu();render();}
     render=()=>{
       const home=state.projectPage==='home';   // 首页：点顶栏 logo 进入，页面本身就是放大的 Agent 对话框（入口在 src/18-home.js，面板行为在 src/11 的 agentHomeMode）
-      const split=!home&&!!state.homeSplit;   // 审阅工作区：对话停靠左栏，右栏照常渲染板块页面（stagePage 决定何时进入）
       $$('.top-nav button').forEach(b=>b.classList.toggle('active',b.dataset.flow==='page-'+state.projectPage));
-      document.body.classList.toggle('home-page',home||split);   // 先切 body 类（浮动入口随之隐藏），再让面板进入 / 退出首页模式
-      document.body.classList.toggle('home-split',split);
-      $('#home-surface')?.classList.toggle('hidden',!(home||split));
-      $('#home-workspace-head')?.classList.toggle('hidden',!split);
+      document.body.classList.toggle('home-page',home);   // 先切 body 类（浮动入口随之隐藏），再让面板进入 / 退出首页模式
+      $('#home-surface')?.classList.toggle('hidden',!home);
       $('#project-surface').classList.toggle('hidden',state.projectPage==='scripts'||home);
       $('.workspace').style.visibility=state.projectPage==='scripts'?'visible':'hidden';
       $('#agent-fab').style.removeProperty('visibility');   // 入口显隐由面板状态统一控制
-      if(typeof agentHomeMode==='function')agentHomeMode(home||split);
+      if(typeof agentHomeMode==='function')agentHomeMode(home);
       if(home){if(typeof renderHomePage==='function')renderHomePage();persistWorkspace();return;}
-      if(split&&typeof renderHomeWorkspaceHead==='function')renderHomeWorkspaceHead();
       if(state.projectPage==='create'){renderCreatePage();persistWorkspace();return;}
       if(state.projectPage==='assets'){renderAssetsPage();persistWorkspace();return;}
       $('#project-surface').innerHTML='';

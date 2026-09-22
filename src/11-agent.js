@@ -263,7 +263,7 @@
       // ===== 首页模式（样式见 styles.css 末尾「首页」段）：进入首页时把面板搬进 #home-agent-slot——没有对话内容时只露出输入框（问候页），
       // 开始对话后（body.home-chatting）面板铺满页面；不可拖动 / 缩放 / 关闭。离开首页把面板搬回 body，恢复浮窗 =====
       function homeSync(){
-        const chatting=homeMode&&(!!state.homeSplit||chat().messages.length>0||$('#agent-back').getAttribute('aria-pressed')==='true');   // 有消息或在看历史列表 = 对话模式；审阅工作区打开时始终是对话态
+        const chatting=homeMode&&(chat().messages.length>0||$('#agent-back').getAttribute('aria-pressed')==='true');   // 有消息或在看历史列表 = 对话模式
         document.body.classList.toggle('home-chatting',chatting);
         const ta=$('#agent-input'), want=homeMode&&!chatting?HOME_PLACEHOLDER:'输入消息...';
         if(ta&&homePlaceholder!==want){ homePlaceholder=want; ta.setAttribute('placeholder',want); }
@@ -1487,8 +1487,7 @@
         if(t.closest('#agent-close')){ if(runningWorkflow){const w=findWorkflow(runningWorkflow.id)?.w;if(w)stopWorkflow(w);}panel.classList.add('hidden'); return; }
         if(t.closest('#agent-new')){ newChat(); return; }
         if(t.closest('#agent-back')){ const b=$('#agent-back');
-          if(homeMode){ b.setAttribute('aria-pressed','false'); if(state.homeSplit) selectProjectPage('home');   // 审阅工作区里的「‹」：先关掉右栏工作区
-            if(chat().messages.length) newChat(); else renderAgent(); return; }   // 首页：回到问候页，有内容的对话另起新对话、旧对话留在历史里
+          if(homeMode){ b.setAttribute('aria-pressed','false'); if(chat().messages.length) newChat(); else renderAgent(); return; }   // 首页：回到问候页，有内容的对话另起新对话、旧对话留在历史里
           b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true'); renderAgent(); return; }
         if(t.closest('#agent-pin')){ store.pinned=!store.pinned; save(); renderAgent(); return; }
         if(t.closest('#agent-quick')){

@@ -66,8 +66,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 | 功能 | 入口 |
 |---|---|
 | 全局重绘 | `function render()` |
-| 首页（顶栏 logo / 返回项目列表） | 参考正式版首页：左侧栏（素材库 / 项目）+ 主区，`state.homeView` = agent（问候语 + 居中输入框）/ projects（项目总览，「新建项目」直接建项目并重载进剧本工作区）/ library（当前项目的人物 / 场景 / 道具）。`state.projectPage==='home'`：src/06 的 render 覆盖切 `body.home-page` 与 `#home-surface`，并调用 `renderHomePage()`（src/18）；全屏对话里打开板块进入「审阅工作区」分栏（见下一行）；面板首页模式 `agentHomeMode()`（src/11：把 `#agent-panel` 搬进 `#home-agent-slot`，无对话时只露输入框，有消息或看历史时 `body.home-chatting` 铺满整页盖住侧栏；离开首页搬回 body）；样式在 styles.css 末尾「首页」段 |
-| 审阅工作区（首页分栏） | 首页全屏对话里 Agent 打开 / 编辑剧本、文档、资产、分镜（`agentGoPage()` / 消息里的「打开 …」按钮 / 工作流「查看」都经 `selectProjectPage()` 或 `openBoard()`）时不离开对话：src/06 `stagePage()` 置 `state.homeSplit=true`（不持久化），render 覆盖加 `body.home-split`，对话停靠左栏（`--home-chat-w`），右栏是正常板块页面（`.workspace` / `#project-surface` 固定定位到右栏），顶部工作区头 `#home-workspace-head` 由 src/18 `renderHomeWorkspaceHead()` 渲染（板块切换 / 当前稿纸标题 / 「进入工作区」`enterWorkspace()` / 关闭 = `selectProjectPage('home')`）。从首页项目总览 / 素材库进入板块走 `enterWorkspace()`（完整工作区）。窄栏时 `stagePage()` 先收起写作侧栏，退出后恢复。样式在 styles.css 末尾「审阅工作区」段 |
+| 首页（顶栏 logo / 返回项目列表） | 参考正式版首页：左侧栏（素材库 / 项目）+ 主区，`state.homeView` = agent（问候语 + 居中输入框）/ projects（项目总览，「新建项目」直接建项目并重载进剧本工作区）/ library（当前项目的人物 / 场景 / 道具）。`state.projectPage==='home'`：src/06 的 render 覆盖切 `body.home-page` 与 `#home-surface`，并调用 `renderHomePage()`（src/18）；面板首页模式 `agentHomeMode()`（src/11：把 `#agent-panel` 搬进 `#home-agent-slot`，无对话时只露输入框，有消息或看历史时 `body.home-chatting` 铺满整页盖住侧栏；离开首页搬回 body）；样式在 styles.css 末尾「首页」段 |
 | 保存 / 新建剧集 | `persistWorkspace()`、`freshWorkspace()` |
 | 封面页 | `renderCover()`（空白封面用 `file.blank` 与 `data-placeholder`） |
 | 资产侧栏 | `.project-rail`，`alignAssetsRail()` 已改为固定内边距 |
