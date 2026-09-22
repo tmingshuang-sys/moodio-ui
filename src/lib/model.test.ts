@@ -54,3 +54,24 @@ describe('chat model smart matching', () => {
     expect(calls).toEqual(['deepseek-flash']);
   });
 });
+
+describe('plan json repair', () => {
+  it('closes truncated objects and drops dangling keys', async () => {
+    const { repairJSON, parsePlanJSONLoose } = await import('./model');
+    expect(repairJSON('{"message":"你好","actions":[{"tool":"open_doc","args":{"id":"d1"}},{"tool":"write_doc","args":{"name":"a.md","content":"半截')).toEqual({ message: '你好', actions: [{ tool: 'open_doc', args: { id: 'd1' } }, { tool: 'write_doc', args: { name: 'a.md', content: '半截' } }] });
+    expect(repairJSON('```json\n{"message":"x","actions":[],"followUps":[{"label":"a",')).toEqual({ message: 'x', actions: [], followUps: [{ label: 'a' }] });
+    expect(repairJSON('not json at all')).toBeNull();
+    expect(parsePlanJSONLoose('{"message":"ok","actions":[]}')).toEqual({ data: { message: 'ok', actions: [] }, repaired: false });
+    expect(parsePlanJSONLoose('{"message":"ok","actions":[').repaired).toBe(true);
+  });
+});
+
+describe('plan json sanitising', () => {
+  it('strips zero-width characters and escapes raw newlines and tabs inside strings', async () => {
+    const { parsePlanJSON, sanitizeJSON } = await import('./model');
+    expect(parsePlanJSON('{\u200b"message":"第一行\n第二行\t缩进","actions":[]}\ufeff')).toEqual({ message: '第一行\n第二行\t缩进', actions: [] });
+    expect(sanitizeJSON('{"a":"x\\"y\n"}')).toBe('{"a":"x\\"y\\n"}');   // 已转义的引号不动，裸换行转成 \\n
+    expect(() => parsePlanJSON('{"message":')).toThrow(/不是有效 JSON（/);
+  });
+});
+

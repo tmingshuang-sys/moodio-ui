@@ -213,7 +213,7 @@ async function readOpenAIStream(res: Response, { signal, onText, onReasoning }: 
 
 export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning, images }: CallOptions = {}): Promise<string> {
   const streaming = typeof onText === 'function';
-  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };
+  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' }, max_tokens: 8192 };   // 不写 max_tokens 时 DeepSeek 默认 4K，整份剧本塞进 JSON 会被截断
   const think = String(cfg.thinking || '');
   if (think === 'off') body.thinking = { type: 'disabled' };
   else if (['low', 'high', 'max'].includes(think)) { body.thinking = { type: 'enabled' }; body.reasoning_effort = think; delete body.temperature; }
@@ -276,12 +276,59 @@ export async function probeModel(cfg: ModelConfig): Promise<string> {
   return String(content || '').trim().slice(0, 80);
 }
 
+// 模型偶尔会在 JSON 里夹零宽字符 / BOM，或在字符串值里直接换行、打 Tab（JSON 不允许裸控制字符）：解析前先清掉 / 转义，不改变内容本身
+export function sanitizeJSON(text: string): string {
+  const s = String(text || '').replace(/[\u200b-\u200d\u2060\ufeff]/g, '');
+  let out = '', inStr = false, esc = false;
+  for (const ch of s) {
+    if (inStr) {
+      if (esc) { esc = false; out += ch; continue; }
+      if (ch === '\\') { esc = true; out += ch; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === '\n') { out += '\\n'; continue; } if (ch === '\r') { continue; } if (ch === '\t') { out += '\\t'; continue; }
+      if (ch < ' ') continue;
+      out += ch; continue;
+    }
+    if (ch === '"') inStr = true;
+    out += ch;
+  }
+  return out;
+}
 export function parsePlanJSON(content: string): any {
-  const text = String(content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-  try { return JSON.parse(text); } catch { /* fallthrough */ }
+  const text = sanitizeJSON(String(content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim());
+  let first: any = null;
+  try { return JSON.parse(text); } catch (e) { first = e; }
   const a = text.indexOf('{'), b = text.lastIndexOf('}');
   if (a >= 0 && b > a) { try { return JSON.parse(text.slice(a, b + 1)); } catch { /* fallthrough */ } }
-  throw new Error('模型返回的不是有效 JSON');
+  throw new Error(`模型返回的不是有效 JSON（${String(first?.message || first).slice(0, 80)}）`);
+}
+
+// 宽松解析：先按严格方式，不行再修复被截断的 JSON（补上没闭合的引号 / 括号，砍掉末尾不完整的键值）
+export function parsePlanJSONLoose(content: string): { data: any; repaired: boolean } {
+  try { return { data: parsePlanJSON(content), repaired: false }; } catch { /* 试着修 */ }
+  const data = repairJSON(String(content || ''));
+  if (data === null) throw new Error('模型返回的不是有效 JSON');
+  return { data, repaired: true };
+}
+function autoClose(s: string): string {
+  const stack: string[] = []; let inStr = false, esc = false;
+  for (const ch of s) {
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true; else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']'); else if (ch === '}' || ch === ']') stack.pop();
+  }
+  let out = s; if (inStr) out += '"';
+  out = out.replace(/[,\s]+$/, '').replace(/,?\s*"[^"]*"\s*:\s*$/, '').replace(/[,\s]+$/, '');   // 去掉末尾的逗号与悬空的 key
+  return out + stack.reverse().join('');
+}
+export function repairJSON(text: string): any | null {
+  const clean = sanitizeJSON(text); const start = clean.indexOf('{'); if (start < 0) return null;
+  let s = clean.slice(start).replace(/\s*```\s*$/, '');
+  for (let attempt = 0; attempt < 30 && s.length > 1; attempt++) {
+    try { const v = JSON.parse(autoClose(s)); if (v && typeof v === 'object') return v; } catch { /* 再砍一截 */ }
+    const cut = Math.max(s.lastIndexOf(','), s.lastIndexOf('{'), s.lastIndexOf('['), s.lastIndexOf('}'), s.lastIndexOf(']'), s.lastIndexOf('"'));
+    if (cut <= 0) break; s = s.slice(0, cut);
+  }
+  return null;
 }
 
 // 从尚未结束的 JSON 文本里取出 "message" 字段已生成的部分（流式显示用）

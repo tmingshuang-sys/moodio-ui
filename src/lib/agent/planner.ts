@@ -1,6 +1,6 @@
 // ===== 规划器：把用户请求交给模型，得到 {message, actions, followUps}；追问与下一步建议的规整 =====
 import type { Action, Chat, FollowUp, Message, Question } from '../types';
-import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON } from '../model';
+import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON, parsePlanJSONLoose } from '../model';
 import { AGENT_TOOLS } from './tools';
 import { buildSystemPrompt, hasScriptDoc } from './prompt';
 import { readLedger } from '../ledger';
@@ -65,23 +65,40 @@ export function normalizeQuestions(list: unknown): Question[] {
   }).filter(q => q.text);
 }
 
-export function parseAgentPlan(content: string): PlanReply {
-  const parsed = parsePlanJSON(content);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || typeof parsed.message !== 'string' || !Array.isArray(parsed.actions) || parsed.actions.length > 100) throw new Error('模型回复缺少有效的 message / actions');
-  for (const action of parsed.actions) {
-    if (!action || typeof action !== 'object' || !Object.hasOwn(AGENT_TOOLS, action.tool) || !action.args || typeof action.args !== 'object' || Array.isArray(action.args)) throw new Error('模型回复包含无效的操作结构');
+// 严格模式：结构不对就抛错（触发一次带修正提示的重试）；宽松模式（重试那次）：修复截断、丢掉无效操作、归一常见走形，尽量把能用的部分交出来
+export function parseAgentPlan(content: string, { lenient = false }: { lenient?: boolean } = {}): PlanReply {
+  const { data: parsed, repaired } = lenient ? parsePlanJSONLoose(content) : { data: parsePlanJSON(content), repaired: false };
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('模型回复不是 JSON 对象');
+  // 常见走形：message 写成对象或叫 text / reply；actions 叫 plan / steps；顶层直接是一个操作；顶层直接给 questions
+  const message: string = typeof parsed.message === 'string' ? parsed.message : typeof parsed.message?.text === 'string' ? parsed.message.text : typeof parsed.text === 'string' ? parsed.text : typeof parsed.reply === 'string' ? parsed.reply : '';
+  let raw: unknown = parsed.actions;
+  if (!Array.isArray(raw)) raw = Array.isArray(parsed.plan) ? parsed.plan : Array.isArray(parsed.steps) ? parsed.steps : typeof parsed.tool === 'string' ? [parsed] : Array.isArray(parsed.questions) ? [{ tool: 'ask_user', args: { questions: parsed.questions } }] : undefined;
+  if (!Array.isArray(raw) || (!message && !raw.length) || raw.length > 100) throw new Error('模型回复缺少有效的 message / actions');
+  const actions: { tool: string; args: Record<string, any> }[] = []; const dropped: string[] = [];
+  for (const action of raw as any[]) {
+    const ok = !!action && typeof action === 'object' && typeof action.tool === 'string' && Object.hasOwn(AGENT_TOOLS, action.tool) && !!action.args && typeof action.args === 'object' && !Array.isArray(action.args);
+    if (ok) actions.push({ tool: action.tool, args: action.args });
+    else if (lenient) dropped.push(String(action?.tool || '?').slice(0, 24));
+    else throw new Error('模型回复包含无效的操作结构');
   }
-  return { message: parsed.message, actions: parsed.actions.map((a: any) => ({ tool: a.tool, args: a.args })), followUps: normalizeFollowUps(parsed.followUps) };
+  if (repaired && actions.length) actions.pop();   // 截断修复后最后一个操作多半不完整，宁可丢掉也不执行半截
+  const notes = [repaired ? '回复在末尾被截断，最后一步已丢弃' : '', dropped.length ? `忽略了 ${dropped.length} 个无效操作（${dropped.slice(0, 3).join('、')}）` : ''].filter(Boolean);
+  return { message: notes.length ? `${message}${message ? '\n' : ''}（${notes.join('；')}）` : message, actions, followUps: normalizeFollowUps(parsed.followUps) };
 }
 
 async function requestAgentPlan(request: (retry: boolean) => Promise<string>): Promise<PlanReply> {
+  let lastError: any = null, lastContent = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     const content = await request(attempt > 0);   // 网络中断或不完整响应不能当作格式错误继续执行
-    try { return parseAgentPlan(content); } catch (e) {
-      if (attempt) { const error: any = new Error('模型回复格式不正确，自动重试后仍未得到有效操作计划。未执行任何文件操作，请重试。'); error.code = 'MODEL_PLAN_FORMAT'; throw error; }
+    try { return parseAgentPlan(content, { lenient: attempt > 0 }); } catch (e: any) {
+      lastError = e; lastContent = String(content || '');
+      console.warn(`[moodio] 第 ${attempt + 1} 次规划回复无法解析：${e?.message || e}`, lastContent.slice(0, 3000));
+      try { (window as any).__moodioLastPlanError = { attempt: attempt + 1, error: String(e?.message || e), content: lastContent }; } catch { /* ignore */ }   // 排查用：控制台里能拿到原样字节
     }
   }
-  throw new Error('unreachable');
+  const head = lastContent.trim().replace(/\s+/g, ' ').slice(0, 240);
+  const error: any = new Error(`模型回复格式不正确（${lastError?.message || '无法解析'}），自动重试后仍未得到有效操作计划。未执行任何文件操作，请重试。${head ? `\n\n模型原始回复开头：${head}${lastContent.trim().length > 240 ? '…' : ''}` : '\n\n模型返回了空内容。'}`);
+  error.code = 'MODEL_PLAN_FORMAT'; error.raw = lastContent; throw error;
 }
 
 export async function remotePlan(text: string, chat: Chat, hooks: PlanHooks = {}): Promise<PlanReply | null> {

@@ -31,6 +31,16 @@ describe('plan parsing', () => {
     expect(v2[0]).toEqual({ key: 'size', text: '多大？', type: 'single', options: [{ label: '手掌大小', hint: '单手握住' }, { label: '桌面级', hint: undefined }], multi: false, placeholder: undefined });
     expect(v2[1]).toEqual({ key: 'brand', text: '品牌？', type: 'text', options: [], multi: false, placeholder: '比如：SoundBox' });
   });
+  it('in lenient mode repairs truncation, drops invalid actions and normalises common shape mistakes', () => {
+    const truncated = '{"message":"先问几个问题","actions":[{"tool":"ask_user","args":{"questions":[{"text":"类型？","options":["广告","短片"]}]}},{"tool":"write_doc","args":{"name":"a.md","content":"很长的内容被截';
+    expect(() => planner.parseAgentPlan(truncated)).toThrow();
+    const r = planner.parseAgentPlan(truncated, { lenient: true });
+    expect(r.actions).toEqual([{ tool: 'ask_user', args: { questions: [{ text: '类型？', options: ['广告', '短片'] }] } }]); expect(r.message).toContain('截断');
+    const mixed = planner.parseAgentPlan('{"message":"x","actions":[{"tool":"format_disk","args":{}},null,{"tool":"open_doc","args":{"id":"d1"}}]}', { lenient: true });
+    expect(mixed.actions).toEqual([{ tool: 'open_doc', args: { id: 'd1' } }]); expect(mixed.message).toContain('忽略了 2 个无效操作');
+    expect(planner.parseAgentPlan('{"text":"问一下","questions":[{"text":"类型？","options":["广告"]}]}').actions[0].tool).toBe('ask_user');
+    expect(planner.parseAgentPlan('{"message":{"text":"直接一个操作"},"tool":"open_doc","args":{"id":"d1"}}').actions).toEqual([{ tool: 'open_doc', args: { id: 'd1' } }]);
+  });
   it('rejects unknown tools and malformed shapes', () => {
     for (const bad of ['null', '{}', '[]', '{"message":"x","actions":[null]}', '{"message":"x","actions":[{"tool":"__proto__","args":{}}]}', '{"message":"x","actions":[{"tool":"format_disk","args":{}}]}']) {
       expect(() => planner.parseAgentPlan(bad)).toThrow();

@@ -1,6 +1,6 @@
 // ===== 中间对话区：头部（对话文件 / 分享 / 设置）、消息列表（空状态是问候语与建议）、输入框 =====
 import { useEffect, useRef } from 'react';
-import { FolderOpen, Share2, Settings2, Sparkles, Loader2 } from 'lucide-react';
+import { FolderOpen, Sparkles, Loader2 } from 'lucide-react';
 import { useChats, useFiles, useAgent } from '../lib/store';
 import { useTasks } from '../lib/tasks';
 import { cancelTask } from '../lib/mediagen';
@@ -14,10 +14,8 @@ import { useT } from '../lib/i18n';
 import MessageList from './MessageList';
 import type { Chat } from '../lib/types';
 import Composer from './Composer';
-import { openModelSettings } from './Dialogs';
 import { toast } from './Toast';
 import { send } from '../lib/agent/runner';
-import { modelCfg } from '../lib/model';
 
 const SUGGESTIONS = [
   { label: '写一条 30 秒的广告脚本', prompt: '帮我写一条 30 秒的广告脚本，先问清楚产品和受众再动笔。' },
@@ -79,8 +77,6 @@ export default function ChatPane() {
           <TasksIndicator />
           {/* Agent 真的产出了文件才出现这个按钮；没有文件时工作区也不展开 */}
           {fileCount > 0 && <button type="button" className={`chip-btn${ui.paneOpen ? ' active' : ''}`} onClick={() => setUi({ paneOpen: !ui.paneOpen })}><FolderOpen size={15} /><span>{t('对话文件')}</span><em>{fileCount}</em></button>}
-          <button type="button" className="icon-btn" aria-label={t('分享')} title={t('分享')} onClick={() => toast('原型阶段暂不支持分享')}><Share2 size={17} /></button>
-          <button type="button" className={`icon-btn${modelCfg()?.apiKey ? '' : ' attention'}`} aria-label={t('模型设置')} title={modelCfg()?.apiKey ? t('模型设置') : '还没连接模型，点击设置'} onClick={openModelSettings}><Settings2 size={17} /></button>
         </div>
       </header>
       <StageStrip />
