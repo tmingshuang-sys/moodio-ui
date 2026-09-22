@@ -88,6 +88,35 @@ export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
   { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10] },
 ];
 
+// ===== 智能匹配模型：id 为 AUTO 时按候选链依次尝试，遇到「模型不可用」类错误就换下一个 =====
+export const AUTO = 'auto';
+export type ModelKind = 'image' | 'video' | 'videoImage';
+export const AUTO_CHAINS: Record<ModelKind, string[]> = {
+  image: ['doubao-seedream-5-0-260128', 'doubao-seedream-5-0-flash-260915', 'doubao-seedream-4-5-251128', 'fal-ai/bytedance/seedream/v3/text-to-image', 'fal-ai/flux/dev'],
+  video: ['doubao-seedance-2-5-260628', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/text-to-video'],
+  videoImage: ['doubao-seedance-2-5-260628', 'doubao-seedance-2-0-260128', 'doubao-seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/image-to-video'],
+};
+export const AUTO_LABEL = '智能匹配模型';
+export function isAuto(id: string | undefined): boolean { return !id || id === AUTO; }
+export function modelChain(kind: ModelKind, id: string | undefined): string[] { return isAuto(id) ? AUTO_CHAINS[kind] : [String(id)]; }
+// 只有「这个模型现在用不了」才换下一个：未开通、欠费、不存在、网关没配 key、无权限。生成本身失败或参数错误不换，免得悄悄换成别的模型出结果
+const UNAVAILABLE_REASON: Record<string, string> = { ModelNotOpen: '未开通', AccountOverdueError: '余额不足', 'InvalidEndpointOrModel.NotFound': '不存在', HTTP_404: '不存在', HTTP_503: '网关未配置', HTTP_401: '无权限', HTTP_403: '无权限' };
+export function unavailableReason(e: unknown): string | null { const code = String((e as any)?.code || ''); return UNAVAILABLE_REASON[code] || null; }
+
+// 依次尝试候选模型；返回实际用到的模型与跳过的记录。fn 抛出不可用错误就换下一个，其他错误原样抛出
+export async function runWithFallback<T>(chain: string[], fn: (id: string, index: number) => Promise<T>, onSkip?: (id: string, reason: string) => void): Promise<{ result: T; model: string; skipped: { model: string; reason: string }[] }> {
+  const skipped: { model: string; reason: string }[] = [];
+  for (let i = 0; i < chain.length; i++) {
+    try { return { result: await fn(chain[i], i), model: chain[i], skipped }; }
+    catch (e) {
+      const reason = unavailableReason(e);
+      if (!reason || i === chain.length - 1) throw e;
+      skipped.push({ model: chain[i], reason }); onSkip?.(chain[i], reason);
+    }
+  }
+  throw new Error('没有可用的模型');
+}
+
 export function findPreset(list: ModelPreset[], id: string | undefined): ModelPreset | null {
   return list.find(m => m.id === String(id || '')) || null;
 }

@@ -2,18 +2,19 @@
 // 网关持有真实的 fal key（Worker secret FAL_KEY），页面只带访问口令；模型与偏好在输入框的「模型」面板里选，存在 localStorage moodio-agent-model。
 import type { MediaItem, ModelConfig } from './types';
 import { uid } from './types';
-import { modelCfg, PROVIDER_DEFAULTS } from './model';
+import { modelCfg, PROVIDER_DEFAULTS, MODEL_KEY as MODEL_KEY_FOR_MIGRATION } from './model';
 import { useFiles, findMedia, useAgent } from './store';
 import { putBlob, cacheUrl, getBlob, imageSize } from './storage';
 import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue, arkImageSize, resolveDuration } from './mediamodels';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue, arkImageSize, resolveDuration, AUTO, AUTO_CHAINS, isAuto, modelChain, findPreset, runWithFallback } from './mediamodels';
+import type { ModelKind } from './mediamodels';
 
 export const MEDIA_DEFAULTS = {
   baseUrl: PROVIDER_DEFAULTS.openai.baseUrl.replace(/\/v1$/, ''),
-  imageModel: IMAGE_MODELS[0].id,
-  videoModel: VIDEO_MODELS[0].id,
-  videoImageModel: VIDEO_IMAGE_MODELS[0].id,
+  imageModel: AUTO,        // 智能匹配：Seedream 5.0 起，不可用时沿候选链换
+  videoModel: AUTO,        // 智能匹配：Seedance 2.5 起
+  videoImageModel: AUTO,
   imageRatio: '16:9' as RatioKey,
   videoRatio: '16:9' as RatioKey,
   videoDuration: '5',
@@ -40,10 +41,22 @@ export function mediaReadyReason(): string | null {
   return null;
 }
 
-// 当前选中的模型（面板与生成函数共用同一份取值逻辑）
+// 当前选中的模型（面板与生成函数共用同一份取值逻辑；'auto' = 智能匹配）
 export function currentImageModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.imageModel || MEDIA_DEFAULTS.imageModel); }
 export function currentVideoModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.videoModel || MEDIA_DEFAULTS.videoModel); }
 export function currentVideoImageModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.videoImageModel || MEDIA_DEFAULTS.videoImageModel); }
+// 面板与生成共用：智能匹配时按候选链第一个模型的能力显示选项
+export function effectivePreset(kind: ModelKind, id: string | undefined): ModelPreset {
+  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : VIDEO_IMAGE_MODELS;
+  return isAuto(id) ? (findPreset(list, AUTO_CHAINS[kind][0]) || presetFor(list, AUTO_CHAINS[kind][0], kind)) : presetFor(list, id, kind);
+}
+export function modelDisplayName(kind: ModelKind, id: string | undefined): string {
+  if (isAuto(id)) return '智能匹配';
+  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : VIDEO_IMAGE_MODELS;
+  return findPreset(list, id)?.name || String(id);
+}
+// 旧配置里存的是具体模型 id：第一次带智能匹配的版本启动时改成默认的智能匹配（只做一次）
+(() => { try { if (localStorage.getItem('moodio-model-prefs-v2')) return; const cfg = modelCfg(); if (cfg) { localStorage.setItem(MODEL_KEY_FOR_MIGRATION, JSON.stringify({ ...cfg, imageModel: AUTO, videoModel: AUTO, videoImageModel: AUTO })); } localStorage.setItem('moodio-model-prefs-v2', '1'); } catch { /* ignore */ } })();
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function readError(res: Response): Promise<string> {
@@ -86,7 +99,7 @@ async function runFal(model: string, input: Record<string, unknown>, { onProgres
   const ep = mediaEndpoint(); if (!ep) throw new Error(mediaReadyReason() || '网关未配置');
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ep.token };
   const submit = await fetch(`${ep.base}/fal/${String(model).replace(/^\/+/, '')}`, { method: 'POST', headers, body: JSON.stringify(input), signal });
-  if (!submit.ok) throw new Error('提交生成任务失败：' + await readError(submit));
+  if (!submit.ok) { const err: any = new Error('提交生成任务失败：' + await readError(submit)); err.code = 'HTTP_' + submit.status; throw err; }
   const queued = await submit.json();
   const statusUrl = queued?.status_url ? viaGateway(queued.status_url, ep.base) : null;
   const responseUrl = queued?.response_url ? viaGateway(queued.response_url, ep.base) : null;
@@ -121,9 +134,8 @@ async function arkFetch(path: string, init: RequestInit & { signal?: AbortSignal
   const data = await res.json().catch(() => null);
   if (!res.ok || data?.error) {
     const err = data?.error || {};
-    if (err.code === 'ModelNotOpen') throw new Error('这个模型还没在火山方舟控制台开通，去「开通管理」里开通后即可使用');
-    if (err.code === 'AccountOverdueError') throw new Error('火山方舟账户余额不足，请先充值');
-    throw new Error('火山方舟返回错误：' + (err.message || `HTTP ${res.status}`));
+    const out: any = new Error(err.code === 'ModelNotOpen' ? '这个模型还没在火山方舟控制台开通，去「开通管理」里开通后即可使用' : err.code === 'AccountOverdueError' ? '火山方舟账户余额不足，请先充值' : '火山方舟返回错误：' + (err.message || `HTTP ${res.status}`));
+    out.code = err.code || ('HTTP_' + res.status); throw out;
   }
   return data;
 }
@@ -151,7 +163,7 @@ async function runArkVideo(model: string, content: unknown[], { onProgress, sign
 }
 
 // 把结果地址下载进媒体库（经网关代下载，避免跨域）
-async function storeResult(url: string, { name, group, kind, contentType }: { name: string; group: string; kind: 'image' | 'video'; contentType?: string }): Promise<MediaItem> {
+async function storeResult(url: string, { name, group, kind, contentType, model }: { name: string; group: string; kind: 'image' | 'video'; contentType?: string; model?: string }): Promise<MediaItem> {
   const ep = mediaEndpoint(); if (!ep) throw new Error('网关未配置');
   const res = await fetch(`${ep.base}/media?url=${encodeURIComponent(url)}`, { headers: { Authorization: 'Bearer ' + ep.token } });
   if (!res.ok) throw new Error('下载生成结果失败：' + await readError(res));
@@ -162,16 +174,35 @@ async function storeResult(url: string, { name, group, kind, contentType }: { na
   await putBlob(id, blob); cacheUrl(id, blob);
   const size = kind === 'image' ? await imageSize(blob) : null;
   const finalName = /\.[a-z0-9]{2,5}$/i.test(name) ? name : `${name}.${ext}`;
-  const meta: MediaItem = { id, name: finalName, kind, mime, size: blob.size, group, createdAt: Date.now(), by: 'agent', width: size?.width, height: size?.height };
+  const meta: MediaItem = { id, name: finalName, kind, mime, size: blob.size, group, createdAt: Date.now(), by: 'agent', width: size?.width, height: size?.height, model };
   useFiles.getState().addMedia(meta);
   return meta;
 }
 
+export interface GenResult { item: MediaItem; model: ModelPreset; skipped: { model: ModelPreset; reason: string }[]; }
+export function fallbackNote(r: GenResult): string { return r.skipped.length ? `（${r.skipped.map(s => `${s.model.name}${s.reason}`).join('、')}，改用 ${r.model.name}）` : ''; }
+
+// 状态气泡里带上正在用的模型；换过模型时把跳过的原因一起挂着，用户能看到「Seedance 2.0（Seedance 2.5 未开通）· 生成中 · 12s」
+function labelled(kind: ModelKind, id: string, opts: GenOptions & { _skipped?: string[] }): GenOptions {
+  const sk = opts._skipped || [];   // 气泡放不下整串原因：只写第一个，其余记个数；完整清单在结果文案 fallbackNote() 里
+  const label = modelDisplayName(kind, id) + (sk.length === 1 ? `（${sk[0]}）` : sk.length > 1 ? `（${sk[0]} 等 ${sk.length} 个不可用）` : '');
+  return { ...opts, onProgress: t => opts.onProgress?.(`${label} · ${t}`) };
+}
+function skipNote(kind: ModelKind, opts: GenOptions & { _skipped?: string[] }) {
+  return (id: string, reason: string) => { (opts._skipped ||= []).push(`${modelDisplayName(kind, id)} ${reason}`); };
+}
+
 export interface ImageRequest { prompt: string; name?: string; group?: string; ratio?: RatioKey; model?: string; }
-export async function generateImage(req: ImageRequest, opts: GenOptions = {}): Promise<MediaItem> {
+export async function generateImage(req: ImageRequest, opts: GenOptions = {}): Promise<GenResult> {
   const prompt = String(req.prompt || '').trim(); if (!prompt) throw new Error('缺少画面描述');
   const cfg = modelCfg();
-  const model = req.model || currentImageModel(cfg);
+  const wanted = req.model || currentImageModel(cfg);
+  const chain = modelChain('image', wanted);
+  const run = await runWithFallback(chain, (id) => generateImageWith(id, prompt, req, cfg, labelled('image', id, opts)), skipNote('image', opts));
+  const skipped = run.skipped.map(s => ({ model: presetFor(IMAGE_MODELS, s.model, 'image'), reason: s.reason }));
+  return { item: run.result, model: presetFor(IMAGE_MODELS, run.model, 'image'), skipped };
+}
+async function generateImageWith(model: string, prompt: string, req: ImageRequest, cfg: ModelConfig | null, opts: GenOptions): Promise<MediaItem> {
   const preset = presetFor(IMAGE_MODELS, model, 'image');
   const ratio = (req.ratio || cfg?.imageRatio || MEDIA_DEFAULTS.imageRatio) as RatioKey;
   opts.onProgress?.('提交生成任务…');
@@ -189,15 +220,24 @@ export async function generateImage(req: ImageRequest, opts: GenOptions = {}): P
     url = hit.url; contentType = hit.contentType;
   }
   opts.onProgress?.('下载生成结果…');
-  return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'image', contentType });
+  return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'image', contentType, model: preset.name });
 }
 
 export interface VideoRequest { prompt: string; name?: string; group?: string; ratio?: RatioKey; duration?: string | number; fromMediaId?: string; model?: string; }
-export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): Promise<MediaItem> {
+export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): Promise<GenResult> {
   const prompt = String(req.prompt || '').trim(); if (!prompt) throw new Error('缺少画面描述');
   const cfg = modelCfg();
   const fromImage = !!req.fromMediaId;
-  const model = req.model || (fromImage ? currentVideoImageModel(cfg) : currentVideoModel(cfg));
+  const kind: ModelKind = fromImage ? 'videoImage' : 'video';
+  const list = fromImage ? VIDEO_IMAGE_MODELS : VIDEO_MODELS;
+  const wanted = req.model || (fromImage ? currentVideoImageModel(cfg) : currentVideoModel(cfg));
+  const chain = modelChain(kind, wanted);
+  const run = await runWithFallback(chain, (id) => generateVideoWith(id, prompt, req, cfg, labelled(kind, id, opts)), skipNote(kind, opts));
+  const skipped = run.skipped.map(s => ({ model: presetFor(list, s.model, kind), reason: s.reason }));
+  return { item: run.result, model: presetFor(list, run.model, kind), skipped };
+}
+async function generateVideoWith(model: string, prompt: string, req: VideoRequest, cfg: ModelConfig | null, opts: GenOptions): Promise<MediaItem> {
+  const fromImage = !!req.fromMediaId;
   const preset = presetFor(fromImage ? VIDEO_IMAGE_MODELS : VIDEO_MODELS, model, fromImage ? 'videoImage' : 'video');
   // 时长：请求里明确给了就用它；否则按设置——智能时长按提示词长度估，自定义用滑杆的值；最后收敛到模型允许的档位 / 范围
   const explicit = String(req.duration ?? '').replace(/[^0-9]/g, '');
@@ -227,11 +267,11 @@ export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): P
     url = hit.url; contentType = hit.contentType;
   }
   opts.onProgress?.('下载生成结果…');
-  return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'video', contentType });
+  return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'video', contentType, model: preset.name });
 }
 
 // 不经 Agent 的手动生成（输入框「+」菜单）：占用同一套忙碌状态与流光，可用胶囊上的「停止」中断
-export async function manualGenerate(kind: 'image' | 'video', req: ImageRequest & VideoRequest): Promise<MediaItem> {
+export async function manualGenerate(kind: 'image' | 'video', req: ImageRequest & VideoRequest): Promise<GenResult> {
   const agent = useAgent.getState();
   if (agent.busy) throw new Error('上一个任务还在执行，等它完成或点「停止」');
   const reason = mediaReadyReason(); if (reason) throw new Error(reason);
@@ -239,9 +279,9 @@ export async function manualGenerate(kind: 'image' | 'video', req: ImageRequest 
   agent.set({ busy: true, glow: true, abortRequested: false, controller, live: '提交生成任务…' });
   const opts: GenOptions = { signal: controller.signal, onProgress: text => useAgent.getState().set({ live: text }) };
   try {
-    const item = kind === 'image' ? await generateImage(req, opts) : await generateVideo(req, opts);
-    useFiles.getState().openInPane(item.id);   // 生成完直接在工作区打开，和 Agent 生成时的行为一致
-    return item;
+    const result = kind === 'image' ? await generateImage(req, opts) : await generateVideo(req, opts);
+    useFiles.getState().openInPane(result.item.id);   // 生成完直接在工作区打开，和 Agent 生成时的行为一致
+    return result;
   }
   finally { useAgent.getState().set({ busy: false, glow: false, live: '', controller: null }); }
 }

@@ -3,8 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, SlidersHorizontal } from 'lucide-react';
 import type { ModelPreset, RatioKey } from '../lib/mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_RESOLUTIONS, IMAGE_RESOLUTIONS, DURATION_MIN, DURATION_MAX, findPreset } from '../lib/mediamodels';
-import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason, genMode as readGenMode } from '../lib/mediagen';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_RESOLUTIONS, IMAGE_RESOLUTIONS, DURATION_MIN, DURATION_MAX, AUTO, AUTO_CHAINS, AUTO_LABEL, isAuto, findPreset } from '../lib/mediamodels';
+import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason, genMode as readGenMode, effectivePreset, modelDisplayName } from '../lib/mediagen';
 import { modelCfg, saveModelCfg } from '../lib/model';
 import type { ModelConfig } from '../lib/types';
 import { useT } from '../lib/i18n';
@@ -16,6 +16,21 @@ function RatioIcon({ ratio }: { ratio: RatioKey }) {
   const [w, h] = ratio.split(':').map(Number);
   const scale = 18 / Math.max(w, h);
   return <span className="ratio-box" style={{ width: Math.round(w * scale), height: Math.round(h * scale) }} aria-hidden="true" />;
+}
+
+// 列表顶部的「智能匹配模型」：默认从候选链第一个开始，不可用时自动换
+function AutoRow({ kind, active, onPick }: { kind: 'image' | 'video' | 'videoImage'; active: boolean; onPick: () => void }) {
+  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : VIDEO_IMAGE_MODELS;
+  const first = findPreset(list, AUTO_CHAINS[kind][0])?.name || AUTO_CHAINS[kind][0];
+  return (
+    <button type="button" className={`mp-model${active ? ' active' : ''}`} onClick={onPick}>
+      <span className="mp-check">{active && <Check size={14} strokeWidth={3} />}</span>
+      <span className="mp-model-body">
+        <span className="mp-model-name">{AUTO_LABEL}</span>
+        <span className="mp-model-hint">默认 {first}，无法生成时自动换成可用的模型</span>
+      </span>
+    </button>
+  );
 }
 
 function ModelRow({ preset, active, onPick }: { preset: ModelPreset; active: boolean; onPick: () => void }) {
@@ -65,11 +80,11 @@ export default function ModelPrefs() {
   const resolution = cfg.videoResolution || MEDIA_DEFAULTS.videoResolution;
   const imageResolution = cfg.imageResolution || MEDIA_DEFAULTS.imageResolution;
   const mode = readGenMode(cfg);
-  const videoName = findPreset(VIDEO_MODELS, videoId)?.name || '自定义';
-  const imageName = findPreset(IMAGE_MODELS, imageId)?.name || '自定义';
-  const videoPreset = findPreset(VIDEO_MODELS, videoId);
-  const imagePreset = findPreset(IMAGE_MODELS, imageId);
-  const videoImagePreset = findPreset(VIDEO_IMAGE_MODELS, videoImageId);
+  const videoName = modelDisplayName('video', videoId);
+  const imageName = modelDisplayName('image', imageId);
+  const videoPreset = effectivePreset('video', videoId);
+  const imagePreset = effectivePreset('image', imageId);
+  const videoImagePreset = effectivePreset('videoImage', videoImageId);
   const notReady = mediaReadyReason();
 
   return (
@@ -88,12 +103,14 @@ export default function ModelPrefs() {
           <div className="mp-body">
             <div className="mp-col mp-models">
               <h4>{t('模型选择')}</h4>
+              <AutoRow kind={tab} active={isAuto(tab === 'video' ? videoId : imageId)} onPick={() => patch(tab === 'video' ? { videoModel: AUTO } : { imageModel: AUTO })} />
               {(tab === 'video' ? VIDEO_MODELS : IMAGE_MODELS).map(m => (
                 <ModelRow key={m.id} preset={m} active={m.id === (tab === 'video' ? videoId : imageId)} onPick={() => patch(tab === 'video' ? { videoModel: m.id } : { imageModel: m.id })} />
               ))}
               {tab === 'video' && (
                 <>
                   <h4 className="mp-sub">{t('图生视频')}<small>{t('用工作区里的图片当首帧时')}</small></h4>
+                  <AutoRow kind="videoImage" active={isAuto(videoImageId)} onPick={() => patch({ videoImageModel: AUTO })} />
                   {VIDEO_IMAGE_MODELS.map(m => <ModelRow key={m.id} preset={m} active={m.id === videoImageId} onPick={() => patch({ videoImageModel: m.id })} />)}
                 </>
               )}

@@ -9,7 +9,7 @@ import { useT } from '../lib/i18n';
 import { baseName } from '../lib/markdown';
 import { toast } from './Toast';
 import { promptDialog } from './Dialogs';
-import { manualGenerate, mediaReadyReason } from '../lib/mediagen';
+import { manualGenerate, mediaReadyReason, fallbackNote } from '../lib/mediagen';
 import ModelPrefs from './ModelPrefs';
 
 export default function Composer() {
@@ -42,7 +42,7 @@ export default function Composer() {
     const prompt = await promptDialog({ title: kind === 'image' ? t('生成图片') : t('生成视频'), label: '画面描述（建议用英文写具体）', placeholder: kind === 'image' ? 'Night, rain on a car windshield, neon reflections, cinematic' : 'Slow push in on a rainy car window at night, cinematic', okLabel: '开始生成' });
     if (!prompt) return;
     useFiles.getState().setUi({ paneOpen: true });
-    try { const item = await manualGenerate(kind, { prompt }); toast(`已生成「${item.name}」`); }
+    try { const r = await manualGenerate(kind, { prompt }); toast(`已用 ${r.model.name} 生成「${r.item.name}」${fallbackNote(r)}`); }
     catch (e: any) { if (e?.name !== 'AbortError') toast('生成失败：' + (e?.message || e)); }
   };
   const atMenu = (el: Element) => {

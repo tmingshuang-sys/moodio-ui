@@ -99,3 +99,59 @@ describe('queue helpers', () => {
     expect(__test.pickUrl({ status: 'COMPLETED' })).toBeNull();
   });
 });
+
+describe('smart model matching', () => {
+  it('defaults every model slot to auto and expands auto to the fallback chain', async () => {
+    const m = await import('./mediamodels');
+    const { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, effectivePreset, modelDisplayName } = await load();
+    expect(MEDIA_DEFAULTS.imageModel).toBe(m.AUTO); expect(MEDIA_DEFAULTS.videoModel).toBe(m.AUTO); expect(MEDIA_DEFAULTS.videoImageModel).toBe(m.AUTO);
+    expect(currentImageModel(null)).toBe('auto'); expect(currentVideoModel({})).toBe('auto');
+    expect(m.modelChain('image', 'auto')[0]).toBe('doubao-seedream-5-0-260128');      // 图片默认 Seedream 5.0
+    expect(m.modelChain('video', undefined)[0]).toBe('doubao-seedance-2-5-260628');   // 视频默认 Seedance 2.5
+    expect(m.modelChain('video', 'fal-ai/veo3')).toEqual(['fal-ai/veo3']);            // 选了具体模型就只用它
+    for (const kind of ['image', 'video', 'videoImage'] as const) {
+      const list = kind === 'image' ? m.IMAGE_MODELS : kind === 'video' ? m.VIDEO_MODELS : m.VIDEO_IMAGE_MODELS;
+      for (const id of m.AUTO_CHAINS[kind]) expect(m.findPreset(list, id), `${kind} chain has unknown model ${id}`).not.toBeNull();
+      if (kind !== 'videoImage') expect(m.findPreset(list, m.AUTO_CHAINS[kind].at(-1)!)!.verified, `${kind} chain must end with a verified model`).toBe(true);   // 图生视频的可灵还没实测过
+    }
+    expect(effectivePreset('image', 'auto').id).toBe('doubao-seedream-5-0-260128');
+    expect(effectivePreset('image', 'auto').resolution).toBe(true);     // 面板按链首模型显示 2K / 4K
+    expect(modelDisplayName('video', 'auto')).toBe('智能匹配');
+    expect(modelDisplayName('video', 'doubao-seedance-2-5-260628')).toBe('Seedance 2.5');
+  });
+  it('only treats "model unavailable" errors as a reason to fall back', async () => {
+    const m = await import('./mediamodels');
+    expect(m.unavailableReason(Object.assign(new Error('x'), { code: 'ModelNotOpen' }))).toBe('未开通');
+    expect(m.unavailableReason(Object.assign(new Error('x'), { code: 'AccountOverdueError' }))).toBe('余额不足');
+    expect(m.unavailableReason(Object.assign(new Error('x'), { code: 'HTTP_404' }))).toBe('不存在');
+    expect(m.unavailableReason(Object.assign(new Error('x'), { code: 'HTTP_503' }))).toBe('网关未配置');
+    expect(m.unavailableReason(Object.assign(new Error('x'), { code: 'HTTP_422' }))).toBeNull();   // 参数错误不换模型
+    expect(m.unavailableReason(new Error('generation failed'))).toBeNull();
+    expect(m.unavailableReason(Object.assign(new Error('aborted'), { name: 'AbortError' }))).toBeNull();
+  });
+  it('walks the chain, records what it skipped, and stops at the first model that works', async () => {
+    const m = await import('./mediamodels');
+    const tried: string[] = [];
+    const r = await m.runWithFallback(['a', 'b', 'c', 'd'], async id => {
+      tried.push(id);
+      if (id === 'a') throw Object.assign(new Error('closed'), { code: 'ModelNotOpen' });
+      if (id === 'b') throw Object.assign(new Error('overdue'), { code: 'AccountOverdueError' });
+      return 'made-by-' + id;
+    });
+    expect(r).toEqual({ result: 'made-by-c', model: 'c', skipped: [{ model: 'a', reason: '未开通' }, { model: 'b', reason: '余额不足' }] });
+    expect(tried).toEqual(['a', 'b', 'c']);
+    // 生成本身失败：原样抛出，不再往下试
+    await expect(m.runWithFallback(['a', 'b'], async id => { if (id === 'a') throw new Error('bad prompt'); return id; })).rejects.toThrow('bad prompt');
+    // 链上全部不可用：抛出最后一个模型的错误，用户能看到真实原因
+    await expect(m.runWithFallback(['a', 'b'], async () => { throw Object.assign(new Error('closed'), { code: 'ModelNotOpen' }); })).rejects.toThrow('closed');
+  });
+  it('migrates a saved explicit model choice to auto exactly once', async () => {
+    setCfg({ provider: 'openai', baseUrl: 'https://gw.example.com/v1', apiKey: 'token-abc', imageModel: 'fal-ai/flux/dev', videoModel: 'fal-ai/veo3' });
+    const { currentImageModel, currentVideoModel } = await load();
+    expect(currentImageModel()).toBe('auto'); expect(currentVideoModel()).toBe('auto');
+    expect(JSON.parse(memory.get('moodio-agent-model')!).apiKey).toBe('token-abc');   // 其他设置原样保留
+    vi.resetModules();
+    setCfg({ ...JSON.parse(memory.get('moodio-agent-model')!), videoModel: 'fal-ai/veo3' });   // 用户之后又手动选了模型
+    expect((await load()).currentVideoModel()).toBe('fal-ai/veo3');                   // 第二次启动不再改回去
+  });
+});

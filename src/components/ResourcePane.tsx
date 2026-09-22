@@ -117,7 +117,7 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         <button type="button" className="back-btn" onClick={onBack}><ChevronLeft size={16} />{t('资源')}</button>
         <span className="kind-badge png">{item.kind === 'image' ? 'IMG' : 'VIDEO'}</span>
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
-        <span className="view-meta">{item.width ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.size)}</span>
+        <span className="view-meta">{item.width ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.size)}{item.model ? ` · ${item.model}` : ''}</span>
         <div className="view-tools">
           <label className="group-select">{t('分区')}<select value={groups.includes(item.group) ? item.group : '其他'} onChange={e => useFiles.getState().updateMedia(item.id, { group: e.target.value })}>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={async () => { const blob = await getBlob(item.id); if (blob) downloadBlob(item.name, blob); }}><Download size={17} /></button>

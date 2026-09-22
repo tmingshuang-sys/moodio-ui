@@ -26,6 +26,7 @@ export interface MediaItem {
   by: Origin;
   width?: number;
   height?: number;
+  model?: string;         // 生成它的模型名（智能匹配时可能不是面板里排第一的那个）
 }
 
 export interface TrashEntry { trashId: string; deletedAt: number; doc?: Doc; media?: MediaItem; }

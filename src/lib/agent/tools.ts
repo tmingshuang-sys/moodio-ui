@@ -1,11 +1,12 @@
 // ===== Agent 的「手」：能对工作区里的文件做的操作。执行前必须确认（NO_CONFIRM_TOOLS 除外），删除类进回收站可撤销 =====
-import type { Action, MediaItem, MessageAction, PlanStep } from '../types';
+import type { Action, MessageAction, PlanStep } from '../types';
 import { useFiles, findDoc, findMedia } from '../store';
 import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
-import { generateImage, generateVideo, mediaReadyReason } from '../mediagen';
+import { generateImage, generateVideo, mediaReadyReason, fallbackNote } from '../mediagen';
+import type { GenResult } from '../mediagen';
 import type { RatioKey } from '../mediamodels';
 import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
 
@@ -85,21 +86,21 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   // ---- 生成图片 / 视频（经网关调用 fal，结果直接进媒体库）----
   async generate_image(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
-    let item!: MediaItem;
+    let r!: GenResult;
     await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      item = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+      r = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
-    useFiles.getState().openInPane(item.id);
-    return { summary: `已生成图片「${item.name}」并存入媒体库`, actions: [{ id: 'open-media:' + item.id, label: '查看' }] };
+    useFiles.getState().openInPane(r.item.id);
+    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }] };
   },
   async generate_video(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
-    let item!: MediaItem;
+    let r!: GenResult;
     await ctx.step(`生成视频「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      item = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+      r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
-    useFiles.getState().openInPane(item.id);
-    return { summary: `已生成视频「${item.name}」并存入媒体库`, actions: [{ id: 'open-media:' + item.id, label: '查看' }] };
+    useFiles.getState().openInPane(r.item.id);
+    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }] };
   },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
