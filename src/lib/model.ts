@@ -27,23 +27,28 @@ export const CHAT_MODELS: ChatPreset[] = [
   { id: 'kimi-k3', name: 'Kimi K3', hint: 'Moonshot 旗舰，支持看图与长上下文', vendor: 'Kimi', verified: true, vision: true },
   { id: 'kimi-k2.6', name: 'Kimi K2.6', hint: 'Moonshot 上一代', vendor: 'Kimi' },
 ];
-export type ChatKind = 'plan' | 'write' | 'vision';
-// 智能匹配的候选链：规划用快的，写作用强的，看图用能看图的；前一个不可用（未配置 / 不存在）就换下一个
+export type ChatKind = 'plan' | 'write' | 'compile' | 'vision';   // compile：分镜 / 片段提示词这类结构化编译，用强模型但低温度
+// 智能匹配的候选链：规划用快的，写作与编译用强的，看图用能看图的；前一个不可用（未配置 / 不存在）就换下一个
 export const CHAT_AUTO: Record<ChatKind, string[]> = {
   plan: ['deepseek-flash', 'kimi-k3', 'deepseek-v4-pro'],
   write: ['deepseek-v4-pro', 'kimi-k3', 'deepseek-flash'],
+  compile: ['deepseek-v4-pro', 'kimi-k3', 'deepseek-flash'],
   vision: ['kimi-k3'],
 };
+// 温度按用途：规划与编译要稳，写作要有创造力，看图要准
+export const CHAT_TEMPERATURE: Record<ChatKind, number> = { plan: 0.3, compile: 0.4, write: 0.7, vision: 0.2 };
 export function isAutoModel(cfg: ModelConfig | null | undefined): boolean { const m = String(cfg?.model || '').trim(); return !m || m === CHAT_AUTO_ID; }
 export function isMoodioGateway(cfg: ModelConfig | null | undefined): boolean { return modelProvider(cfg) === 'openai' && (!cfg?.baseUrl || /moodio-gateway|workers\.dev/i.test(String(cfg.baseUrl))); }
 export function chatModelName(id: string | undefined): string { return isAutoModel({ model: id }) ? '智能匹配' : CHAT_MODELS.find(m => m.id === id)?.name || String(id); }
 // 按用途取实际要调的配置：候选链放在 candidates 里，callModel 遇到「模型不可用」就换下一个
 export function chatCfg(cfg: ModelConfig, kind: ChatKind): ModelConfig & { candidates?: string[] } {
-  if (kind === 'vision') { const v = visionCfg(cfg); return v || cfg; }
-  if (kind === 'write' && String(cfg.writerModel || '').trim()) return writerCfg(cfg);
-  if (!isAutoModel(cfg) || modelProvider(cfg) === 'claude') return kind === 'write' ? writerCfg(cfg) : cfg;
+  const temperature = CHAT_TEMPERATURE[kind];
+  if (kind === 'vision') { const v = visionCfg(cfg); return v ? { ...v, temperature } : cfg; }
+  const creative = kind === 'write' || kind === 'compile';
+  if (creative && String(cfg.writerModel || '').trim()) return { ...writerCfg(cfg), temperature };
+  if (!isAutoModel(cfg) || modelProvider(cfg) === 'claude') return { ...(creative ? writerCfg(cfg) : cfg), temperature };
   const chain = CHAT_AUTO[kind];
-  return { ...cfg, model: chain[0], candidates: chain, thinking: kind === 'write' ? (cfg.writerThinking || cfg.thinking) : cfg.thinking };
+  return { ...cfg, model: chain[0], candidates: chain, thinking: creative ? (cfg.writerThinking || cfg.thinking) : cfg.thinking, temperature };
 }
 const MODEL_UNAVAILABLE_RE = /返回 (404|503)|not exist|not found|不存在|未配置|无法用|invalid model|model_not_found|does not exist/i;
 // 旧配置里存的是默认的具体模型名：第一次带智能匹配的版本启动时改成智能匹配（只做一次），之后用户手选的不再改
@@ -208,7 +213,7 @@ async function readOpenAIStream(res: Response, { signal, onText, onReasoning }: 
 
 export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning, images }: CallOptions = {}): Promise<string> {
   const streaming = typeof onText === 'function';
-  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };
+  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };
   const think = String(cfg.thinking || '');
   if (think === 'off') body.thinking = { type: 'disabled' };
   else if (['low', 'high', 'max'].includes(think)) { body.thinking = { type: 'enabled' }; body.reasoning_effort = think; delete body.temperature; }

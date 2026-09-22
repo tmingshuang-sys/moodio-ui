@@ -11,6 +11,7 @@ export interface QuestionDef extends Question { key: string; }
 export interface Skill {
   id: string; name: string; title: string;
   modelTemplate?: string;       // 建模文稿的冻结格式（只在建模阶段注入）
+  clipFocus: string;            // 片段提示词里每个子镜头第四行的标签：广告写产品露出，故事片写叙事功能……
   modelName: string;            // 建模阶段的叫法（商品建模 / 人物与世界建模 …）
   modelDocs: string[];          // 建模阶段要写的文稿
   modelGuide: string;           // 建模文稿写什么
@@ -67,6 +68,41 @@ export const AD_MODEL_TEMPLATE = `「营销脑图.md」固定结构：
 \`\`\`yaml
 市场 / 平台 / 口播语言 / 画面文字语言 / 人物本地化 / 人物参考
 \`\`\``;
+// 人物小传的冻结外形描述：这一段会被逐字复制进每个片段提示词的主体段，校验器按原文核对
+export const FROZEN_LABEL = '冻结外形描述';
+export const CHARACTER_TEMPLATE = `「人物小传.md」固定结构：每个人物一个二级标题「## 人物名」，下面固定五行加一表——
+概况：年龄、身份、一句话定位
+${FROZEN_LABEL}：一段 40–80 字的可复用描述（发型、脸、体型、固定服装与配饰、气质），之后所有片段提示词的主体段必须逐字引用这一段
+性格：…
+欲望与阻碍：想要什么、什么挡着
+弧光：从什么状态到什么状态
+证据来源：哪些是用户确认、哪些是 AI 推导`;
+export const WORLD_TEMPLATE = `「世界观.md」固定结构：
+## 时代与地点　## 规则与禁忌　## 视觉母题与色调
+## 场景账本
+| 编号 | 场景 | 时间与光线 | 关键道具 | 落在哪个片段 | 状态 |
+## 关键道具账本
+| 编号 | 道具 | 外形（冻结） | 作用 | 落在哪个片段 | 状态 |
+状态 已激活 / 备选；反复出现的场景与道具先出参考图再进片段。`;
+export const SERIES_TEMPLATE = CHARACTER_TEMPLATE + '\n' + WORLD_TEMPLATE + `\n「分集大纲.md」：一张表——| 集号 | 主线目标 | B 线 | 关键反转 | 集尾钩子 | 状态 |，每集一行。`;
+export const SHORT_TEMPLATE = `「人设与选题.md」固定结构：
+## 出镜人设
+是谁：…　说话方式：…
+${FROZEN_LABEL}：一段 40–80 字可复用描述（不出镜写「不出镜」）
+## 选题一句话　## 目标动作（看完 / 点赞 / 关注 / 下单）　## 平台规范（画幅、安全区、字幕不超两行、时长）
+## 证据来源
+「钩子账本.md」：一张表——| 编号 | 时间点(秒) | 钩子类型 | 画面 | 落在哪个片段 | 状态 |，第一条时间点必须 ≤ 3 秒且落在第 1 段；每 10 秒一条新信息。`;
+export const MV_TEMPLATE = `「歌曲分析.md」固定结构：
+## 歌曲信息：歌名 / 艺人 / 时长 / BPM 或节奏感 / 情绪
+## 段落表
+| 段落 | 起(秒) | 止(秒) | 情绪 | 歌词要点 |
+前奏 / 主歌 / 预副歌 / 副歌 / 桥段 / 尾奏各一行，起止用秒数，首尾相接、最后一行止 = 歌曲时长（或用户指定的剪辑版时长）
+## 艺人
+${FROZEN_LABEL}：一段 40–80 字可复用描述（不出镜写「不出镜」）
+## 证据来源
+「意象账本.md」：一张表——| 编号 | 意象 | 出现的段落 | 画面写法 | 递进方式 | 落在哪个片段 | 状态 |，副歌意象至少一行，每次副歌重复要有递进。`;
+export const OTHER_TEMPLATE = `「创作脑图.md」固定结构：## 目标　## 观众　## 核心信息　## 对象账本（| 编号 | 对象 | ${FROZEN_LABEL} | 作用 | 落在哪个片段 | 状态 |）　## 风格与调性　## 时长与画幅　## 证据来源`;
+
 // 脚本阶段：60 秒以内的广告 / 短视频直接写分镜脚本表，不再先写场景式剧本
 export const SHORT_SCRIPT_NOTE = '总时长 60 秒以内时，「故事脚本.md」直接写成分镜脚本表：列为 镜号 | 时长(秒) | 画面描述 | 景别 | 光影氛围 | 对白·旁白 | 音效 | 运镜，每镜一行，人物首次出场在画面描述里给年龄与一句外形并加粗，产品每次露出都写明看得见的部位；表后加「## 全片 BGM」段（乐器、BPM、各段情绪、哪些段音乐是画面内声源）。镜头时长合计必须等于总时长。分镜阶段只做核对与微调。';
 const opt = (label: string, hint?: string) => ({ label, hint });
@@ -97,7 +133,7 @@ const COMMON_GENERAL: QuestionDef[] = [
 export const SKILLS: Record<string, Skill> = {
   ad: {
     id: 'ad', name: '营销视频大师', title: '广告',
-    modelName: '商品建模', modelDocs: ['营销脑图.md'], modelTemplate: AD_MODEL_TEMPLATE,
+    modelName: '商品建模', modelDocs: ['营销脑图.md'], modelTemplate: AD_MODEL_TEMPLATE, clipFocus: '品牌/产品露出',
     modelGuide: '「营销脑图.md」一份文稿装下商品模型（YAML，逐字段标证据来源）、卖点账本（表）、营销策略（YAML 说服链）、创意方向与本地化；没有的信息写 unknown。',
     scriptNote: '按时长选结构（15 / 30 / 60 秒），产品在剧情里自然登场，每个已激活卖点在画面里有可见证明，结尾行动号召具体。' + SHORT_SCRIPT_NOTE,
     general: [
@@ -125,8 +161,8 @@ export const SKILLS: Record<string, Skill> = {
   },
   film: {
     id: 'film', name: '故事片导演', title: '故事片',
-    modelName: '人物与世界建模', modelDocs: ['人物小传.md', '世界观.md'],
-    modelGuide: '「人物小传.md」：每个人物一个二级标题，下面是概况 / 外形（冻结成一段可复用的描述） / 性格 / 欲望与阻碍 / 弧光；「世界观.md」：时代与地点、规则与禁忌、关键场景清单、视觉母题与色调。',
+    modelName: '人物与世界建模', modelDocs: ['人物小传.md', '世界观.md'], modelTemplate: CHARACTER_TEMPLATE + '\n' + WORLD_TEMPLATE, clipFocus: '叙事功能',
+    modelGuide: '「人物小传.md」每个人物五行加证据来源，其中「冻结外形描述」之后逐字复用；「世界观.md」含场景账本与关键道具账本，都带「落在哪个片段」列。',
     scriptNote: '三幕或序列结构，每场有价值转换；人物外形与既定事实以人物小传为准；场景数量控制在可生成范围内。',
     general: [
       single('genre', '是什么类型？', [opt('剧情'), opt('悬疑 / 惊悚'), opt('爱情'), opt('科幻 / 奇幻'), opt('喜剧'), opt('其他')]),
@@ -151,8 +187,8 @@ export const SKILLS: Record<string, Skill> = {
   },
   series: {
     id: 'series', name: '剧集主编', title: '剧集',
-    modelName: '人物与分集建模', modelDocs: ['人物小传.md', '世界观.md', '分集大纲.md'],
-    modelGuide: '「人物小传.md」同故事片；「世界观.md」补人物关系图；「分集大纲.md」：每集一行——集号 | 主线目标 | 关键反转 | 集尾钩子。',
+    modelName: '人物与分集建模', modelDocs: ['人物小传.md', '世界观.md', '分集大纲.md'], modelTemplate: SERIES_TEMPLATE, clipFocus: '叙事功能',
+    modelGuide: '「人物小传.md」同故事片；「世界观.md」补人物关系；「分集大纲.md」每集一行。',
     scriptNote: '每集一个主线目标加一条 B 线，集尾必须留钩子；竖屏短剧前 10 秒进冲突，每 30 秒一个新信息。',
     general: [
       single('kind', '是哪种剧集？', [opt('竖屏短剧', '每集 1–3 分钟'), opt('网剧 / 迷你剧', '每集 10–30 分钟'), opt('长剧', '每集 40 分钟以上')]),
@@ -176,8 +212,8 @@ export const SKILLS: Record<string, Skill> = {
   },
   short: {
     id: 'short', name: '短视频制片', title: '短片 / 短视频',
-    modelName: '人设与选题建模', modelDocs: ['人设与选题.md', '钩子账本.md'],
-    modelGuide: '「人设与选题.md」：出镜人设（是谁、说话方式、外形冻结描述）、选题一句话、目标动作（点赞 / 关注 / 下单）、平台规范；「钩子账本.md」：一张表，列 时间点 | 钩子类型 | 画面 | 状态，前 3 秒必须有一行。',
+    modelName: '人设与选题建模', modelDocs: ['人设与选题.md', '钩子账本.md'], modelTemplate: SHORT_TEMPLATE, clipFocus: '钩子或信息点',
+    modelGuide: '「人设与选题.md」含出镜人设的冻结外形描述、选题、目标动作、平台规范；「钩子账本.md」第一条时间点 ≤ 3 秒且落在第 1 段。',
     scriptNote: '一个主角、一个冲突、一次转折；前 3 秒出钩子，每 10 秒一个新信息，结尾给记忆点或行动指令。' + SHORT_SCRIPT_NOTE,
     general: [
       single('kind', '是哪种内容？', [opt('剧情短片', '有人物和情节'), opt('口播 / 知识', '一个人对镜头讲'), opt('Vlog / 记录'), opt('产品或探店'), opt('氛围 / 混剪')]),
@@ -190,7 +226,7 @@ export const SKILLS: Record<string, Skill> = {
       single('cast', '是否需要真人 / 角色出镜？', [opt('需要，有参考图'), opt('需要，让 AI 生成形象'), opt('不需要出镜')]),
     ],
     contracts: [
-      '钩子契约：第一段前 3 秒必须出现钩子账本里的画面。',
+      '钩子契约：钩子账本第一条时间点 ≤ 3 秒并落在第 1 段，第一段前 3 秒必须出现它的画面；系统会校验。',
       '人设一致性契约：出镜人物有冻结的外形描述与确认过的形象图，所有片段复用。',
       '平台契约：竖屏内容关键信息放在画面中部安全区，字幕不超过两行。',
     ],
@@ -199,8 +235,8 @@ export const SKILLS: Record<string, Skill> = {
   },
   mv: {
     id: 'mv', name: 'MV 导演', title: 'MV',
-    modelName: '歌曲与意象建模', modelDocs: ['歌曲分析.md', '意象账本.md'],
-    modelGuide: '「歌曲分析.md」：歌名 / 艺人、时长、BPM 或节奏感、段落结构（前奏 / 主歌 / 副歌 / 桥段 / 尾奏各自的时间码）、每段情绪、歌词主题；「意象账本.md」：一张表，列 意象 | 出现的段落 | 画面写法 | 递进方式，副歌意象至少一行。',
+    modelName: '歌曲与意象建模', modelDocs: ['歌曲分析.md', '意象账本.md'], modelTemplate: MV_TEMPLATE, clipFocus: '意象与歌词对位',
+    modelGuide: '「歌曲分析.md」的段落表给出每段起止秒数，片段切分必须贴着段落边界；「意象账本.md」带「落在哪个片段」列。',
     scriptNote: '按歌曲段落写「## 段落名 时间码」，每段先写母题再逐句写歌词与画面对位；不图解歌词，副歌递进；标注艺人出镜与对口型。',
     general: [
       text('song', '歌名和艺人是？', '比如：《夜航》 / 独立乐队 The Lanterns'),
@@ -216,7 +252,8 @@ export const SKILLS: Record<string, Skill> = {
       single('palette', '色调？', [opt('冷色夜景'), opt('暖色胶片'), opt('高饱和霓虹'), opt('黑白')]),
     ],
     contracts: [
-      '对位契约：每段画面必须与歌曲时间码对齐，段落总时长等于歌曲时长（或用户指定的剪辑版时长）。',
+      '对位契约：每段画面必须与歌曲时间码对齐，片段的起止必须落在歌曲分析段落表的边界上，段落总时长等于歌曲时长（或用户指定的剪辑版时长）；成片配乐直接用用户上传的歌曲音频。',
+      '口型契约：视频模型做不了对口型，不写人声演唱的口型特写；演唱段用中景以外的表演镜头、意象镜头或背影 / 侧影承接。',
       '递进契约：副歌每次重复画面必须升级，不得复用同一段。',
       '艺人一致性契约：艺人有冻结外形描述与确认过的形象图，所有出镜片段复用。',
     ],
@@ -225,7 +262,7 @@ export const SKILLS: Record<string, Skill> = {
   },
   other: {
     id: 'other', name: '通用创作助手', title: '其他',
-    modelName: '对象建模', modelDocs: ['创作脑图.md'],
+    modelName: '对象建模', modelDocs: ['创作脑图.md'], modelTemplate: OTHER_TEMPLATE, clipFocus: '重点',
     modelGuide: '「创作脑图.md」：目标、观众、核心信息、涉及的人物 / 物件 / 场景、风格与调性、时长与画幅。',
     scriptNote: '先定目标、主角、阻碍、变化，再动笔。',
     general: [text('goal', '这段内容想达到什么目的？', '比如：给公司年会开场 / 给孩子讲一个睡前故事'), ...COMMON_GENERAL],

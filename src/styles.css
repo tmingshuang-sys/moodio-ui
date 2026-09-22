@@ -603,3 +603,7 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 @keyframes live-flow { from { background-position: 0% 50%; } to { background-position: 300% 50%; } }
 @keyframes live-sheen { 0% { background-position: 200% 0; } 100% { background-position: -60% 0; } }
 @media (prefers-reduced-motion: reduce) { .agent-live, .agent-live::after { animation: none; } }
+
+/* 片段校验卡 */
+.lint-card.ok summary { color: #2f6b45; }
+.lint-text { margin: 6px 0 0; white-space: pre-wrap; font: 12.5px/1.6 var(--font-ui); color: var(--ink-2); }

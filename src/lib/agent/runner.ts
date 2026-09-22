@@ -12,6 +12,7 @@ import { docRole, splitLines } from '../markdown';
 import { toast } from '../../components/Toast';
 import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
+import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
 import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
 
@@ -197,6 +198,9 @@ export async function executePlan(key: string, messageAt: number) {
     await sleep(250);
     const run = await runActions(p.plan, p.text, c.id, steps, pending.at); results = run.results; out.actions = run.buttons; out.artifacts = run.artifacts;
     if (run.reviewTargets.length && modelCfg()?.apiKey && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在自审刚写的内容…'); commit(); try { out.review = await selfReview(run.reviewTargets.slice(0, 2)); } catch (e) { console.warn('自审失败', e); } }
+    // 片段提示词写完先校验；不通过就把清单发回模型改一轮，最多两轮，每轮都以计划卡展示
+    const touchedClips = p.plan.some(a => ['write_doc', 'replace_section', 'append_doc'].includes(a.tool) && CLIP_DOC_RE.test(String(a.args?.name || findDoc(String(a.args?.id || ''))?.name || '')));
+    if (touchedClips && !aborted()) { try { out.lint = await lintFixRounds(c.id, p.text); } catch (e) { console.warn('片段校验修正失败', e); } }
     // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
     const images = run.artifacts.filter(a => a.kind === 'image');
     if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal); } catch (e) { console.warn('参考图质检失败', e); } }
@@ -215,6 +219,27 @@ export async function executePlan(key: string, messageAt: number) {
   if (videos >= 2) extra.push({ label: '按顺序合成成片', prompt: `把刚生成的 ${videos} 段视频按分镜顺序用 compose_video 合成一条成片，先给方案。` });
   out.followUps = extra;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, p.text + '\n' + results.join('\n'), c.id); cc.messages.push(out); cc.at = Date.now(); });
+}
+
+// 片段校验与修正：校验有错且连着模型时，把错误清单发回模型，只允许它改文稿与台账，执行完再校验，最多两轮
+const FIX_TOOLS = new Set(['write_doc', 'replace_section', 'append_doc', 'update_ledger']);
+async function lintFixRounds(chatId: string, request: string): Promise<{ ok: boolean; text: string; rounds: number }> {
+  let r = lintClips(); let rounds = 0;
+  for (; r.errors.length && rounds < 2 && modelCfg()?.apiKey && !aborted(); rounds++) {
+    setLive(`片段校验有 ${r.errors.length} 处问题，正在修正（第 ${rounds + 1} 轮）…`);
+    const chat = chats().chats.find(x => x.id === chatId) || chats().chat();
+    const ask = `片段提示词校验未通过：\n${r.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}${r.warnings.length ? '\n提醒：' + r.warnings.join('；') : ''}\n请只修改有问题的文稿：整份重写用 write_doc（overwrite 为 true），改一段用 replace_section；子镜头时段必须首尾相接并等于片段时长；账本元素要落在片段里；人物要原样带上冻结外形描述；同时用 update_ledger 把 clips 的秒数改正确。其他文稿不要动，不要提问。`;
+    let plan: Action[] = [];
+    try { const remote = await remotePlan(ask, chat); plan = (remote?.actions || []).filter(a => FIX_TOOLS.has(a.tool)); } catch (e) { console.warn('修正规划失败', e); break; }
+    if (!plan.length) break;
+    const steps = planSteps(plan);
+    const fixMsg: Message = { role: 'assistant', text: `按校验结果修正片段提示词（第 ${rounds + 1} 轮）`, plan: { steps, state: 'running' }, at: Date.now() };
+    chats().mutate(all => { all.find(x => x.id === chatId)!.messages.push(fixMsg); });
+    const run = await runActions(plan, request, chatId, steps, fixMsg.at);
+    chats().mutate(() => { fixMsg.plan!.state = steps.some(s => s.status === 'failed') ? 'error' : 'done'; fixMsg.artifacts = run.artifacts; });
+    r = lintClips();
+  }
+  return { ok: !r.errors.length, text: lintSummary(r), rounds };
 }
 
 // 写完自审：用写作模型按当前类型的自查清单审读刚写的剧本文稿

@@ -25,10 +25,14 @@ describe('chat model smart matching', () => {
     const write = m.chatCfg({ apiKey: 'x', model: 'auto', writerThinking: 'high' }, 'write');
     expect(write.model).toBe('deepseek-v4-pro'); expect(write.thinking).toBe('high');
     expect(m.chatCfg({ apiKey: 'x', model: 'auto', writerModel: 'kimi-k3' }, 'write').model).toBe('kimi-k3');   // 设置里明确指定的写作模型优先
-    expect(m.chatCfg({ apiKey: 'x', model: 'kimi-k3' }, 'plan')).toEqual({ apiKey: 'x', model: 'kimi-k3' });      // 手选模型不带候选链
+    expect(m.chatCfg({ apiKey: 'x', model: 'kimi-k3' }, 'plan')).toEqual({ apiKey: 'x', model: 'kimi-k3', temperature: 0.3 });      // 手选模型不带候选链
     expect(m.chatCfg({ apiKey: 'x', model: 'auto' }, 'vision').model).toBe('kimi-k3');                            // 智能匹配走网关时用 Kimi 看图
     expect(m.chatCfg({ apiKey: 'x', model: 'auto', baseUrl: 'https://api.deepseek.com/v1' }, 'vision').candidates).toBeUndefined();   // 直连 DeepSeek 没有能看图的
     expect(m.chatModelName('auto')).toBe('智能匹配'); expect(m.chatModelName('kimi-k3')).toBe('Kimi K3');
+    // 温度按用途：规划 0.3、编译 0.4、写作 0.7，手选模型也照此
+    expect(plan.temperature).toBe(0.3); expect(write.temperature).toBe(0.7);
+    expect(m.chatCfg({ apiKey: 'x', model: 'auto' }, 'compile')).toMatchObject({ model: 'deepseek-v4-pro', temperature: 0.4 });
+    expect(m.chatCfg({ apiKey: 'x', model: 'kimi-k3' }, 'plan').temperature).toBe(0.3);
   });
   it('falls through the candidate chain only on model-unavailable errors', async () => {
     const m = await import('./model');

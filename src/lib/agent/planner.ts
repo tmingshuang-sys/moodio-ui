@@ -3,6 +3,15 @@ import type { Action, Chat, FollowUp, Message, Question } from '../types';
 import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON } from '../model';
 import { AGENT_TOOLS } from './tools';
 import { buildSystemPrompt, hasScriptDoc } from './prompt';
+import { readLedger } from '../ledger';
+import type { ChatKind } from '../model';
+
+// 请求用哪类模型：分镜 / 片段提示词 / 台账阶段在片段方案时走「编译」（强模型、低温度），其他创意请求走写作，剩下走规划
+export function kindForRequest(text: string): ChatKind {
+  const stage = readLedger()?.stage;
+  if (stage === 'prompts' || stage === 'storyboard' || /提示词|prompt|分镜|片段方案|校验/i.test(text)) return 'compile';
+  return isCreativeRequest(text) ? 'write' : 'plan';
+}
 
 export interface PlanReply { message: string; actions: Action[]; followUps: FollowUp[]; }
 export interface PlanHooks { onStatus?: (s: string) => void; onText?: (t: string) => void; onReasoning?: (t: string) => void; signal?: AbortSignal; }
@@ -75,7 +84,7 @@ async function requestAgentPlan(request: (retry: boolean) => Promise<string>): P
 export async function remotePlan(text: string, chat: Chat, hooks: PlanHooks = {}): Promise<PlanReply | null> {
   const cfg = modelCfg(); if (!cfg?.apiKey) return null;
   const sys = buildSystemPrompt(text, chat);
-  const callCfg = chatCfg(cfg, isCreativeRequest(text) ? 'write' : 'plan');
+  const callCfg = chatCfg(cfg, kindForRequest(text));
   return requestAgentPlan(async retry => {
     const repair = retry ? '\n上次回复未通过 JSON / actions 结构校验。请依据同一用户请求重新输出完整 JSON 对象，包含字符串 message 和数组 actions。字符串中的换行与引号必须正确转义，不要代码围栏、前后说明或截断内容。不要增加原请求以外的操作。' : '';
     if (retry) hooks.onStatus?.('正在修正模型回复格式…');

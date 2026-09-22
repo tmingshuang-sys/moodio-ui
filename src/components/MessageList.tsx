@@ -229,6 +229,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
             {m.questions && m.questions.length > 0 && <QuestionCard key={m.at} m={m} live={liveQ} />}
             {m.review && m.review.items?.length > 0 && <ReviewCard m={m} />}
             {m.imageReview && m.imageReview.length > 0 && <ImageReviewCard m={m} onOpen={openInPane} />}
+            {m.lint && <details className={`review lint-card${m.lint.ok ? ' ok' : ''}`} open={!m.lint.ok}><summary>片段校验 · {m.lint.ok ? '通过' : '有问题'}{m.lint.rounds ? ` · 已修正 ${m.lint.rounds} 轮` : ''}</summary><pre className="lint-text">{m.lint.text}</pre></details>}
             {m.actions && m.actions.length > 0 && <div className="msg-actions">{m.actions.map(a => <button key={a.id} type="button" className={a.id.startsWith('plan-confirm') ? 'primary' : ''} onClick={() => onAction(a.id, m)}>{a.label}</button>)}</div>}
             {showFollowUps && (
               <div className="next-steps">

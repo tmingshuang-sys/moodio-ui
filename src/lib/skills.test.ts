@@ -22,7 +22,9 @@ describe('skill packs', () => {
       const s = skills.skillFor(id); expect(s.id).toBe(id);
       expect(skills.skillStages(s).map(x => x.id)).toEqual(skills.STAGE_ORDER);
       expect(s.general.length).toBeGreaterThanOrEqual(3); expect(s.modeling.length).toBeGreaterThanOrEqual(2);
-      expect(s.contracts.length).toBeGreaterThanOrEqual(1); expect(s.modelDocs.length).toBeGreaterThanOrEqual(1);
+      expect(s.contracts.length).toBeGreaterThanOrEqual(2); expect(s.modelDocs.length).toBeGreaterThanOrEqual(1);
+      expect(s.modelTemplate, `${id} needs a frozen modeling template`).toBeTruthy(); expect(s.clipFocus).toBeTruthy();
+      expect(s.contracts.some(c => c.startsWith('证据来源契约'))).toBe(true);   // 证据来源契约对所有类型生效
       for (const q of [...s.general, ...s.modeling]) { expect(q.key).toBeTruthy(); expect(q.text).toBeTruthy(); if (q.type !== 'text') expect(q.options.length).toBeGreaterThan(1); else expect(q.placeholder).toBeTruthy(); }
     }
     expect(skills.skillFor('nope').id).toBe('other');
