@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard, ChevronLeft, ChevronRight, Film } from 'lucide-react';
+import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard, ChevronLeft, ChevronRight, Film, Music } from 'lucide-react';
 import type { Artifact, Chat, Message, Plan, PlanStep, Question } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
 import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, useFollowUp, reviewFix, restoreTrash } from '../lib/agent/runner';
@@ -123,9 +123,10 @@ function QuestionCard({ m, live }: { m: Message; live: boolean }) {
 }
 
 // ===== 产物卡：文稿显示成文件卡（查看文件），图片 / 视频铺缩略图 =====
-function Thumb({ id, kind }: { id: string; kind: 'image' | 'video' }) {
+function Thumb({ id, kind }: { id: string; kind: 'image' | 'video' | 'audio' }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => { let alive = true; mediaUrl(id).then(u => { if (alive) setUrl(u); }); return () => { alive = false; }; }, [id]);
+  if (kind === 'audio') return <span className="art-empty"><Music size={18} /></span>;
   if (!url) return <span className="art-empty">{kind === 'image' ? <Image size={18} /> : <Film size={18} />}</span>;
   return kind === 'image' ? <img src={url} alt="" loading="lazy" /> : <video src={url} muted preload="metadata" />;
 }
@@ -143,7 +144,7 @@ function Artifacts({ items, onOpen }: { items: Artifact[]; onOpen: (id: string) 
       ))}
       {media.length > 0 && (
         <div className="art-grid">
-          {media.map(a => <button key={a.id} type="button" className="art-media" title={a.name} onClick={() => onOpen(a.id)}><Thumb id={a.id} kind={a.kind as 'image' | 'video'} /><span className="art-caption">{a.name}</span></button>)}
+          {media.map(a => <button key={a.id} type="button" className="art-media" title={a.name} onClick={() => onOpen(a.id)}><Thumb id={a.id} kind={a.kind as 'image' | 'video' | 'audio'} /><span className="art-caption">{a.name}</span></button>)}
         </div>
       )}
     </div>

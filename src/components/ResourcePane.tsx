@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Pencil, Eye } from 'lucide-react';
+import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye } from 'lucide-react';
 import type { Doc, MediaItem } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
 import { previewLines, baseName, wordCount, plainText } from '../lib/markdown';
@@ -13,6 +13,8 @@ import { openMenuAt } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
 import { useT } from '../lib/i18n';
+import LedgerView from './LedgerView';
+import { LEDGER_NAME } from '../lib/ledger';
 
 function useMediaUrl(id: string) {
   const [url, setUrl] = useState<string | null>(null);
@@ -47,7 +49,7 @@ function MediaCard({ item, view, onOpen, onMenu }: { item: MediaItem; view: 'gri
   const url = useMediaUrl(item.id);
   if (view === 'list') return (
     <div className="file-row" onClick={onOpen} onContextMenu={e => { e.preventDefault(); onMenu(e.currentTarget); }}>
-      <span className="row-icon">{item.kind === 'image' ? <ImageIcon size={16} /> : <Film size={16} />}</span><span className="row-name">{item.name}</span><span className="row-meta">{item.group} · {formatBytes(item.size)}</span><span className="row-time">{timeAgo(item.createdAt)}</span>
+      <span className="row-icon">{item.kind === 'image' ? <ImageIcon size={16} /> : item.kind === 'audio' ? <Music size={16} /> : <Film size={16} />}</span><span className="row-name">{item.name}</span><span className="row-meta">{item.group} · {formatBytes(item.size)}</span><span className="row-time">{timeAgo(item.createdAt)}</span>
       <button type="button" className="row-more" aria-label="更多" onClick={e => { e.stopPropagation(); onMenu(e.currentTarget); }}><MoreHorizontal size={16} /></button>
     </div>
   );
@@ -55,7 +57,7 @@ function MediaCard({ item, view, onOpen, onMenu }: { item: MediaItem; view: 'gri
     <div className="file-card media" onClick={onOpen} onContextMenu={e => { e.preventDefault(); onMenu(e.currentTarget); }} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') onOpen(); }}>
       <div className="card-thumb">
         <span className="kind-badge png">{item.name.split('.').pop()?.toUpperCase().slice(0, 4) || (item.kind === 'image' ? 'IMG' : 'MP4')}</span>
-        {url ? (item.kind === 'image' ? <img src={url} alt="" loading="lazy" /> : <video src={url} muted preload="metadata" />) : <div className="thumb-empty" />}
+        {item.kind === 'audio' ? <div className="thumb-audio"><Music size={28} /></div> : url ? (item.kind === 'image' ? <img src={url} alt="" loading="lazy" /> : <video src={url} muted preload="metadata" />) : <div className="thumb-empty" />}
       </div>
       <div className="card-name" title={item.name}>{item.name}</div>
       <div className="card-meta">{timeAgo(item.createdAt)}</div>
@@ -84,7 +86,7 @@ function DocView({ doc, onBack }: { doc: Doc; onBack: () => void }) {
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: doc.name }); if (name) useFiles.getState().renameDoc(doc.id, name); }}>{doc.name}</button>
         <span className="view-meta">{wordCount(text)} 字 · {timeAgo(doc.updatedAt)}</span>
         <div className="view-tools">
-          {doc.kind === 'md' && !writing && (
+          {(doc.kind === 'md' || doc.name === LEDGER_NAME) && !writing && (
             <div className="seg" role="tablist"><button type="button" role="tab" aria-selected={mode === 'preview'} className={mode === 'preview' ? 'active' : ''} onClick={() => setMode('preview')}><Eye size={14} />{t('预览')}</button><button type="button" role="tab" aria-selected={mode === 'edit'} className={mode === 'edit' ? 'active' : ''} onClick={() => setMode('edit')}><Pencil size={14} />{t('编辑')}</button></div>
           )}
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={() => downloadText(doc.name, doc.content, doc.kind === 'json' ? 'application/json' : 'text/markdown')}><Download size={17} /></button>
@@ -97,6 +99,8 @@ function DocView({ doc, onBack }: { doc: Doc; onBack: () => void }) {
       <div className={`view-body${writing ? ' writing' : ''}`} ref={bodyRef}>
         {mode === 'edit' && !writing ? (
           <textarea className="doc-editor" value={draft} onChange={e => setDraft(e.target.value)} spellCheck={false} placeholder="在这里写 Markdown…" />
+        ) : doc.name === LEDGER_NAME ? (
+          <LedgerView doc={doc} />
         ) : doc.kind === 'md' ? (
           <article className="md-body">{text ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : <p className="md-empty">（空文稿，切到「编辑」开始写）</p>}{writing && <span className="stream-cursor block" aria-hidden="true" />}</article>
         ) : (
@@ -115,7 +119,7 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
     <div className="doc-view">
       <header className="view-head">
         <button type="button" className="back-btn" onClick={onBack}><ChevronLeft size={16} />{t('资源')}</button>
-        <span className="kind-badge png">{item.kind === 'image' ? 'IMG' : 'VIDEO'}</span>
+        <span className="kind-badge png">{item.kind === 'image' ? 'IMG' : item.kind === 'audio' ? 'AUDIO' : 'VIDEO'}</span>
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
         <span className="view-meta">{item.width ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.size)}{item.model ? ` · ${item.model}` : ''}</span>
         <div className="view-tools">
@@ -127,7 +131,7 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         </div>
       </header>
       <div className="view-body media-body">
-        {url ? (item.kind === 'image' ? <img src={url} alt={item.name} /> : <video src={url} controls />) : <p className="md-empty">文件不在本机媒体库里（可能在另一台设备上传）。</p>}
+        {url ? (item.kind === 'image' ? <img src={url} alt={item.name} /> : item.kind === 'audio' ? <div className="audio-player"><Music size={40} /><audio src={url} controls /></div> : <video src={url} controls />) : <p className="md-empty">文件不在本机媒体库里（可能在另一台设备上传）。</p>}
       </div>
     </div>
   );
@@ -149,6 +153,7 @@ export default function ResourcePane({ width }: { width: number }) {
   const shownDocs = useMemo(() => docs.filter(d => !q || d.name.toLowerCase().includes(q) || plainText(d.content).toLowerCase().includes(q)).sort((a, b) => b.updatedAt - a.updatedAt), [docs, q]);
   const images = media.filter(m => m.kind === 'image' && (!q || m.name.toLowerCase().includes(q)));
   const videos = media.filter(m => m.kind === 'video' && (!q || m.name.toLowerCase().includes(q)));
+  const audios = media.filter(m => m.kind === 'audio' && (!q || m.name.toLowerCase().includes(q)));
   const groupCounts = images.reduce<Record<string, number>>((acc, m) => { acc[m.group] = (acc[m.group] || 0) + 1; return acc; }, {});
   const shownImages = imageGroup === '全部' ? images : images.filter(m => m.group === imageGroup);
   const openDoc = docs.find(d => d.id === ui.openId); const openMedia = media.find(m => m.id === ui.openId);
@@ -203,6 +208,12 @@ export default function ResourcePane({ width }: { width: number }) {
               <section className="pane-section">
                 <h3>{t('视频')}<small>共 {videos.length} 个</small></h3>
                 <div className={ui.view === 'grid' ? 'file-grid media' : 'file-list'}>{videos.map(m => <MediaCard key={m.id} item={m} view={ui.view} onOpen={() => openInPane(m.id)} onMenu={el => mediaMenu(el, m)} />)}</div>
+              </section>
+            )}
+            {audios.length > 0 && (
+              <section className="pane-section">
+                <h3>{t('音频')}<small>共 {audios.length} 个</small></h3>
+                <div className={ui.view === 'grid' ? 'file-grid media' : 'file-list'}>{audios.map(m => <MediaCard key={m.id} item={m} view={ui.view} onOpen={() => openInPane(m.id)} onMenu={el => mediaMenu(el, m)} />)}</div>
               </section>
             )}
           </div>

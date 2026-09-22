@@ -3,6 +3,8 @@
 import type { Chat, ProjectMeta } from './types';
 import { projects, NEW_PROJECT_TITLE } from './projects';
 import { useFiles, useChats, useAgent, flushStores } from './store';
+import { useTasks, recoverPlans } from './tasks';
+import { resumeTasks } from './mediagen';
 import { readJSON, writeJSON } from './storage';
 import { toast } from '../components/Toast';
 
@@ -19,7 +21,9 @@ function blockedByAgent(): boolean {
   if (!useAgent.getState().busy) return false;
   toast('请等待当前 Agent 任务完成，或先点「停止」。'); return true;
 }
-function reloadStores(chatId?: string) { useFiles.getState().reload(); useChats.getState().reload(chatId); afterSwitch(); }
+function reloadStores(chatId?: string) { useFiles.getState().reload(); useChats.getState().reload(chatId); useTasks.getState().reload(); recoverPlans(); resumeTasks(); afterSwitch(); }
+// 页面打开时：把上次关页面时还在「执行中」的计划卡收拾干净，落盘的后台任务接着轮询
+export function resumeOnLoad() { try { recoverPlans(); resumeTasks(); } catch (e) { console.warn('恢复后台任务失败', e); } }
 
 // 当前创作是不是一片空白（没文件、没消息）：是的话点「创作」直接复用，不再建一个空项目
 export function isBlankCreation(): boolean {

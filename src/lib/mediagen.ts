@@ -4,6 +4,9 @@ import type { MediaItem, ModelConfig } from './types';
 import { uid } from './types';
 import { modelCfg, PROVIDER_DEFAULTS, MODEL_KEY as MODEL_KEY_FOR_MIGRATION } from './model';
 import { useFiles, findMedia, useAgent } from './store';
+import { useTasks, runningTasks, patchStep } from './tasks';
+import type { GenTask, TaskRef } from './tasks';
+import { toast } from '../components/Toast';
 import { putBlob, cacheUrl, getBlob, imageSize } from './storage';
 import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
@@ -92,10 +95,14 @@ export function arkPromptArgs(preset: ModelPreset, prompt: string, { ratio, dura
 
 export const __test = { viaGateway, pickUrl, buildInput, arkPromptArgs };   // 仅供单元测试
 
-export interface GenOptions { onProgress?: (text: string) => void; signal?: AbortSignal; }
+export interface GenOptions { onProgress?: (text: string) => void; signal?: AbortSignal; task?: TaskRef; }
+// 任务落盘需要的元信息（结果叫什么、进哪个分区、用的哪个模型）
+interface TaskMeta { kind: 'image' | 'video'; name: string; group: string; prompt: string; model: string; ref?: TaskRef; }
+const registerTask = (t: GenTask) => { try { useTasks.getState().add(t); } catch { /* ignore */ } };
+const finishTask = (id: string | null) => { if (id) try { useTasks.getState().remove(id); } catch { /* ignore */ } };
 
 // 提交到 fal 队列并轮询；中途停止或出错时顺手取消队列任务，避免白算白付费
-async function runFal(model: string, input: Record<string, unknown>, { onProgress, signal }: GenOptions, timeoutMs: number): Promise<any> {
+async function runFal(model: string, input: Record<string, unknown>, { onProgress, signal }: GenOptions, timeoutMs: number, meta?: TaskMeta): Promise<any> {
   const ep = mediaEndpoint(); if (!ep) throw new Error(mediaReadyReason() || '网关未配置');
   const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ep.token };
   const submit = await fetch(`${ep.base}/fal/${String(model).replace(/^\/+/, '')}`, { method: 'POST', headers, body: JSON.stringify(input), signal });
@@ -106,6 +113,8 @@ async function runFal(model: string, input: Record<string, unknown>, { onProgres
   const cancelUrl = queued?.cancel_url ? viaGateway(queued.cancel_url, ep.base) : null;
   if (!statusUrl || !responseUrl) { if (pickUrl(queued)) return queued; throw new Error('网关返回的任务信息不完整'); }
   const cancel = () => { if (cancelUrl) fetch(cancelUrl, { method: 'PUT', headers: { Authorization: 'Bearer ' + ep.token } }).catch(() => {}); };
+  const taskId = meta ? uid('t') : null;
+  if (meta && taskId) registerTask({ id: taskId, kind: meta.kind, provider: 'fal', name: meta.name, group: meta.group, prompt: meta.prompt, model: meta.model, createdAt: Date.now(), statusUrl, responseUrl, cancelUrl: cancelUrl || undefined, ...(meta.ref || {}), state: 'running' });
   const started = Date.now();
   try {
     for (let i = 0; ; i++) {
@@ -121,8 +130,9 @@ async function runFal(model: string, input: Record<string, unknown>, { onProgres
       const secs = Math.round((Date.now() - started) / 1000);
       onProgress?.(phase === 'IN_QUEUE' ? `排队中${typeof st?.queue_position === 'number' ? `（第 ${st.queue_position} 位）` : ''} · ${secs}s` : `生成中 · ${secs}s`);
     }
-  } catch (e) { cancel(); throw e; }
+  } catch (e) { cancel(); finishTask(taskId); throw e; }
   const done = await fetch(responseUrl, { headers: { Authorization: 'Bearer ' + ep.token }, signal });
+  finishTask(taskId);
   if (!done.ok) throw new Error('读取生成结果失败：' + await readError(done));
   return done.json();
 }
@@ -140,9 +150,11 @@ async function arkFetch(path: string, init: RequestInit & { signal?: AbortSignal
   return data;
 }
 // 方舟视频：创建任务 → 轮询 → 拿 video_url；中途停止会删掉任务
-async function runArkVideo(model: string, content: unknown[], { onProgress, signal }: GenOptions, timeoutMs: number): Promise<string> {
+async function runArkVideo(model: string, content: unknown[], { onProgress, signal }: GenOptions, timeoutMs: number, meta?: TaskMeta): Promise<string> {
   const created = await arkFetch('/contents/generations/tasks', { method: 'POST', body: JSON.stringify({ model, content }), signal });
   const id = created?.id; if (!id) throw new Error('火山方舟没有返回任务 id');
+  const taskId = meta ? uid('t') : null;
+  if (meta && taskId) registerTask({ id: taskId, kind: meta.kind, provider: 'ark', name: meta.name, group: meta.group, prompt: meta.prompt, model: meta.model, createdAt: Date.now(), arkTaskId: String(id), ...(meta.ref || {}), state: 'running' });
   const started = Date.now();
   try {
     for (;;) {
@@ -151,15 +163,68 @@ async function runArkVideo(model: string, content: unknown[], { onProgress, sign
       await sleep(2000);
       const task = await arkFetch(`/contents/generations/tasks/${encodeURIComponent(id)}`, { signal });
       const status = String(task?.status || '');
-      if (status === 'succeeded') { const url = task?.content?.video_url; if (!url) throw new Error('生成结果里没有视频地址'); return url; }
+      if (status === 'succeeded') { const url = task?.content?.video_url; if (!url) throw new Error('生成结果里没有视频地址'); finishTask(taskId); return url; }
       if (status === 'failed' || status === 'cancelled') throw new Error('生成失败：' + (task?.error?.message || status));
       const secs = Math.round((Date.now() - started) / 1000);
       onProgress?.(status === 'queued' ? `排队中 · ${secs}s` : `生成中 · ${secs}s`);
     }
   } catch (e) {
     arkFetch(`/contents/generations/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    finishTask(taskId);
     throw e;
   }
+}
+
+// ===== 页面重新打开后接着轮询落盘的任务（每个项目的 moodio-tasks 键），完成后入库并补回计划卡 =====
+const authHeaders = (ep: MediaEndpoint) => ({ Authorization: 'Bearer ' + ep.token });
+async function resumeOne(t: GenTask) {
+  const ep = mediaEndpoint(); if (!ep) return;
+  const ref: TaskRef = { chatId: t.chatId, messageAt: t.messageAt, stepIndex: t.stepIndex };
+  try {
+    let url: string | undefined, contentType: string | undefined;
+    const deadline = t.createdAt + 30 * 60e3;
+    if (t.provider === 'fal') {
+      for (;;) {
+        if (Date.now() > deadline) throw new Error('等待超过 30 分钟，放弃');
+        const res = await fetch(t.statusUrl!, { headers: authHeaders(ep) }); if (!res.ok) throw new Error('查询状态失败：' + await readError(res));
+        const st = await res.json(); const phase = String(st?.status || '');
+        if (phase === 'COMPLETED') break;
+        if (phase === 'FAILED' || phase === 'ERROR') throw new Error('生成失败：' + (st?.error || phase));
+        await sleep(5000);
+      }
+      const done = await fetch(t.responseUrl!, { headers: authHeaders(ep) }); if (!done.ok) throw new Error('读取结果失败：' + await readError(done));
+      const hit = pickUrl(await done.json()); if (!hit) throw new Error('结果里没有文件地址'); url = hit.url; contentType = hit.contentType;
+    } else {
+      for (;;) {
+        if (Date.now() > deadline) throw new Error('等待超过 30 分钟，放弃');
+        const task = await arkFetch(`/contents/generations/tasks/${encodeURIComponent(t.arkTaskId || '')}`);
+        const status = String(task?.status || '');
+        if (status === 'succeeded') { url = task?.content?.video_url; if (!url) throw new Error('结果里没有视频地址'); break; }
+        if (status === 'failed' || status === 'cancelled') throw new Error('生成失败：' + (task?.error?.message || status));
+        await sleep(5000);
+      }
+    }
+    const item = await storeResult(url!, { name: t.name, group: t.group, kind: t.kind, contentType, model: t.model });
+    useTasks.getState().remove(t.id);
+    patchStep(ref, 'done', `后台完成：已生成「${item.name}」`, { id: item.id, kind: t.kind, name: item.name, prompt: t.prompt });
+    toast(`后台任务完成：「${item.name}」`, { label: '查看', onClick: () => useFiles.getState().openInPane(item.id) });
+  } catch (e: any) {
+    useTasks.getState().remove(t.id);
+    patchStep(ref, 'failed', `后台任务失败：${e?.message || e}`);
+    toast(`后台任务「${t.name}」失败：${e?.message || e}`);
+  }
+}
+const resuming = new Set<string>();
+export function resumeTasks() {
+  for (const t of runningTasks()) { if (resuming.has(t.id)) continue; resuming.add(t.id); void resumeOne(t).finally(() => resuming.delete(t.id)); }
+}
+// 取消一个后台任务：通知上游、从列表移除、计划卡那一步标失败
+export async function cancelTask(id: string) {
+  const t = useTasks.getState().tasks.find(x => x.id === id); if (!t) return;
+  const ep = mediaEndpoint();
+  try { if (t.provider === 'fal' && t.cancelUrl && ep) await fetch(t.cancelUrl, { method: 'PUT', headers: authHeaders(ep) }); else if (t.provider === 'ark' && t.arkTaskId) await arkFetch(`/contents/generations/tasks/${encodeURIComponent(t.arkTaskId)}`, { method: 'DELETE' }); } catch { /* ignore */ }
+  useTasks.getState().remove(id);
+  patchStep({ chatId: t.chatId, messageAt: t.messageAt, stepIndex: t.stepIndex }, 'failed', '已取消');
 }
 
 // 把结果地址下载进媒体库（经网关代下载，避免跨域）
@@ -215,7 +280,7 @@ async function generateImageWith(model: string, prompt: string, req: ImageReques
       url = data?.data?.[0]?.url; if (!url) throw new Error('生成结果里没有图片地址');
     } finally { clearInterval(ticking); }
   } else {
-    const result = await runFal(model, buildInput(preset, prompt, { ratio }), opts, 4 * 60e3);
+    const result = await runFal(model, buildInput(preset, prompt, { ratio }), opts, 4 * 60e3, { kind: 'image', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task });
     const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有图片地址');
     url = hit.url; contentType = hit.contentType;
   }
@@ -258,11 +323,11 @@ async function generateVideoWith(model: string, prompt: string, req: VideoReques
     const text = arkPromptArgs(preset, prompt, { ratio: fromImage ? undefined : ratio, duration, resolution });
     const content: unknown[] = [{ type: 'text', text }];
     if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
-    url = await runArkVideo(model, content, opts, 12 * 60e3);
+    url = await runArkVideo(model, content, opts, 12 * 60e3, { kind: 'video', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task });
   } else {
     const input = buildInput(preset, prompt, { ratio: fromImage ? undefined : ratio, duration });
     if (imageDataUrl) input.image_url = imageDataUrl;
-    const result = await runFal(model, input, opts, 12 * 60e3);
+    const result = await runFal(model, input, opts, 12 * 60e3, { kind: 'video', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task });
     const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有视频地址');
     url = hit.url; contentType = hit.contentType;
   }

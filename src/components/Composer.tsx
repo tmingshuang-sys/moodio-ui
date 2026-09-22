@@ -1,6 +1,6 @@
 // ===== 输入框：+（上传 / 新建文档）、@ 引用文件、发送 / 停止；Enter 发送、Shift+Enter 换行 =====
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, ArrowUp, Square, Image, FilePlus2, Film, FileText, Wand2, Clapperboard } from 'lucide-react';
+import { Plus, AtSign, ArrowUp, Square, Image, FilePlus2, Film, FileText, Wand2, Clapperboard, Music } from 'lucide-react';
 import { useAgent, useFiles } from '../lib/store';
 import { send, stopAgent } from '../lib/agent/runner';
 import { openMenuAt } from './Menu';
@@ -31,7 +31,7 @@ export default function Composer() {
   const submit = () => { const text = value.trim(); if (!text || busy) return; setValue(''); void send(text); };
   const insert = (text: string) => { setValue(v => (v ? v.replace(/\s+$/, '') + ' ' : '') + text + ' '); ref.current?.focus(); };
   const plusMenu = (el: Element) => openMenuAt(el, [
-    { label: t('上传图片 / 视频'), icon: <Image size={14} />, onClick: async () => { const files = await pickFiles(); if (files.length) { await uploadFiles(files); useFiles.getState().setUi({ paneOpen: true }); } } },
+    { label: t('上传图片 / 视频 / 音频'), icon: <Image size={14} />, onClick: async () => { const files = await pickFiles(); if (files.length) { await uploadFiles(files); useFiles.getState().setUi({ paneOpen: true }); } } },
     { label: t('新建文档'), icon: <FilePlus2 size={14} />, onClick: () => { const doc = addDoc({ name: '未命名.md', content: '', by: 'user' }); openInPane(doc.id); toast('已新建文稿，可在右侧编辑'); } },
     { label: t('生成图片'), icon: <Wand2 size={14} />, onClick: () => void generate('image') },
     { label: t('生成视频'), icon: <Clapperboard size={14} />, onClick: () => void generate('video') },
@@ -48,7 +48,7 @@ export default function Composer() {
   const atMenu = (el: Element) => {
     const items = [
       ...docs.slice(0, 12).map(d => ({ label: baseName(d.name), icon: <FileText size={14} />, hint: d.kind.toUpperCase(), onClick: () => insert('@' + d.name) })),
-      ...media.slice(0, 8).map(m => ({ label: m.name, icon: m.kind === 'image' ? <Image size={14} /> : <Film size={14} />, hint: m.group, onClick: () => insert('@' + m.name) })),
+      ...media.slice(0, 8).map(m => ({ label: m.name, icon: m.kind === 'image' ? <Image size={14} /> : m.kind === 'audio' ? <Music size={14} /> : <Film size={14} />, hint: m.group, onClick: () => insert('@' + m.name) })),
     ];
     openMenuAt(el, items.length ? items : [{ label: '工作区里还没有文件', disabled: true }], { width: 280, title: t('引用文件') });
   };

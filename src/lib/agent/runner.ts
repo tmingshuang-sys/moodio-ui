@@ -68,13 +68,14 @@ async function step(label: string, fn?: () => Promise<void> | void) {
 }
 
 // steps（可选）：计划卡的步骤数组，与 actions 一一对应；逐步标记 running → done / failed / skipped
-export async function runActions(actions: Action[], request: string, chatId: string, steps?: PlanStep[]) {
+export async function runActions(actions: Action[], request: string, chatId: string, steps?: PlanStep[], messageAt?: number) {
   const results: string[] = []; const buttons: { id: string; label: string }[] = []; const reviewTargets: { docId: string; title: string }[] = []; const artifacts: Artifact[] = [];
   const mark = (i: number, status: PlanStep['status'], result?: string) => { const s = steps?.[i]; if (!s) return; s.status = status; if (result !== undefined) s.result = String(result || ''); commit(); };
   const skipRest = (from: number) => { for (let j = from; j < actions.length; j++) mark(j, 'skipped'); };
-  const ctx: ToolContext = { request, chatId, typeInto, step, live: setLive, signal: agent().controller?.signal };
+  const ctx: ToolContext = { request, chatId, typeInto, step, live: setLive, signal: agent().controller?.signal, messageAt };
   for (let i = 0; i < actions.length; i++) {
     const a = actions[i]; const fn = AGENT_TOOLS[a.tool]; if (!fn) { mark(i, 'skipped', '未知操作'); continue; }
+    ctx.stepIndex = i;
     if (aborted()) { results.push('已按你的要求停止，后面的步骤没有执行'); skipRest(i); break; }
     mark(i, 'running');
     try {
@@ -194,7 +195,7 @@ export async function executePlan(key: string, messageAt: number) {
   const out: Message = { role: 'assistant', text: '', at: Date.now() }; let results: string[] = [];
   try {
     await sleep(250);
-    const run = await runActions(p.plan, p.text, c.id, steps); results = run.results; out.actions = run.buttons; out.artifacts = run.artifacts;
+    const run = await runActions(p.plan, p.text, c.id, steps, pending.at); results = run.results; out.actions = run.buttons; out.artifacts = run.artifacts;
     if (run.reviewTargets.length && modelCfg()?.apiKey && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在自审刚写的内容…'); commit(); try { out.review = await selfReview(run.reviewTargets.slice(0, 2)); } catch (e) { console.warn('自审失败', e); } }
     // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
     const images = run.artifacts.filter(a => a.kind === 'image');

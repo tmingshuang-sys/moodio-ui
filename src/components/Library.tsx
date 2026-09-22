@@ -1,6 +1,6 @@
 // ===== 素材库页面：所有创作里生成 / 上传的图片与视频（布局参考小云雀的素材库：顶部标签 + 搜索，工具行视图 / 来源 / 筛选 / 排序 / 尺寸，网格卡片，点开大图）=====
 import { useEffect, useMemo, useState } from 'react';
-import { Search, ChevronDown, MoreHorizontal, Download, X, ExternalLink, Image as ImageIcon, Film } from 'lucide-react';
+import { Search, ChevronDown, MoreHorizontal, Download, X, ExternalLink, Image as ImageIcon, Film, Music } from 'lucide-react';
 import { useFiles } from '../lib/store';
 import { projects } from '../lib/projects';
 import { allMedia, renameLibraryMedia, deleteLibraryMedia, restoreLibraryMedia, openInCreation } from '../lib/library';
@@ -13,7 +13,7 @@ import { toast } from './Toast';
 import { useT } from '../lib/i18n';
 
 type Tab = 'all' | 'assets'; type View = 'grid' | 'list'; type Source = 'agent' | 'user' | null;
-type Kind = 'all' | 'image' | 'video'; type Sort = 'newest' | 'oldest' | 'name'; type Size = 's' | 'm' | 'l';
+type Kind = 'all' | 'image' | 'video' | 'audio'; type Sort = 'newest' | 'oldest' | 'name'; type Size = 's' | 'm' | 'l';
 const PREFS_KEY = 'moodio-library-prefs';
 const GROUPS = ['人物', '场景', '产品', '道具', '其他'];
 function loadPrefs(): { view: View; size: Size } {
@@ -31,6 +31,7 @@ function fmtDuration(sec: number) {
 
 function Thumb({ item, onDuration }: { item: LibraryItem; onDuration?: (d: number) => void }) {
   const url = useMediaUrl(item.id);
+  if (item.kind === 'audio') return <span className="lib-thumb-empty"><Music size={28} />{url && <audio src={url} preload="metadata" onLoadedMetadata={e => onDuration?.(e.currentTarget.duration)} />}</span>;
   if (!url) return <span className="lib-thumb-empty">{item.kind === 'image' ? <ImageIcon size={26} /> : <Film size={26} />}</span>;
   return item.kind === 'image' ? <img src={url} alt="" loading="lazy" /> : <video src={url} muted preload="metadata" onLoadedMetadata={e => onDuration?.(e.currentTarget.duration)} />;
 }
@@ -42,7 +43,7 @@ function Card({ item, view, onOpen, onMenu }: { item: LibraryItem; view: View; o
     <div className="file-row" onClick={onOpen} onContextMenu={e => { e.preventDefault(); onMenu(e.currentTarget); }}>
       <span className="row-thumb"><Thumb item={item} onDuration={setDur} /></span>
       <span className="row-name">{item.name}</span>
-      <span className="row-meta">{[item.kind === 'video' && dur ? fmtDuration(dur) : '', item.projectTitle, formatBytes(item.size)].filter(Boolean).join(' · ')}</span>
+      <span className="row-meta">{[item.kind !== 'image' && dur ? fmtDuration(dur) : '', item.projectTitle, formatBytes(item.size)].filter(Boolean).join(' · ')}</span>
       <span className="row-time">{timeAgo(item.createdAt)}</span>
       {menuBtn('row-more')}
     </div>
@@ -51,7 +52,7 @@ function Card({ item, view, onOpen, onMenu }: { item: LibraryItem; view: View; o
     <div className="lib-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen(); }} onContextMenu={e => { e.preventDefault(); onMenu(e.currentTarget); }}>
       <div className="lib-thumb">
         <Thumb item={item} onDuration={setDur} />
-        {item.kind === 'video' && dur > 0 && <span className="lib-dur">{fmtDuration(dur)}</span>}
+        {item.kind !== 'image' && dur > 0 && <span className="lib-dur">{fmtDuration(dur)}</span>}
       </div>
       <div className="lib-name" title={`${item.name} · ${item.projectTitle}`}>{item.name}</div>
       {menuBtn('card-more')}
@@ -74,7 +75,7 @@ function Preview({ item, onClose, onMenu }: { item: LibraryItem; onClose: () => 
         <button type="button" className="icon-btn" aria-label={t('关闭')} title={t('关闭')} onClick={onClose}><X size={20} /></button>
       </header>
       <div className="lib-preview-body" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-        {url ? (item.kind === 'image' ? <img src={url} alt={item.name} /> : <video src={url} controls autoPlay />) : null}
+        {url ? (item.kind === 'image' ? <img src={url} alt={item.name} /> : item.kind === 'audio' ? <div className="audio-player dark"><Music size={48} /><audio src={url} controls autoPlay /></div> : <video src={url} controls autoPlay />) : null}
       </div>
     </div>
   );
@@ -121,7 +122,7 @@ export default function Library() {
   const drop = (el: Element, current: string, options: { label: string; value: string; onPick: () => void }[]) =>
     openMenuAt(el, options.map(o => ({ label: o.label, active: o.value === current, onClick: o.onPick })), { width: 170 });
   const viewLabel = prefs.view === 'grid' ? t('平铺视图') : t('列表视图');
-  const kindLabel = kind === 'all' ? t('筛选') : kind === 'image' ? t('图片') : t('视频');
+  const kindLabel = kind === 'all' ? t('筛选') : kind === 'image' ? t('图片') : kind === 'video' ? t('视频') : t('音频');
   const sortLabel = sort === 'newest' ? t('排序') : sort === 'oldest' ? t('最早在前') : t('按名称');
   const sizeLabel = t('展示尺寸');
   const grid = (list: LibraryItem[]) => (
@@ -143,7 +144,7 @@ export default function Library() {
         <button type="button" className={`lib-chip${source === 'agent' ? ' active' : ''}`} onClick={() => setSource(source === 'agent' ? null : 'agent')}>{t('AI 生成')}</button>
         <button type="button" className={`lib-chip${source === 'user' ? ' active' : ''}`} onClick={() => setSource(source === 'user' ? null : 'user')}>{t('我上传的')}</button>
         <span className="spacer" />
-        <button type="button" className="lib-drop" onClick={e => drop(e.currentTarget, kind, [{ label: t('全部'), value: 'all', onPick: () => setKind('all') }, { label: t('图片'), value: 'image', onPick: () => setKind('image') }, { label: t('视频'), value: 'video', onPick: () => setKind('video') }])}>{kindLabel}<ChevronDown size={14} /></button>
+        <button type="button" className="lib-drop" onClick={e => drop(e.currentTarget, kind, [{ label: t('全部'), value: 'all', onPick: () => setKind('all') }, { label: t('图片'), value: 'image', onPick: () => setKind('image') }, { label: t('视频'), value: 'video', onPick: () => setKind('video') }, { label: t('音频'), value: 'audio', onPick: () => setKind('audio') }])}>{kindLabel}<ChevronDown size={14} /></button>
         <button type="button" className="lib-drop" onClick={e => drop(e.currentTarget, sort, [{ label: t('最新在前'), value: 'newest', onPick: () => setSort('newest') }, { label: t('最早在前'), value: 'oldest', onPick: () => setSort('oldest') }, { label: t('按名称'), value: 'name', onPick: () => setSort('name') }])}>{sortLabel}<ChevronDown size={14} /></button>
         <button type="button" className="lib-drop" onClick={e => drop(e.currentTarget, prefs.size, [{ label: t('小'), value: 's', onPick: () => savePrefs({ ...prefs, size: 's' }) }, { label: t('中'), value: 'm', onPick: () => savePrefs({ ...prefs, size: 'm' }) }, { label: t('大'), value: 'l', onPick: () => savePrefs({ ...prefs, size: 'l' }) }])}>{sizeLabel}<ChevronDown size={14} /></button>
       </div>

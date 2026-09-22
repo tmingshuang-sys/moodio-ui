@@ -13,8 +13,9 @@ const isStage = (s: unknown): s is StageId => STAGE_ORDER.includes(s as StageId)
 
 export function readLedger(): Ledger | null {
   const doc = findDocByName(LEDGER_NAME); if (!doc) return null;
-  try { const raw = JSON.parse(doc.content || '{}'); return normalize(raw); } catch { return null; }
+  return parseLedger(doc.content);
 }
+export function parseLedger(content: string): Ledger | null { try { return normalize(JSON.parse(content || '{}')); } catch { return null; } }
 function normalize(raw: any): Ledger {
   return {
     skill: String(raw?.skill || 'other'), stage: isStage(raw?.stage) ? raw.stage : 'brief',

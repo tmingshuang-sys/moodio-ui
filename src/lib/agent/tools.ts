@@ -21,6 +21,7 @@ export interface ToolContext {
   step: (label: string, fn?: () => Promise<void> | void) => Promise<void>;   // 子步骤记录
   live: (text: string) => void;   // 状态胶囊文案（生成图片 / 视频时报进度）
   signal?: AbortSignal;
+  messageAt?: number; stepIndex?: number;   // 正在执行的是哪条消息的第几步（后台任务完成后补回去）
 }
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
@@ -103,7 +104,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
     let r!: GenResult;
     await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      r = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+      r = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
     });
     useFiles.getState().openInPane(r.item.id);
     return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name, prompt: String(args.prompt || '') } };
@@ -112,7 +113,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
     let r!: GenResult;
     await ctx.step(`生成视频「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
+      r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
     });
     useFiles.getState().openInPane(r.item.id);
     return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name, prompt: String(args.prompt || '') } };
@@ -122,10 +123,12 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const ids = (Array.isArray(args.clip_ids) ? args.clip_ids : []).map((x: unknown) => String(x || '').trim()).filter(Boolean);
     if (!ids.length) throw new Error('缺少要合成的片段 id');
     const clips = ids.map(id => { const m = requireMedia(id); if (m.kind !== 'video') throw new Error(`「${m.name}」不是视频`); return m; });
+    const musicId = args.music_id ? String(args.music_id).trim() : ''; if (musicId) { const mu = requireMedia(musicId); if (mu.kind !== 'audio') throw new Error(`「${mu.name}」不是音频，不能当配乐`); }
+    const subtitles = Array.isArray(args.subtitles) ? args.subtitles : [];
     let item!: import('../types').MediaItem;
-    await ctx.step(`合成 ${clips.length} 段视频为成片`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal }); });
+    await ctx.step(`合成 ${clips.length} 段视频为成片${subtitles.length ? `（${subtitles.length} 条字幕）` : ''}${musicId ? '（配乐）' : ''}`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal, musicId: musicId || undefined, musicVolume: args.music_volume !== undefined ? Number(args.music_volume) : undefined, subtitles, format: args.format === 'webm' ? 'webm' : 'mp4' }); });
     useFiles.getState().openInPane(item.id);
-    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
+    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${musicId ? '，已配乐' : ''}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
   },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
@@ -159,7 +162,7 @@ export function describeAction(a: Action): string {
     case 'save_brief': return '记录创作纲领';
     case 'ask_user': return '向你确认几个问题';
     case 'update_ledger': { const parts = []; if (g.stage) parts.push(`阶段推进到「${stageName(skillFor(String(g.skill || useFiles.getState().brief?.format || 'other')), g.stage)}」`); if (g.answers) parts.push('记录答案'); if (g.entities) parts.push('更新实体清单'); if (g.clips) parts.push('更新片段清单'); return `更新台账${parts.length ? '：' + parts.join('、') : ''}`; }
-    case 'compose_video': { const n = Array.isArray(g.clip_ids) ? g.clip_ids.length : 0; return `把 ${n} 段视频按顺序合成成片「${g.name || '成片'}」（本地合成，约需成片总时长的时间）`; }
+    case 'compose_video': { const n = Array.isArray(g.clip_ids) ? g.clip_ids.length : 0; const subs = Array.isArray(g.subtitles) ? g.subtitles.length : 0; return `把 ${n} 段视频按顺序合成 MP4 成片「${g.name || '成片'}」${subs ? `，${subs} 条字幕` : ''}${g.music_id ? '，配乐「' + mediaName(g.music_id) + '」' : ''}（本地合成，约需成片总时长的时间）`; }
     case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;
     case 'switch_project': { const p = projects.list().find(x => x.id === String(g.id || '')); return `切换到项目「${p ? p.title : g.id}」（页面会重新加载）`; }
     case 'rename_project': { const p = projects.list().find(x => x.id === String(g.id || '')) || projects.active(); return `把项目「${p.title}」重命名为「${g.title || ''}」`; }

@@ -1,4 +1,5 @@
-// ===== 上传图片 / 视频到媒体库：blob 进 IndexedDB，元数据进文件仓库 =====
+// ===== 上传图片 / 视频 / 音频到媒体库：blob 进 IndexedDB，元数据进文件仓库 =====
+// 音频（mp3 / wav / m4a）当配乐用：合成成片时 compose_video 的 music_id 引用它
 import type { MediaItem } from './types';
 import { uid } from './types';
 import { useFiles } from './store';
@@ -18,22 +19,22 @@ export function guessGroup(name: string, hint?: string): string {
 export async function uploadFiles(list: FileList | File[], { group }: { group?: string } = {}): Promise<MediaItem[]> {
   const files = Array.from(list || []); const added: MediaItem[] = [];
   for (const f of files) {
-    const isImg = f.type.startsWith('image/'), isVid = f.type.startsWith('video/');
-    if (!isImg && !isVid) { toast(`${f.name}：仅支持图片或视频`); continue; }
+    const isImg = f.type.startsWith('image/'), isVid = f.type.startsWith('video/'), isAud = f.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name);
+    if (!isImg && !isVid && !isAud) { toast(`${f.name}：仅支持图片、视频或音频`); continue; }
     if (f.size > 200 * 1024 * 1024) { toast(`${f.name} 超过 200MB，请压缩后再上传`); continue; }
     const blob = isImg ? await downscaleImage(f, f.type) : f;
     const id = uid('m');
     try { await putBlob(id, blob); } catch { toast('媒体保存失败：浏览器本地存储不可用'); continue; }
     cacheUrl(id, blob);
     const size = isImg ? await imageSize(blob) : null;
-    const meta: MediaItem = { id, name: f.name, kind: isImg ? 'image' : 'video', mime: f.type, size: blob.size, group: guessGroup(f.name, group), createdAt: Date.now(), by: 'user', width: size?.width, height: size?.height };
+    const meta: MediaItem = { id, name: f.name, kind: isImg ? 'image' : isVid ? 'video' : 'audio', mime: f.type || (isAud ? 'audio/mpeg' : ''), size: blob.size, group: isAud ? '配乐' : guessGroup(f.name, group), createdAt: Date.now(), by: 'user', width: size?.width, height: size?.height };
     useFiles.getState().addMedia(meta); added.push(meta);
   }
   if (added.length) toast(`已添加 ${added.length} 个文件到工作区`);
   return added;
 }
 
-export function pickFiles(accept = 'image/*,video/*', multiple = true): Promise<File[]> {
+export function pickFiles(accept = 'image/*,video/*,audio/*', multiple = true): Promise<File[]> {
   return new Promise(resolve => {
     const input = document.createElement('input'); input.type = 'file'; input.accept = accept; input.multiple = multiple; input.hidden = true;
     input.onchange = () => { resolve(Array.from(input.files || [])); input.remove(); };

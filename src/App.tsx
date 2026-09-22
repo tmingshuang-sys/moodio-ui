@@ -9,6 +9,7 @@ import { MenuHost } from './components/Menu';
 import { DialogHost } from './components/Dialogs';
 import AgentLive from './components/AgentLive';
 import { useFiles, useNav } from './lib/store';
+import { resumeOnLoad } from './lib/session';
 import { useLang } from './lib/i18n';
 
 const MIN_CHAT = 380, MIN_PANE = 420;
@@ -22,6 +23,7 @@ export default function App() {
   const lang = useLang(s => s.lang);
   const mainRef = useRef<HTMLDivElement>(null);
   useEffect(() => { document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN'; }, [lang]);
+  useEffect(() => { resumeOnLoad(); }, []);
 
   const paneWidth = useCallback((total: number) => {
     const wanted = ui.paneWidth || Math.round(total * 0.56);

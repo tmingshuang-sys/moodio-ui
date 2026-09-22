@@ -32,7 +32,7 @@ export function briefText(): string {
 export function inventoryText(): string {
   const { docs, media, ui } = useFiles.getState();
   const docRows = docs.slice(0, 60).map(d => `${d.id} | ${d.name} | ${d.kind} | ${wordCount(d.content)} 字 | ${timeAgo(d.updatedAt)}${d.id === ui.openId ? ' | 工作区里打开中' : ''}`).join('\n');
-  const mediaRows = media.slice(0, 60).map(m => `${m.id} | ${m.name} | ${m.group} | ${m.kind === 'image' ? '图片' : '视频'}`).join('\n');
+  const mediaRows = media.slice(0, 60).map(m => `${m.id} | ${m.name} | ${m.group} | ${m.kind === 'image' ? '图片' : m.kind === 'audio' ? '音频（可作配乐）' : '视频'}`).join('\n');
   const projectRows = projects.list().map(p => `${p.id} | ${p.title}${p.id === projects.active().id ? ' | 当前' : ''}`).join('\n');
   return `\n\n【文稿清单（id | 文件名 | 类型 | 字数 | 更新时间）】\n${docRows || '（无）'}\n【图片 / 视频清单（id | 文件名 | 分区 | 类型）】\n${mediaRows || '（无）'}\n【项目（id | 名称）】\n${projectRows}`;
 }
@@ -76,7 +76,7 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 - {"tool":"open_media","args":{"id":"媒体id"}} 查看图片 / 视频；{"tool":"rename_media","args":{"id":"媒体id","name":"新名"}}；{"tool":"tag_media","args":{"id":"媒体id","group":"人物|场景|产品|其他"}}；{"tool":"delete_media","args":{"id":"媒体id"}}
 - {"tool":"generate_image","args":{"prompt":"英文画面提示词","name":"文件名（不含扩展名）","group":"人物|场景|产品|其他","ratio":"可选 16:9|9:16|1:1|4:3|3:4"}} 生成图片并存进媒体库
 - {"tool":"generate_video","args":{"prompt":"英文画面提示词","name":"文件名","group":"分区","ratio":"可选 16:9|9:16|1:1","duration":"可选秒数（不填用智能时长）","from_media_id":"可选，以这张已有图片为首帧做图生视频"}} 生成视频并存进媒体库
-- {"tool":"compose_video","args":{"name":"成片","clip_ids":["视频id1","视频id2"]}} 把已生成的片段按顺序合成一条成片（浏览器本地合成，不计费，约需成片总时长的时间）
+- {"tool":"compose_video","args":{"name":"成片","clip_ids":["视频id1","视频id2"],"music_id":"可选，音频媒体id 作配乐","music_volume":0.3,"subtitles":[{"start":0,"end":3.5,"text":"字幕"}]}} 把已生成的片段按顺序合成一条 MP4 成片（浏览器本地合成，不计费，约需成片总时长的时间）；字幕按成片时间轴给起止秒数（各段时长累加），每条不超过 20 字，取自台词 / 口播 / 字幕列；媒体清单里有音频就可以当配乐（用户上传的），没有就不填
   生成类操作按次计费且要等待，一次只安排用户明确要的镜头，不要自作主张批量生成；prompt 用英文写，照抄或改写对应的《视频生成Prompt-xx.md》里的英文段落，把人物外形、光线、镜头语言写具体。用哪个模型由用户在输入框的模型面板里选，你不用管（默认「智能匹配模型」：图片从 Seedream 5.0 起、视频从 Seedance 2.5 起，模型未开通或欠费时系统会自动换成可用的，结果里会写明实际用的模型）；ratio 和 duration 不填就用用户选好的偏好（默认是「智能时长」，系统会按提示词长度自动定秒数），只有用户这次明确指定了画幅或秒数才填。用户开了「自动模式」时，只含生成操作的计划会直接执行、不再等确认，所以更要只生成用户明确要的那几个镜头。
 - {"tool":"ask_user","args":{"questions":[{"key":"可选英文键","text":"问题","type":"single|multi|text","options":["选项A",{"label":"选项B","hint":"一行说明"}],"placeholder":"填空题的示例"}]}} 向用户追问：一批最多 8 题、一题只问一件事，能给选项就给选项（选项可带 hint 说明），需要用户自由填写的用 type text 并给 placeholder；用了它就不要再放其他 actions（save_brief / update_ledger 除外）。用户提交后会以「问题：答案」的形式回来
 - {"tool":"update_ledger","args":{"stage":"可选，推进到的阶段 id","answers":{"key":"值"},"entities":[{"name":"实体名","kind":"产品|人物|场景|道具|风格锚点","ref":"参考图媒体id","status":"待确认|已确认"}],"clips":[{"no":1,"seconds":15,"shots":"01-04","docId":"提示词文稿id","mediaId":"生成后的视频id","status":"待生成|已生成"}],"notes":"备注"}} 更新台账（不需要确认，只填要改的字段）

@@ -13,7 +13,7 @@ export interface Doc {
   chatId?: string | null; // 由哪次对话产出
 }
 
-export type MediaKind = 'image' | 'video';
+export type MediaKind = 'image' | 'video' | 'audio';   // audio：上传的配乐 / 音效，合成成片时当 BGM
 
 export interface MediaItem {
   id: string;             // IndexedDB 里 blob 的键
@@ -27,6 +27,7 @@ export interface MediaItem {
   width?: number;
   height?: number;
   model?: string;         // 生成它的模型名（智能匹配时可能不是面板里排第一的那个）
+  duration?: number;      // 视频 / 音频时长（秒），合成成片时写入
 }
 
 export interface TrashEntry { trashId: string; deletedAt: number; doc?: Doc; media?: MediaItem; }

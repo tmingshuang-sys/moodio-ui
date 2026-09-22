@@ -36,7 +36,7 @@ function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; 
     { id: 'assets', name: '素材检查', goal: '列出脚本涉及的实体，判断哪些需要参考图；按契约处理产品 / 人物参考图；生成后把实体和参考图 id 写进台账并请用户确认。', outputs: '参考图（媒体库）与台账里的实体清单', gate: '所有需要参考图的实体都有用户确认过的参考图' },
     { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表，镜头总时长与纲领时长一致。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
     { id: 'prompts', name: '片段方案', goal: `按总时长和单段上限（默认 ${s.clipSeconds} 秒）把分镜切成若干片段，每段一份视频生成提示词文稿，写明承接哪些镜头、引用哪些参考图；片段清单写进台账 clips；全部写完后用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成' },
-    { id: 'video', name: '生成成片', goal: '按片段顺序 generate_video，有参考图就用 from_media_id 或在提示词里复用同一段外形描述；全部生成后用 compose_video 按顺序合成成片。', outputs: '片段视频与成片', gate: '成片合成完成' },
+    { id: 'video', name: '生成成片', goal: '按片段顺序 generate_video，有参考图就用 from_media_id 或在提示词里复用同一段外形描述；全部生成后用 compose_video 按顺序合成 MP4 成片：字幕从脚本的台词 / 口播 / 字幕列生成（按各段时长累计起止秒数，每条不超过 20 字），媒体清单里有用户上传的音频就作配乐。', outputs: '片段视频与成片', gate: '成片合成完成' },
     { id: 'deliver', name: '交付', goal: '总结成片：结构、每段承担的内容、核心信息如何落地；请用户审阅并说明要改哪一段。', outputs: '交付说明', gate: '用户验收' },
   ];
 }
