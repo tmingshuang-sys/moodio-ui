@@ -10,10 +10,14 @@ import { getBlob, downloadBlob } from './storage';
 import { readLedger } from './ledger';
 import { findMedia } from './store';
 import { projects } from './projects';
-import type { MediaItem } from './types';
 import { makeZip, safeFolderName } from './jianying-draft';
+import { buildFcpxml, buildEdl, cleanPath, isAbsolutePath, buildManifest, fileExt } from './nle';
 
 export const JIANYING_SCHEME = 'videocut://';
+const BASE_PATH_KEY = 'moodio-export-base-path';   // 片段文件夹的父目录绝对路径，用户粘贴一次（FCPXML 的媒体引用必须是绝对路径）
+export const basePath = () => cleanPath(localStorage.getItem(BASE_PATH_KEY) || '');
+export const setBasePath = (p: string) => { const c = cleanPath(p); if (c) localStorage.setItem(BASE_PATH_KEY, c); else localStorage.removeItem(BASE_PATH_KEY); };
+export const basePathOk = (p: string) => isAbsolutePath(p);
 
 // ---- 片段来源：成片记着自己由哪几段拼成（compose.clips）；没有就用台账里按序号排好的片段；单独一条视频就导它自己 ----
 export function collectClipIds(mediaId?: string): string[] {
@@ -25,21 +29,15 @@ export function collectClipIds(mediaId?: string): string[] {
   if (target && target.model !== '本地合成' && !fromLedger.includes(target.id)) return [target.id];
   return fromLedger.length ? fromLedger : target ? [target.id] : [];
 }
-// 文件扩展名：文件名里有就用，否则按 mime 推
-const MIME_EXT: Record<string, string> = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
-export function fileExt(m: Pick<MediaItem, 'name' | 'mime'>): string {
-  const fromName = /\.([a-z0-9]{2,4})$/i.exec(m.name || '')?.[1]?.toLowerCase(); if (fromName) return fromName;
-  return MIME_EXT[(m.mime || '').toLowerCase()] || 'mp4';
+// 片段的真实时长与宽高：媒体项里没记就用 video 元素现场读（FCPXML 的时间线长度全靠它）
+function probeVideo(blob: Blob): Promise<{ seconds: number; width: number; height: number }> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob); const v = document.createElement('video'); v.preload = 'metadata'; v.muted = true; v.src = url;
+    const done = (d: number) => { URL.revokeObjectURL(url); resolve({ seconds: d, width: v.videoWidth || 0, height: v.videoHeight || 0 }); };
+    v.onloadedmetadata = () => { if (isFinite(v.duration) && v.duration > 0) done(v.duration); else { v.ontimeupdate = () => { v.ontimeupdate = null; done(isFinite(v.duration) ? v.duration : 0); }; v.currentTime = 1e6; } };
+    v.onerror = () => { URL.revokeObjectURL(url); resolve({ seconds: 0, width: 0, height: 0 }); };
+  });
 }
-// 清单：给用户看的顺序表，也方便对着拖时间线
-export function buildManifest(title: string, items: { file: string; name: string; seconds?: number }[]): string {
-  const total = items.reduce((s, i) => s + (i.seconds || 0), 0);
-  const lines = [`${title} · 片段清单`, '', '按下面的顺序拖到剪映时间线（文件名已经排好序）：', ''];
-  items.forEach((it, i) => lines.push(`${String(i + 1).padStart(2, '0')}. ${it.file}${it.seconds ? `  ${it.seconds.toFixed(1)} 秒` : ''}   ← ${it.name}`));
-  if (total) lines.push('', `合计 ${items.length} 段，约 ${Math.round(total)} 秒`);
-  return lines.join('\n') + '\n';
-}
-
 // ---- 目录授权：记住用户选过的导出目录 ----
 const settingsStore = createStore('moodio-settings', 'kv');
 const DIR_KEY = 'jianying-export-dir';
@@ -61,30 +59,41 @@ async function writeFile(dir: FileSystemDirectoryHandle, name: string, data: Blo
 }
 
 // ---- 主流程 ----
-export interface ExportResult { mode: 'direct' | 'zip'; folder: string; clips: number; opened: boolean; }
+export interface ExportResult { mode: 'direct' | 'zip'; folder: string; clips: number; opened: boolean; project: boolean; }   // project：是否附带了可一键导入的 FCPXML 工程
 export async function exportToJianying(mediaId?: string, onProgress?: (t: string) => void): Promise<ExportResult> {
   const ids = collectClipIds(mediaId); if (!ids.length) throw new Error('没有可导出的片段');
   const root = canWriteDirectly() ? await pickExportDir() : null;   // 选目录 / 询问权限必须紧跟用户的点击
   const title = projects.active().title || '创作'; const folder = safeFolderName(`${title} · Moodio 片段`);
   onProgress?.('读取片段…');
-  const files: { file: string; name: string; seconds?: number; blob: Blob }[] = [];
+  const files: { file: string; name: string; seconds?: number; width?: number; height?: number; blob: Blob }[] = [];
   for (let i = 0; i < ids.length; i++) {
     const m = findMedia(ids[i])!; const blob = await getBlob(m.id); if (!blob) throw new Error(`「${m.name}」的文件不在本机媒体库里`);
-    files.push({ file: `clip_${String(i + 1).padStart(2, '0')}.${fileExt(m)}`, name: m.name, seconds: m.duration, blob });
+    let seconds = m.duration || 0, width = m.width || 0, height = m.height || 0;
+    if (!seconds || !width) { const p = await probeVideo(blob); seconds = seconds || p.seconds; width = width || p.width; height = height || p.height; }
+    files.push({ file: `clip_${String(i + 1).padStart(2, '0')}.${fileExt(m)}`, name: m.name, seconds, width, height, blob });
   }
   const manifest = buildManifest(title, files);
+  const nleClips = files.map(f => ({ file: f.file, name: f.name, seconds: f.seconds || 0, width: f.width, height: f.height }));
+  const edl = buildEdl({ title, clips: nleClips });
   if (root) {
     onProgress?.('写入片段…');
     let name = folder; for (let n = 2; ; n++) { try { await root.getDirectoryHandle(name); name = `${folder} ${n}`; } catch { break; } }
     const dir = await root.getDirectoryHandle(name, { create: true });
     for (let i = 0; i < files.length; i++) { onProgress?.(`复制片段 ${i + 1}/${files.length}…`); await writeFile(dir, files[i].file, files[i].blob); }
     await writeFile(dir, '片段清单.txt', manifest);
+    await writeFile(dir, `${title}.edl`, edl);
+    // 知道绝对路径才能生成 FCPXML：媒体引用必须是绝对的 file:// URL
+    const base = basePath(); let project = false;
+    if (base) { await writeFile(dir, `${title}.fcpxml`, buildFcpxml({ title, clips: nleClips, dirPath: `${base}/${name}` })); project = true; }
     let opened = false; try { window.location.href = JIANYING_SCHEME; opened = true; } catch { /* 没装剪映或浏览器拦了 */ }
-    return { mode: 'direct', folder: name, clips: files.length, opened };
+    return { mode: 'direct', folder: name, clips: files.length, opened, project };
   }
   onProgress?.('打包片段…');
-  const entries: { path: string; data: Uint8Array }[] = [{ path: `${folder}/片段清单.txt`, data: new TextEncoder().encode(manifest) }];
+  const enc = new TextEncoder();
+  const entries: { path: string; data: Uint8Array }[] = [{ path: `${folder}/片段清单.txt`, data: enc.encode(manifest) }, { path: `${folder}/${title}.edl`, data: enc.encode(edl) }];
+  const base = basePath();
+  if (base) entries.push({ path: `${folder}/${title}.fcpxml`, data: enc.encode(buildFcpxml({ title, clips: nleClips, dirPath: `${base}/${folder}` })) });
   for (const f of files) entries.push({ path: `${folder}/${f.file}`, data: new Uint8Array(await f.blob.arrayBuffer()) });
   downloadBlob(`${folder}.zip`, makeZip(entries));
-  return { mode: 'zip', folder, clips: files.length, opened: false };
+  return { mode: 'zip', folder, clips: files.length, opened: false, project: !!base };
 }

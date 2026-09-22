@@ -1,7 +1,7 @@
 // 导出到剪映：片段按顺序命名、清单可读；zip 结构合法
 import { describe, expect, it } from 'vitest';
 import { makeZip, crc32, safeFolderName } from './jianying-draft';
-import { buildManifest, fileExt } from './jianying';
+import { buildManifest, fileExt } from './nle';
 
 describe('导出片段到剪映', () => {
   it('清单按顺序列出片段与时长', () => {

@@ -3,23 +3,31 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye, Clapperboard } from 'lucide-react';
-import { exportToJianying, canWriteDirectly, hasExportDir } from '../lib/jianying';
-// 去剪映编辑：把片段按顺序导出成一个文件夹并唤起剪映（剪映不接受外部写入的草稿，只能把素材备好让用户拖到时间线）
+import { exportToJianying, canWriteDirectly, hasExportDir, basePath, setBasePath, basePathOk } from '../lib/jianying';
+// 导出片段到剪辑软件：片段按顺序命名 + FCPXML 工程（达芬奇 / Final Cut 一键导入就排好）+ EDL + 清单，然后唤起剪映
+// 剪映不接受外部写入的草稿（见 lib/jianying.ts 顶部），所以剪映那边只能导入素材自己拖；专业软件走 FCPXML
 export async function runJianyingExport(mediaId?: string) {
   try {
     if (canWriteDirectly() && !(await hasExportDir())) {
-      const ok = await confirmDialog({ title: t('去剪映编辑'), okLabel: t('选择文件夹'), body: (
+      const ok = await confirmDialog({ title: t('导出片段'), okLabel: t('选择文件夹'), body: (
         <div className="jy-setup">
-          <p>{t('会把成片的每个片段按顺序导出成 clip_01、clip_02…，再打开剪映。你在剪映里导入这个文件夹，按文件名顺序拖到时间线即可。')}</p>
+          <p>{t('会把成片的每个片段按顺序导出成 clip_01、clip_02…，并附一份达芬奇 / Final Cut 能直接导入的工程文件，导入后时间线上已经排好。')}</p>
           <p>{t('第一次需要选一个存放片段的文件夹（建议「影片」），之后不用再选。')}</p>
         </div>) });
       if (!ok) return;
     }
+    // FCPXML 的媒体引用必须是绝对路径，浏览器拿不到，所以让用户粘贴一次上级目录
+    if (!basePath()) {
+      const v = await promptDialog({ title: t('片段文件夹在哪'), label: t('粘贴刚才那个文件夹的完整路径（访达里选中它按 ⌥⌘C 即可复制）。留空则只导片段，不生成工程文件。'), placeholder: '/Users/你的用户名/Movies', okLabel: t('保存') });
+      if (v && basePathOk(v)) setBasePath(v);
+      else if (v) toast(t('路径要以 / 开头，这次先只导片段'));
+    }
     const r = await exportToJianying(mediaId, text => toast(text));
-    toast(r.mode === 'direct'
-      ? `已导出 ${r.clips} 段片段到「${r.folder}」并打开剪映，在剪映里导入这个文件夹，按 clip_01…的顺序拖到时间线`
-      : `已下载「${r.folder}.zip」：解压后在剪映里导入，按 clip_01…的顺序拖到时间线`);
-  } catch (e: any) { if (e?.name !== 'AbortError') toast(`去剪映编辑失败：${e?.message || e}`); }
+    const where = r.mode === 'direct' ? `「${r.folder}」` : `「${r.folder}.zip」`;
+    toast(r.project
+      ? `已导出 ${r.clips} 段片段到${where}，里面的 .fcpxml 用达芬奇 / Final Cut 打开就是排好的时间线；剪映需要导入素材后自己拖`
+      : `已导出 ${r.clips} 段片段到${where}，在剪辑软件里导入后按 clip_01…的顺序拖到时间线`);
+  } catch (e: any) { if (e?.name !== 'AbortError') toast(`导出片段失败：${e?.message || e}`); }
 }
 import type { Doc, MediaItem } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
@@ -141,7 +149,7 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
         <div className="view-tools">
           <label className="group-select">{t('分区')}<select value={groups.includes(item.group) ? item.group : '其他'} onChange={e => useFiles.getState().updateMedia(item.id, { group: e.target.value })}>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
-          {item.kind === 'video' && <button type="button" className="icon-btn" aria-label={t('去剪映编辑')} title={t('把片段按顺序导出并打开剪映')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={17} /></button>}
+          {item.kind === 'video' && <button type="button" className="icon-btn" aria-label={t('导出片段到剪辑软件')} title={t('导出片段到剪辑软件')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={17} /></button>}
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={async () => { const blob = await getBlob(item.id); if (blob) downloadBlob(item.name, blob); }}><Download size={17} /></button>
           <button type="button" className="icon-btn" aria-label="更多" onClick={e => openMenuAt(e.currentTarget, [
             { label: t('删除'), danger: true, onClick: async () => { if (await confirmDialog({ title: '删除文件', body: `删除「${item.name}」？7 天内可撤销。`, okLabel: '删除', danger: true })) { const entry = useFiles.getState().removeMedia(item.id); onBack(); toast(`已删除「${item.name}」`, entry ? { label: '撤销', onClick: () => useFiles.getState().restoreTrash(entry.trashId) } : undefined); } } },
