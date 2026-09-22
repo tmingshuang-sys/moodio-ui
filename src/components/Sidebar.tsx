@@ -1,7 +1,7 @@
 // ===== 左侧导航：logo / 项目、创作、资源、创作纲领、创作历史（今天 / 昨天 / 更早）、底部用户与设置 =====
 // 「创作」= 新建一个空白创作（项目）并切换过去；创作历史列出所有项目里有内容的对话，点一条切回那个项目（不刷新页面）
 import { Sparkles, FolderOpen, Compass, PanelLeft, MoreHorizontal, ChevronDown, FileText, Settings, Languages, Plus, Check } from 'lucide-react';
-import { useChats, useFiles, useAgent } from '../lib/store';
+import { useChats, useFiles, useAgent, useNav } from '../lib/store';
 import { projects } from '../lib/projects';
 import { startCreation, switchProject, deleteCreation, otherProjectsHistory, chatCount, renameHistoryChat, deleteHistoryChat } from '../lib/session';
 import type { HistoryEntry } from '../lib/session';
@@ -18,7 +18,7 @@ export default function Sidebar() {
   const chats = useChats(s => s.chats); const active = useChats(s => s.active);
   const setActive = useChats(s => s.setActive);
   const ui = useFiles(s => s.ui); const setUi = useFiles(s => s.setUi);
-  const fileCount = useFiles(s => s.docs.length + s.media.length);
+  const page = useNav(s => s.page); const go = useNav(s => s.go);
   const busy = useAgent(s => s.busy);
   const [version, bump] = useState(0);
   useEffect(() => projects.subscribe(() => bump(x => x + 1)), []);
@@ -82,8 +82,9 @@ export default function Sidebar() {
         </button>
       )}
       <nav className="sb-nav" aria-label="板块">
-        <button type="button" className="sb-item" onClick={() => { startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
-        <button type="button" className={`sb-item${ui.paneOpen && fileCount > 0 ? ' active' : ''}`} onClick={() => { if (!fileCount) { toast(t('还没有文件。Agent 生成或上传文件后，工作区会自动打开。')); return; } setUi({ paneOpen: !ui.paneOpen }); }} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
+        <button type="button" className={`sb-item${page === 'chat' && !chats.find(c => c.id === active)?.messages.length ? ' active' : ''}`} onClick={() => { go('chat'); startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
+        {/* 资源 = 素材库页面：所有创作里生成 / 上传的图片与视频 */}
+        <button type="button" className={`sb-item${page === 'library' ? ' active' : ''}`} onClick={() => go('library')} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
         <button type="button" className="sb-item" onClick={openBrief} title={t('创作纲领')}><Compass size={18} /><span>{t('创作纲领')}</span></button>
       </nav>
       {!collapsed && (
@@ -100,6 +101,7 @@ export default function Sidebar() {
                       <button type="button" className="sb-chat-main" title={e.current ? e.title : `${e.title} · ${e.projectTitle}`} onClick={() => {
                         if (isActive) return;
                         if (busy) { toast('请先停止当前 Agent 任务，再切换创作。'); return; }
+                        go('chat');
                         if (e.current) setActive(e.chatId); else switchProject(e.projectId, e.chatId);
                       }}>
                         <span className="sb-chat-icon"><FileText size={16} /></span><span className="sb-chat-title">{e.title}</span>

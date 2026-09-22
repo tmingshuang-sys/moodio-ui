@@ -49,6 +49,7 @@ npm run build          # vite build → dist/
 - **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，新规则追加到对应区块或文件末尾并加中文注释。**配色是黑白灰**：主色 `--accent` 就是墨色，选中态用 `--accent-soft` 浅灰底 + 墨色字，不要引入紫色或蓝色做强调；彩色只留状态语义（成功绿 `#2f6b45`、警告 `--warn`、危险 `--danger`）。品牌渐变 `--brand` 只给 logo 等品牌位，不要用在按钮、徽标、进度条上。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
 - **界面语言**：系统文案用 `useT()` / `t()`（i18n.ts 的 `EN` 词典），用户内容与模型正文不翻译。新增系统文案时在词典里补一条。
 - **创作 = 项目**（`session.ts`）：侧栏「创作」按钮调 `startCreation()`：新建一个空白项目并**热切换**过去（`flushStores()` 先把挂起的保存写进旧项目，再 `projects.create(...,{reload:false})` + 两个仓库 `reload()`，不刷新页面），新项目没有示例文稿、工作区默认收起（`ui.paneOpen=false`，有产物时 `openInPane()` 自动打开）、标题先叫「新创作」，第一句话发出后 `push()` 把项目名改成对话标题。当前创作还是空白时再点「创作」只聚焦输入框。「创作历史」= 当前项目的对话（内存）+ 其他项目里有内容的对话（`otherProjectsHistory()` 读 localStorage，只在项目变动时重算），点一条 `switchProject(项目id, 对话id)`；条目菜单里「重命名」同步项目名，「删除」在项目只有这一条对话时是删整个创作（`deleteCreation()`：连文件一起删，删当前项目就切到最近改动的另一个，只剩一个时清空成新创作），否则只删对话。Agent 执行中（`useAgent.busy`）拒绝切换。Agent 工具 `create_project` / `switch_project` 仍走整页刷新（它们在计划执行中途调用，热切换会让执行器丢失消息引用）。
+- **素材库（侧栏「资源」）**：`useNav.page = 'library'` 时主区整个换成 `Library.tsx`（布局参考小云雀素材库：顶部「素材库 / 资产库」标签 + 搜索，工具行「平铺 / 列表视图」「AI 生成 / 我上传的」「筛选 / 排序 / 展示尺寸」，正方形灰底卡片，视频角标时长，点开深色大图预览）。数据由 `library.ts` 的 `allMedia()` 汇总：当前项目取内存里的 `useFiles.media`（随生成实时更新），其他项目读各自的 `moodio-files-v1::<id>`；改名 / 删除 / 撤销对非当前项目直接改它的存储键（`renameLibraryMedia` / `deleteLibraryMedia` / `restoreLibraryMedia`），「打开所在创作」`openInCreation()` 先 `switchProject()` 再 `openInPane()`。「资产库」标签按分区（人物 / 场景 / 产品 / 道具 / 其他）分组显示同一批媒体。视图与尺寸偏好存 localStorage `moodio-library-prefs`。素材库只收图片与视频，文稿仍只在各自创作的工作区里。
 - **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；`projects.create()` 建的项目都带 `moodio-project-fresh::<id>` 标记，首次加载为空白且工作区收起。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude <当前模型名> <noreply@anthropic.com>`。
 - **不要提交** `dist/`、`node_modules/`、`.wrangler/`；不要编辑 `~/Downloads` 里的旧副本。
@@ -57,14 +58,15 @@ npm run build          # vite build → dist/
 
 | 功能 | 入口 |
 |---|---|
-| 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle`。**项目里一个文件都没有时工作区不展开**（`paneOpen = ui.paneOpen && fileCount > 0`），对话头部的「对话文件」按钮与右缘把手也不出现，侧栏「资源」只提示；Agent 生成或上传第一个文件时 `openInPane()` 才打开 |
+| 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle`。**项目里一个文件都没有时工作区不展开**（`paneOpen = page === 'chat' && ui.paneOpen && fileCount > 0`），对话头部的「对话文件」按钮与右缘把手也不出现；Agent 生成或上传第一个文件时 `openInPane()` 才打开 |
 | 发送 / 回复 / 确认执行 | `runner.ts`：`send()` → `reply()`；`executePlan()` / `cancelPlan()`；`runActions()` 逐步标状态；`stopAgent()` |
 | 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / generate_image / generate_video / create_project / switch_project / rename_project）、`planSteps()` |
 | 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `buildInput()` / `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `gateway/worker.js` 的 `falProxy` 与 `mediaProxy` |
 | 模型选择面板 | `ModelPrefs.tsx`（输入框工具栏里的按钮，视频 / 图片两个标签页 + 画面比例 + 时长）；模型目录 `mediamodels.ts` |
 | 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
 | 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`、拖拽上传；上传逻辑 `upload.ts` |
-| 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、创作历史（跨项目，按今天 / 昨天 / 更早分组）、底部设置菜单（模型设置 / 语言）；创作会话逻辑在 `session.ts`（`startCreation` / `switchProject` / `deleteCreation` / `otherProjectsHistory`） |
+| 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、「创作」`startCreation()`、「资源」`useNav.go('library')`、创作历史（跨项目，按今天 / 昨天 / 更早分组）、底部设置菜单（模型设置 / 语言）；创作会话逻辑在 `session.ts`（`startCreation` / `switchProject` / `deleteCreation` / `otherProjectsHistory`） |
+| 素材库 | `Library.tsx`（页面、卡片、大图预览）+ `library.ts`（`allMedia` / `renameLibraryMedia` / `deleteLibraryMedia` / `restoreLibraryMedia` / `openInCreation`） |
 | 弹窗 | `Dialogs.tsx`：`confirmDialog()` / `promptDialog()` / `openModelSettings()` / `openBrief()` |
 | 模型 | `model.ts`：`modelCfg()` / `saveModelCfg()` / `PROVIDER_DEFAULTS` / `probeModel()` / `parsePlanJSON()` / `partialPlanMessage()` |
 

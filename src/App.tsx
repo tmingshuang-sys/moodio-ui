@@ -3,11 +3,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatPane from './components/ChatPane';
 import ResourcePane, { PaneHandle } from './components/ResourcePane';
+import Library from './components/Library';
 import { ToastHost } from './components/Toast';
 import { MenuHost } from './components/Menu';
 import { DialogHost } from './components/Dialogs';
 import AgentLive from './components/AgentLive';
-import { useFiles } from './lib/store';
+import { useFiles, useNav } from './lib/store';
 import { useLang } from './lib/i18n';
 
 const MIN_CHAT = 380, MIN_PANE = 420;
@@ -16,7 +17,8 @@ export default function App() {
   const ui = useFiles(s => s.ui);
   const setUi = useFiles(s => s.setUi);
   const fileCount = useFiles(s => s.docs.length + s.media.length);
-  const paneOpen = ui.paneOpen && fileCount > 0;   // 一个文件都没有时工作区不展开；Agent 生成或上传后 openInPane() 会打开
+  const page = useNav(s => s.page);   // library = 侧栏「资源」的素材库页面，占满整个主区
+  const paneOpen = page === 'chat' && ui.paneOpen && fileCount > 0;   // 一个文件都没有时工作区不展开；Agent 生成或上传后 openInPane() 会打开
   const lang = useLang(s => s.lang);
   const mainRef = useRef<HTMLDivElement>(null);
   useEffect(() => { document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN'; }, [lang]);
@@ -43,14 +45,14 @@ export default function App() {
     <div className={`app${ui.sidebarCollapsed ? ' sidebar-collapsed' : ''}${paneOpen ? ' pane-open' : ''}`}>
       <Sidebar />
       <main className="main" ref={mainRef}>
-        <ChatPane />
+        {page === 'library' ? <Library /> : <ChatPane />}
         {paneOpen && (
           <>
             <div className="divider" onPointerDown={onDividerDown} role="separator" aria-orientation="vertical" aria-label="调整工作区宽度" />
             <ResourcePane width={width} />
           </>
         )}
-        {!paneOpen && fileCount > 0 && <PaneHandle />}
+        {page === 'chat' && !paneOpen && fileCount > 0 && <PaneHandle />}
       </main>
       <AgentLive />
       <ToastHost />

@@ -414,3 +414,53 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .mp-slider { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
 .mp-slider input[type=range] { flex: 1; min-width: 0; accent-color: var(--ink); }
 .mp-slider b { flex: none; min-width: 40px; text-align: right; font-size: 12.5px; font-weight: 500; color: var(--ink); }
+
+/* ===== 素材库页面（侧栏「资源」）：所有创作里生成 / 上传的图片与视频，布局参考小云雀素材库 ===== */
+.library { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #fff; }
+.lib-head { flex: none; display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 28px; }
+.lib-tabs { flex: 1; display: flex; gap: 24px; }
+.lib-tabs button { position: relative; height: 44px; padding: 0 2px; border: 0; background: transparent; font-size: 17px; font-weight: 600; color: var(--ink-3); }
+.lib-tabs button:hover { color: var(--ink-2); }
+.lib-tabs button.active { color: var(--ink); }
+.lib-tabs button.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; background: var(--ink); }
+.lib-head .search { width: 260px; height: 38px; border-color: transparent; background: var(--panel); }
+.lib-head .search:focus-within { border-color: var(--line-strong); background: #fff; }
+.lib-toolbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 2px 28px 16px; }
+.lib-toolbar .sep { width: 1px; height: 22px; margin: 0 4px; background: var(--line); }
+.lib-toolbar .spacer { flex: 1; }
+.lib-drop { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); font-size: 13.5px; }
+.lib-drop:hover { background: var(--panel); }
+.lib-chip { height: 36px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink-2); font-size: 13.5px; }
+.lib-chip:hover { background: var(--panel); }
+.lib-chip.active { background: var(--active); border-color: transparent; color: var(--ink); }
+.lib-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 28px 40px; --lib-card: 220px; }
+.lib-body[data-size="s"] { --lib-card: 160px; }
+.lib-body[data-size="l"] { --lib-card: 300px; }
+.lib-section { margin-bottom: 28px; }
+.lib-section h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 14px; font-size: 14px; font-weight: 600; }
+.lib-section h3 small { font-weight: 400; font-size: 12px; color: var(--ink-3); }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--lib-card), 1fr)); gap: 26px 18px; }
+.lib-card { position: relative; min-width: 0; cursor: pointer; }
+.lib-card:focus-visible { outline: 2px solid rgba(29, 29, 31, .45); outline-offset: 4px; border-radius: 14px; }
+.lib-thumb { position: relative; aspect-ratio: 1 / 1; display: grid; place-items: center; border-radius: 14px; background: var(--panel); overflow: hidden; transition: background 120ms; }
+.lib-card:hover .lib-thumb { background: var(--active); }
+.lib-thumb img, .lib-thumb video { display: block; max-width: 96%; max-height: 96%; width: auto; height: auto; border-radius: 4px; object-fit: contain; }
+.lib-thumb video { width: 96%; }
+.lib-thumb-empty { display: grid; place-items: center; color: var(--ink-3); }
+.lib-dur { position: absolute; left: 14px; bottom: 14px; padding: 2px 9px; border-radius: 999px; background: rgba(50, 50, 52, .8); color: #fff; font-size: 12px; line-height: 18px; }
+.lib-name { margin-top: 12px; font-size: 15px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-card:hover .card-more { display: inline-grid; }
+.row-thumb { flex: none; display: grid; place-items: center; width: 56px; height: 36px; border-radius: 6px; overflow: hidden; background: var(--panel); color: var(--ink-3); }
+.row-thumb img, .row-thumb video { width: 100%; height: 100%; object-fit: cover; }
+/* 大图预览：深灰蒙层，顶部名称 / 信息 / 操作，Esc 或点空白关闭 */
+.lib-preview { position: fixed; inset: 0; z-index: 600; display: flex; flex-direction: column; background: rgba(22, 22, 24, .94); color: #fff; animation: fade-in 160ms ease-out; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.lib-preview-head { flex: none; display: flex; align-items: center; gap: 10px; height: 60px; padding: 0 20px; }
+.lib-preview-head .name { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-preview-head .meta { flex: none; font-size: 12.5px; color: rgba(255, 255, 255, .62); }
+.lib-preview-head .pill { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px; background: transparent; color: #fff; font-size: 13px; }
+.lib-preview-head .pill:hover { background: rgba(255, 255, 255, .12); }
+.lib-preview-head .icon-btn { color: rgba(255, 255, 255, .82); }
+.lib-preview-head .icon-btn:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.lib-preview-body { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 40px 36px; cursor: zoom-out; }
+.lib-preview-body img, .lib-preview-body video { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 24px 70px rgba(0, 0, 0, .55); cursor: default; }

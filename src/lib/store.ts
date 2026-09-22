@@ -183,6 +183,10 @@ export const useChats = create<ChatsState>((set, get) => ({
   },
 }));
 
+// ===== 页面导航（不持久化）：chat = 对话 + 工作区，library = 素材库（所有创作里的图片与视频）=====
+export type Page = 'chat' | 'library';
+export const useNav = create<{ page: Page; go: (page: Page) => void }>(set => ({ page: 'chat', go: page => set({ page }) }));
+
 // ===== Agent 运行态（不持久化）=====
 export interface Writing { docId: string; text: string; }
 interface AgentState {
