@@ -13,7 +13,7 @@ Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局�
 - `src/lib/` 逻辑层：`types.ts` 数据模型；`projects.ts` 项目层（索引 `moodio-projects-v1`，数据键 = 基础键 `::` 项目id）；`store.ts` 状态仓库（`useFiles` 文稿 / 媒体 / 回收站 / 纲领 / 界面偏好，`useChats` 对话，`useAgent` 运行态）；`storage.ts` localStorage / IndexedDB / 下载；`markdown.ts` 章节切分、按标题替换、纯文本、文件名；`guides.ts` 写作规范 / 剧本格式硬规则 / 分镜规范 / 提示词规范；`model.ts` 文本模型调用（Claude 直连 / OpenAI 兼容，流式）；`mediagen.ts` 图片 / 视频生成（经网关调 fal.ai）；`migrate.ts` 旧版数据迁移；`sample.ts` 新项目示例文稿；`upload.ts` 上传；`i18n.ts` 中 / EN；`time.ts`
 - `src/lib/agent/`：`tools.ts` 工具层与计划卡步骤；`prompt.ts` 系统提示（MD 约定、文件清单、相关文稿上下文）；`planner.ts` 模型规划、追问、下一步建议；`runner.ts` 回复流程、确认执行、逐步状态、逐行写入、自审
 - `src/components/`：`Sidebar` `ChatPane` `MessageList`（消息、计划卡、追问卡、自审卡、下一步）`Composer` `ResourcePane`（分区网格 / 列表、文稿预览与编辑、媒体预览、拖拽上传）`Dialogs`（确认 / 输入 / 模型设置 / 创作纲领）`Menu` `Toast` `AgentLive`（流光与状态胶囊）
-- `src/styles.css` 全部样式；`public/moodio-logo.png` logo；`*.test.ts` 与源码同目录（Vitest）
+- `src/styles.css` 全部样式；`public/moodio-logo.svg` logo（矢量、透明底，侧栏与页面图标共用）；`*.test.ts` 与源码同目录（Vitest）
 - `gateway/` Cloudflare Worker 模型网关（持有真实 API key）：文本走 OpenAI 兼容的 `/v1/chat/completions`，图片 / 视频走 `/fal/*` 透传到 fal.ai 队列接口、`/media?url=` 代下载结果；`site/` 页面发布配置（静态资源 Worker，目录 `dist`）
 - `dist/` 构建产物，已 gitignore；`scripts/postbuild.mjs` 构建后把 index.html 复制一份为旧链接的文件名
 

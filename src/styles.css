@@ -40,7 +40,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
 .sb-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 12px 8px 16px; }
 .sb-logo { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 2px; border: 0; border-radius: 8px; background: transparent; font: 600 17px/1 var(--font-ui); color: var(--ink); letter-spacing: .01em; }
-.sb-logo img { width: 26px; height: 26px; border-radius: 6px; object-fit: contain; }
+.sb-logo img { width: 26px; height: 26px; object-fit: contain; }   /* 矢量 logo 自带透明底，不需要圆角裁切 */
 .sb-logo:hover { background: var(--hover); }
 .sb-project { display: flex; align-items: center; gap: 6px; margin: 0 12px 8px; padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-size: 12.5px; text-align: left; }
 .sb-project:hover { background: var(--hover); color: var(--ink); }
