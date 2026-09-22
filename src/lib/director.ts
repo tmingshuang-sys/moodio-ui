@@ -35,6 +35,10 @@ const shotTableInScript = () => { const s = scriptDoc(); return !!s && /\|\s*镜
 const clipDocs = () => useFiles.getState().docs.filter(d => CLIP_DOC_RE.test(d.name));
 const composedFilm = () => useFiles.getState().media.find(m => m.kind === 'video' && m.model === '本地合成') || null;
 const totalSeconds = (brief: Brief) => parseSeconds(brief.duration) || (brief.format === 'ad' ? 60 : 60);
+// 只有产品 / 人物 / 艺人 / 对象必须有参考图；场景、道具、风格锚点可以只靠文字描述
+const NEEDS_REF_RE = /产品|人物|艺人|角色|对象/;
+const requiredEntities = (ledger: Ledger | null) => (ledger?.entities || []).filter(e => NEEDS_REF_RE.test(e.kind || ''));
+const unlinkedImages = (ledger: Ledger | null) => { const refs = new Set((ledger?.entities || []).map(e => e.ref).filter(Boolean)); return useFiles.getState().media.filter(m => m.kind === 'image' && m.by === 'agent' && !refs.has(m.id)); };
 
 // 还没回答的问卷题：台账答案里没有、纲领对应字段也空
 export function unansweredQuestions(skill: Skill, bank: QuestionDef[], ledger: Ledger | null, brief: Brief): QuestionDef[] {
@@ -74,10 +78,11 @@ export function nextStep(): NextStep {
       return { ...base, kind: 'agent', label: '进入素材检查', detail: '', prompt: '脚本已确认，用 update_ledger 把阶段推进到 assets，然后列出脚本里的实体并按契约安排参考图。' };
     }
     case 'assets': {
-      const ents = ledger?.entities || [];
+      const ents = ledger?.entities || []; const required = requiredEntities(ledger);
       if (!ents.length) return { ...base, kind: 'agent', label: '列实体并生成参考图', detail: cur.goal, prompt: `进入素材检查：列出脚本里需要参考图的实体（${skill.entities.join(' / ')}），按契约处理产品图 / 人物图，先把实体写进台账 entities，再生成参考图；生成完把参考图 id 写进对应实体的 ref。` };
-      const noRef = ents.filter(e => !e.ref);
-      if (noRef.length) return { ...base, kind: 'agent', label: `生成 ${noRef.length} 张参考图`, detail: noRef.map(e => e.name).join('、'), prompt: `为还没有参考图的实体生成参考图：${noRef.map(e => `${e.name}（${e.kind}）`).join('、')}；产品先出三视图再用 make_sheet 拼成一张；生成完用 update_ledger 把参考图 id 写进对应实体的 ref。` };
+      const noRef = required.filter(e => !e.ref); const spare = unlinkedImages(ledger);
+      if (noRef.length && spare.length) return { ...base, kind: 'agent', label: `绑定 ${spare.length} 张已生成的参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `已经生成了这些参考图但还没绑定到实体：${spare.map(m => `${m.id}（${m.name}）`).join('、')}。产品的多张视图先用 make_sheet 拼成一张三视图，然后用 update_ledger 把参考图 id 写进对应实体的 ref（${noRef.map(e => e.name).join('、')}），不要重新生成；确实缺的再补生成。` };
+      if (noRef.length) return { ...base, kind: 'agent', label: `生成 ${noRef.length} 张参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `为还没有参考图的实体生成参考图：${noRef.map(e => `${e.name}（${e.kind}）`).join('、')}；产品先出三视图再用 make_sheet 拼成一张；生成完用 update_ledger 把参考图 id 写进对应实体的 ref。` };
       if (!confirmed.includes('assets')) return { ...base, kind: 'confirm', checkpoint: 'assets', label: '参考图通过，进入分镜', detail: '不满意的告诉 Agent 重新生成' };
       return { ...base, kind: 'agent', label: '进入分镜', detail: '', prompt: '参考图已全部确认，用 update_ledger 把阶段推进到 storyboard，然后按分镜规范拆分镜表。' };
     }
@@ -123,7 +128,7 @@ function tickOnce(): boolean {
     case 'brief': return unansweredQuestions(skill, skill.general, ledger, brief!).length ? false : advance('model');
     case 'model': return skill.modelDocs.every(n => docByName(n)) && !unansweredQuestions(skill, skill.modeling, ledger, brief!).length ? advance('script') : false;
     case 'script': return scriptDoc() && ledger.confirmed.includes('script') ? advance('assets') : false;
-    case 'assets': return ledger.entities.length > 0 && ledger.entities.every(e => e.ref) && ledger.confirmed.includes('assets') ? advance('storyboard') : false;
+    case 'assets': { const req = requiredEntities(ledger); return ledger.entities.length > 0 && req.every(e => e.ref) && ledger.confirmed.includes('assets') ? advance('storyboard') : false; }
     case 'storyboard': return storyboardDoc() || ((skill.id === 'ad' || skill.id === 'short') && shotTableInScript()) ? advance('prompts') : false;
     case 'prompts': return clipDocs().length > 0 && (ledger.flags.skipLint || !lintClips().errors.length) && ledger.confirmed.includes('prompts') ? advance('video') : false;
     case 'video': return composedFilm() ? advance('deliver') : false;
