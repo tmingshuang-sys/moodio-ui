@@ -19,6 +19,7 @@ const EN: Record<string, string> = {
   '思考过程': 'Thinking', '正在生成…': 'Generating…', 'Agent 正在思考…': 'Agent is thinking…', 'Agent 正在读取…': 'Agent is reading…', '正在自审刚写的内容…': 'Self-reviewing…',
   '项目': 'Project', '新建项目': 'New project', '切换项目': 'Switch project', '重命名项目': 'Rename project', '删除项目': 'Delete project',
   '素材库': 'Library', '资产库': 'Assets', '搜索素材': 'Search media', '平铺视图': 'Grid view', '列表视图': 'List view', 'AI 生成': 'AI generated', '我上传的': 'Uploaded by me', '筛选': 'Filter', '排序': 'Sort', '展示尺寸': 'Card size', '最新在前': 'Newest first', '最早在前': 'Oldest first', '按名称': 'By name', '小': 'Small', '中': 'Medium', '大': 'Large', '打开所在创作': 'Open in its creation', '关闭': 'Close', '删除文件': 'Delete file',
+  '已提交': 'Submitted', '已选择': 'Selected', '上一题': 'Previous', '下一题': 'Next', '补充说明…': 'Add details…', '查看文件': 'Open file', '再试一次': 'Try again',
   '新创作': 'New creation', '删除创作': 'Delete creation', '删除对话': 'Delete chat',
   '很高兴见到你': 'Good to see you', '想做什么？': 'What shall we make?',
   '共': 'Total', '个': '',

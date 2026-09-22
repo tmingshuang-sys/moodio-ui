@@ -24,7 +24,12 @@ describe('plan parsing', () => {
     const r = planner.parseAgentPlan(JSON.stringify({ message: '好', actions: [{ tool: 'write_doc', args: { name: 'a.md', content: 'x' } }], followUps: [{ label: '继续', prompt: '继续写' }, { label: '继续', prompt: '重复标签' }, { label: 'x'.repeat(30), prompt: '太长' }] }));
     expect(r.actions).toEqual([{ tool: 'write_doc', args: { name: 'a.md', content: 'x' } }]);
     expect(r.followUps).toEqual([{ label: '继续', prompt: '继续写' }]);
-    expect(planner.normalizeQuestions([{ text: '类型？', options: ['广告', '短片', ''], multi: 'yes' }, { text: '' }])).toEqual([{ text: '类型？', options: ['广告', '短片'], multi: true }]);
+    expect(planner.normalizeQuestions([{ text: '类型？', options: ['广告', '短片', ''], multi: 'yes' }, { text: '' }])).toEqual([{ text: '类型？', type: 'multi', options: [{ label: '广告', hint: undefined }, { label: '短片', hint: undefined }], multi: true, placeholder: undefined, key: undefined }]);
+    // v2：选项可带说明，没有选项的题变成填空题，一批最多 8 题
+    const v2 = planner.normalizeQuestions([{ key: 'size', text: '多大？', type: 'single', options: [{ label: '手掌大小', hint: '单手握住' }, '桌面级'] }, { key: 'brand', text: '品牌？', placeholder: '比如：SoundBox' }, ...Array.from({ length: 9 }, (_, i) => ({ text: 'q' + i, options: ['a'] }))]);
+    expect(v2.length).toBe(8);
+    expect(v2[0]).toEqual({ key: 'size', text: '多大？', type: 'single', options: [{ label: '手掌大小', hint: '单手握住' }, { label: '桌面级', hint: undefined }], multi: false, placeholder: undefined });
+    expect(v2[1]).toEqual({ key: 'brand', text: '品牌？', type: 'text', options: [], multi: false, placeholder: '比如：SoundBox' });
   });
   it('rejects unknown tools and malformed shapes', () => {
     for (const bad of ['null', '{}', '[]', '{"message":"x","actions":[null]}', '{"message":"x","actions":[{"tool":"__proto__","args":{}}]}', '{"message":"x","actions":[{"tool":"format_disk","args":{}}]}']) {
@@ -56,6 +61,9 @@ describe('plan steps and tools', () => {
     expect(steps[0].kind).toBe('write');
     expect(steps[1].destructive).toBe(true);
     expect(tools.NO_CONFIRM_TOOLS.has('read_doc')).toBe(true);
+    expect(tools.NO_CONFIRM_TOOLS.has('update_ledger')).toBe(true);
+    expect(tools.GENERATE_TOOLS.has('compose_video')).toBe(true);
+    expect(tools.describeAction({ tool: 'compose_video', args: { name: '成片', clip_ids: ['a', 'b', 'c'] } })).toContain('3 段视频');
     expect(tools.NO_CONFIRM_TOOLS.has('write_doc')).toBe(false);
   });
   it('write_doc creates a document through the typing hook, append and replace edit it', async () => {

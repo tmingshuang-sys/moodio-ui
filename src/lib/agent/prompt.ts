@@ -5,6 +5,21 @@ import { projects } from '../projects';
 import { docRole, plainText, wordCount, baseName } from '../markdown';
 import { BRIEF_FIELDS, BRIEF_FORMATS, BRIEF_KEY_FIELDS, writingGuideText, formatRulesText, shotGuideText, PROMPT_GUIDE } from '../guides';
 import { timeAgo } from '../time';
+import { readLedger, ledgerText } from '../ledger';
+import { skillFor, STAGE_ORDER } from '../skills';
+import type { Ledger } from '../ledger';
+
+// 创作流程块：按纲领类型选技能，只注入当前阶段的目标 / 产物 / 门禁 / 问卷与契约
+export function skillBlock(): string {
+  const brief = useFiles.getState().brief || {}; const ledger = readLedger();
+  if (!ledger && !brief.format) return '【创作流程】还不知道创作类型。创意类请求先用 ask_user 问清类型（广告 / 故事片 / 剧集 / 短片短视频 / MV / 其他）和总时长、画幅、受众等基本纲领，答案用 save_brief 记录（format 用 ad|film|series|short|mv|other），系统会随后加载对应的创作流程。';
+  const skill = skillFor(ledger?.skill || brief.format);
+  const l: Ledger = ledger || { skill: skill.id, stage: 'brief', done: [], answers: {}, entities: [], clips: [], notes: '', updatedAt: 0 };
+  const bank = l.stage === 'brief' ? skill.general : l.stage === 'model' ? skill.modeling : [];
+  const pending = bank.filter(q => !l.answers[q.key] && !(q.key === 'duration' && brief.duration) && !(q.key === 'ratio' && brief.ratio) && !(q.key === 'audience' && brief.audience));
+  const qJson = pending.length ? JSON.stringify(pending.map(q => ({ key: q.key, text: q.text, type: q.type, options: q.options.map(o => o.hint ? { label: o.label, hint: o.hint } : o.label), placeholder: q.placeholder }))) : '';
+  return `【创作流程 · ${skill.name}（${skill.title}）】\n${ledgerText(l)}\n阶段推进规则：本阶段产物写完并得到用户确认后，用 update_ledger 把 stage 改成下一阶段的 id（顺序 ${STAGE_ORDER.join(' → ')}），可与其他 actions 放在同一批，它不需要确认；不要跳阶段，除非用户明确要求。用户给出的信息用 update_ledger 的 answers 记录（key 用问卷里的 key 或简短英文）；素材阶段把实体和参考图 id 写进 entities；片段方案阶段把每段的序号、秒数、承接镜头和提示词文稿 id 写进 clips，生成后补 mediaId。\n${qJson ? `本阶段问卷（这些题还没回答，可按情况删改或补充，一批最多 8 题，用 ask_user 的同一格式，key 原样带上）：${qJson}\n` : ''}建模文稿写法：${skill.modelGuide}\n脚本要求：${skill.scriptNote}\n契约（硬规则）：${skill.contracts.map((c, i) => `${i + 1}. ${c}`).join(' ')}\n素材实体类型：${skill.entities.join('、')}。片段规则：单段默认 ${skill.clipSeconds} 秒，片段数 = 总时长 ÷ 单段时长向上取整，最后一段可短；每段提示词文稿引用它要用的参考图文件名与冻结的外形描述。`;
+}
 
 export function briefMissing(): string[] { const b: Record<string, any> = useFiles.getState().brief || {}; return BRIEF_KEY_FIELDS.filter(k => !String(b[k] || '').trim()).map(k => BRIEF_FIELDS.find(f => f[0] === k)![1]); }
 export function briefText(): string {
@@ -49,7 +64,7 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
   const wantsShots = /分镜|镜头|拆镜|storyboard/i.test(request);
   const wantsPrompt = /提示词|prompt|生成视频|视频生成/i.test(request);
   const wantsScript = /剧本|脚本|续写|一场|场戏|台词|对白|改写|大纲|梗概|故事/.test(request);
-  const history = chat.messages.filter(m => ['user', 'assistant'].includes(m.role)).slice(-8).map(m => ({ role: m.role, text: String(m.text || '').slice(0, 1400) }));
+  const history = chat.messages.filter(m => ['user', 'assistant'].includes(m.role)).slice(-8).map(m => ({ role: m.role, text: (String(m.text || '') || (m.plan?.steps?.length ? '执行结果：' + m.plan.steps.map(s => `${s.title} → ${s.status}${s.result ? '，' + s.result : ''}`).join('；') : '')).slice(0, 1400) }));
   return `你是 Moodio 的创作 Agent。用户在左侧与你对话，右侧是文件工作区：所有产物都是文件——剧本、分镜表、视频生成提示词、人物小传、营销文案等都是 Markdown 文稿（.md），图片和视频在媒体区。你只能输出 JSON：{"message":"给用户的话","actions":[...],"followUps":[...]}。message 用来说明你打算做什么或回答问题；actions 里的操作要等用户点「确认执行」后才会执行，所以不要写成"已完成"的口吻。
 可用 actions：
 - {"tool":"write_doc","args":{"name":"文件名.md","content":"完整 Markdown 正文","overwrite":false}} 新建文稿；同名文稿已存在时只有 overwrite 为 true 才会整份重写，否则会另存为新文件
@@ -59,9 +74,11 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 - {"tool":"read_doc","args":{"id":"文稿id"}} 读取整份文稿（不需要确认，结果会交回给你再规划）；{"tool":"open_doc","args":{"id":"文稿id"}} 在工作区打开；{"tool":"export_doc","args":{"id":"文稿id"}} 下载
 - {"tool":"open_media","args":{"id":"媒体id"}} 查看图片 / 视频；{"tool":"rename_media","args":{"id":"媒体id","name":"新名"}}；{"tool":"tag_media","args":{"id":"媒体id","group":"人物|场景|产品|其他"}}；{"tool":"delete_media","args":{"id":"媒体id"}}
 - {"tool":"generate_image","args":{"prompt":"英文画面提示词","name":"文件名（不含扩展名）","group":"人物|场景|产品|其他","ratio":"可选 16:9|9:16|1:1|4:3|3:4"}} 生成图片并存进媒体库
-- {"tool":"generate_video","args":{"prompt":"英文画面提示词","name":"文件名","group":"分区","ratio":"可选 16:9|9:16|1:1","duration":"可选 5 或 10","from_media_id":"可选，以这张已有图片为首帧做图生视频"}} 生成视频并存进媒体库
+- {"tool":"generate_video","args":{"prompt":"英文画面提示词","name":"文件名","group":"分区","ratio":"可选 16:9|9:16|1:1","duration":"可选秒数（不填用智能时长）","from_media_id":"可选，以这张已有图片为首帧做图生视频"}} 生成视频并存进媒体库
+- {"tool":"compose_video","args":{"name":"成片","clip_ids":["视频id1","视频id2"]}} 把已生成的片段按顺序合成一条成片（浏览器本地合成，不计费，约需成片总时长的时间）
   生成类操作按次计费且要等待，一次只安排用户明确要的镜头，不要自作主张批量生成；prompt 用英文写，照抄或改写对应的《视频生成Prompt-xx.md》里的英文段落，把人物外形、光线、镜头语言写具体。用哪个模型由用户在输入框的模型面板里选，你不用管（默认「智能匹配模型」：图片从 Seedream 5.0 起、视频从 Seedance 2.5 起，模型未开通或欠费时系统会自动换成可用的，结果里会写明实际用的模型）；ratio 和 duration 不填就用用户选好的偏好（默认是「智能时长」，系统会按提示词长度自动定秒数），只有用户这次明确指定了画幅或秒数才填。用户开了「自动模式」时，只含生成操作的计划会直接执行、不再等确认，所以更要只生成用户明确要的那几个镜头。
-- {"tool":"ask_user","args":{"questions":[{"text":"问题","options":["选项A","选项B","选项C"],"multi":false}]}} 向用户追问（最多 3 个问题，尽量给选项；用了它就不要再放其他 actions）
+- {"tool":"ask_user","args":{"questions":[{"key":"可选英文键","text":"问题","type":"single|multi|text","options":["选项A",{"label":"选项B","hint":"一行说明"}],"placeholder":"填空题的示例"}]}} 向用户追问：一批最多 8 题、一题只问一件事，能给选项就给选项（选项可带 hint 说明），需要用户自由填写的用 type text 并给 placeholder；用了它就不要再放其他 actions（save_brief / update_ledger 除外）。用户提交后会以「问题：答案」的形式回来
+- {"tool":"update_ledger","args":{"stage":"可选，推进到的阶段 id","answers":{"key":"值"},"entities":[{"name":"实体名","kind":"产品|人物|场景|道具|风格锚点","ref":"参考图媒体id","status":"待确认|已确认"}],"clips":[{"no":1,"seconds":15,"shots":"01-04","docId":"提示词文稿id","mediaId":"生成后的视频id","status":"待生成|已生成"}],"notes":"备注"}} 更新台账（不需要确认，只填要改的字段）
 - {"tool":"save_brief","args":{"format":"series|film|short|ad|other","duration":"","platform":"","audience":"","tone":"","references":"","visualStyle":"","taboos":"","notes":""}} 记录用户给出的创作纲领信息（只填有的字段）
 - {"tool":"create_project","args":{"title":"项目名"}}；{"tool":"switch_project","args":{"id":"项目id"}}；{"tool":"rename_project","args":{"id":"项目id","title":"新名称"}}
 【文稿约定】
@@ -76,6 +93,7 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 拆分镜时以剧本原文为依据，画面描述是画面设计而不是逐字复制原文，每一行的「剧本依据」写对应的原文片段（不超过 20 字）。生成视频提示词时以分镜表为依据，一镜一份，引用人物小传和图片文件名保持外形一致。用户要「把某个镜头生成出来」时，先确认用哪一份提示词文稿，再用 generate_image / generate_video；同一人物在不同镜头之间要靠同一段外形描述或同一张参考图保持一致。
 不需要动作时 actions 为空数组。
 ${briefText()}
+${skillBlock()}
 ${writingGuideText(brief.format)}
 ${wantsScript ? formatRulesText() : ''}
 ${wantsShots ? shotGuideText(brief.format) : ''}

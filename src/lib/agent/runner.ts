@@ -1,5 +1,5 @@
 // ===== 执行器：reply() 只产出计划；用户点「确认执行」后 executePlan() 才调用工具；工具写文稿时在右侧工作区逐行写入 =====
-import type { Action, Message, PlanStep, Review, ReviewItem } from '../types';
+import type { Action, Artifact, FollowUp, Message, PlanStep, Review, ReviewItem } from '../types';
 import { useAgent, useChats, useFiles, findDoc } from '../store';
 import { modelCfg, callModel, writerCfg, partialPlanMessage, parsePlanJSON } from '../model';
 import { AGENT_TOOLS, NO_CONFIRM_TOOLS, DESTRUCTIVE_TOOLS, GENERATE_TOOLS, planSteps, saveBrief } from './tools';
@@ -10,6 +10,10 @@ import { briefText } from './prompt';
 import { writingGuideText, lintScriptMarkdown } from '../guides';
 import { docRole, splitLines } from '../markdown';
 import { toast } from '../../components/Toast';
+import { readLedger, ensureLedger, updateLedger } from '../ledger';
+import { skillFor, stageName } from '../skills';
+
+const optionLabel = (o: unknown) => typeof o === 'string' ? o : String((o as any)?.label || '');
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const agent = () => useAgent.getState();
@@ -63,7 +67,7 @@ async function step(label: string, fn?: () => Promise<void> | void) {
 
 // steps（可选）：计划卡的步骤数组，与 actions 一一对应；逐步标记 running → done / failed / skipped
 export async function runActions(actions: Action[], request: string, chatId: string, steps?: PlanStep[]) {
-  const results: string[] = []; const buttons: { id: string; label: string }[] = []; const reviewTargets: { docId: string; title: string }[] = [];
+  const results: string[] = []; const buttons: { id: string; label: string }[] = []; const reviewTargets: { docId: string; title: string }[] = []; const artifacts: Artifact[] = [];
   const mark = (i: number, status: PlanStep['status'], result?: string) => { const s = steps?.[i]; if (!s) return; s.status = status; if (result !== undefined) s.result = String(result || ''); commit(); };
   const skipRest = (from: number) => { for (let j = from; j < actions.length; j++) mark(j, 'skipped'); };
   const ctx: ToolContext = { request, chatId, typeInto, step, live: setLive, signal: agent().controller?.signal };
@@ -74,7 +78,7 @@ export async function runActions(actions: Action[], request: string, chatId: str
     try {
       const r = await fn(a.args || {}, ctx);
       if (typeof r === 'string') { results.push(r); mark(i, 'done', r); }
-      else if (r) { const rr = r as ToolResult; results.push(rr.summary); mark(i, 'done', rr.summary); if (rr.review) reviewTargets.push(rr.review); if (rr.content !== undefined) lastToolContents.push({ title: findDoc(String(a.args?.id || ''))?.name || String(a.args?.id || ''), content: rr.content }); (rr.actions || []).forEach(b => { if (!buttons.some(x => x.id === b.id)) buttons.push(b); }); }
+      else if (r) { const rr = r as ToolResult; results.push(rr.summary); mark(i, 'done', rr.summary); if (rr.review) reviewTargets.push(rr.review); if (rr.artifact && !artifacts.some(x => x.id === rr.artifact!.id)) artifacts.push(rr.artifact); if (rr.content !== undefined) lastToolContents.push({ title: findDoc(String(a.args?.id || ''))?.name || String(a.args?.id || ''), content: rr.content }); (rr.actions || []).forEach(b => { if (!buttons.some(x => x.id === b.id)) buttons.push(b); }); }
       else mark(i, 'done');
     } catch (e: any) {
       const stopped = e?.message === '已停止' || e?.name === 'AbortError';
@@ -83,7 +87,7 @@ export async function runActions(actions: Action[], request: string, chatId: str
       if (stopped) { skipRest(i + 1); break; }
     }
   }
-  return { results, buttons, reviewTargets };
+  return { results, buttons, reviewTargets, artifacts };
 }
 
 function begin(pending: Message) {
@@ -94,11 +98,11 @@ function begin(pending: Message) {
 }
 function end() { agent().set({ busy: false, controller: null, writing: null }); glow(false); pendingMessage = null; }
 
-export async function send(text: string, { quote = null as { text: string; source?: string } | null, attachments = [] as string[], fromSuggestion = false } = {}) {
+export async function send(text: string, { quote = null as { text: string; source?: string } | null, attachments = [] as string[], fromSuggestion = false, display = undefined as string | undefined } = {}) {
   const t = text.trim(); if (!t && !quote) return;
   if (agent().busy) { toast('上一条指令还在执行，等它完成或点「停止」'); return; }
   const c = chats().chat();
-  chats().push(c.id, { role: 'user', text: t || '请看这段文字', quote, attachments: attachments.length ? attachments : undefined, at: Date.now() });
+  chats().push(c.id, { role: 'user', text: t || '请看这段文字', display, quote, attachments: attachments.length ? attachments : undefined, at: Date.now() });
   agent().set({ busy: true });
   await sleep(200);
   await reply(t, c.id, fromSuggestion);
@@ -125,11 +129,16 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     catch (e: any) { plan = []; message = e?.name === 'AbortError' ? '已停止，本次没有修改任何文件。' : e?.code === 'MODEL_PLAN_FORMAT' ? e.message : `模型请求失败：${String(e?.message || e).replace(/[。.]\s*$/, '')}。未执行任何文件操作。`; }
     if (streamedThinking) out.thinking = streamedThinking;
     if (!plan) { plan = []; message = fromSuggestion ? '请先在模型设置中连接真实模型，再继续这个问题。未修改任何文件。' : ''; }
-    // 纲领信息一旦出现就立即记录
-    let briefNote = ''; const briefSave = plan.find(a => a.tool === 'save_brief'); if (briefSave) { try { const saved = saveBrief(briefSave.args || {}); if (saved.length) briefNote = `✓ 已记录创作纲领：${saved.join('、')}`; } catch { /* ignore */ } plan = plan.filter(a => a.tool !== 'save_brief'); }
+    // 纲领信息一旦出现就立即记录；台账更新（阶段推进 / 答案）免确认；纲领里有类型就加载对应的创作流程并建台账
+    const notes: string[] = [];
+    const briefSave = plan.find(a => a.tool === 'save_brief'); if (briefSave) { try { const saved = saveBrief(briefSave.args || {}); if (saved.length) notes.push(`✓ 已记录创作纲领：${saved.join('、')}`); } catch { /* ignore */ } plan = plan.filter(a => a.tool !== 'save_brief'); }
+    const fmt = useFiles.getState().brief?.format;
+    if (fmt) { try { const { created, ledger } = ensureLedger(fmt); if (created) notes.push(`✓ 已加载创作流程「${skillFor(ledger.skill).name}」，台账已建立`); } catch { /* ignore */ } }
+    for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const l = updateLedger(a.args || {}); if (a.args?.stage) notes.push(`✓ 阶段推进到「${stageName(skillFor(l.skill), l.stage)}」`); } catch { /* ignore */ } }
+    plan = plan.filter(a => a.tool !== 'update_ledger');
     const ask = plan.find(a => a.tool === 'ask_user');
     if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; }
-    if (briefNote) message = (message ? message + '\n' : '') + briefNote;
+    if (notes.length) message = (message ? message + '\n' : '') + notes.join('\n');
     // 读取 / 打开直接执行；读到的内容交回模型再规划，最多四轮
     const autoLog: string[] = []; let readFeed = '';
     for (let round = 0; round < 4 && plan.length && plan.every(a => NO_CONFIRM_TOOLS.has(a.tool)); round++) {
@@ -183,13 +192,20 @@ export async function executePlan(key: string, messageAt: number) {
   const out: Message = { role: 'assistant', text: '', at: Date.now() }; let results: string[] = [];
   try {
     await sleep(250);
-    const run = await runActions(p.plan, p.text, c.id, steps); results = run.results; out.actions = run.buttons;
+    const run = await runActions(p.plan, p.text, c.id, steps); results = run.results; out.actions = run.buttons; out.artifacts = run.artifacts;
     if (run.reviewTargets.length && modelCfg()?.apiKey && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在自审刚写的内容…'); commit(); try { out.review = await selfReview(run.reviewTargets.slice(0, 2)); } catch (e) { console.warn('自审失败', e); } }
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });
   out.plan = { steps, state: steps.some(s => s.status === 'failed') ? 'error' : steps.some(s => s.status === 'skipped') ? 'stopped' : 'done' };
   if (logLines.length) out.log = logLines.slice();
+  // 执行后的下一步：出错给「再试一次」；生成了参考图请用户确认；生成了多段视频建议合成
+  const extra: FollowUp[] = []; const arts = out.artifacts || [];
+  if (steps.some(s => s.status === 'failed')) extra.push({ label: '再试一次', prompt: '上一次执行有步骤出错，请只重新执行出错的那几步，已完成的不要重复。' });
+  const images = arts.filter(a => a.kind === 'image').length, videos = arts.filter(a => a.kind === 'video' && !/\.webm$/i.test(a.name)).length;
+  if (images) extra.push({ label: '参考图通过，继续下一步', prompt: '刚生成的参考图都可以用。把它们记进台账的实体清单（状态已确认），然后推进到下一阶段，先给方案。' }, { label: '重新生成某张参考图', prompt: '有一张参考图不满意，我会说明是哪张、要怎么改，然后只重新生成那一张。' });
+  if (videos >= 2) extra.push({ label: '按顺序合成成片', prompt: `把刚生成的 ${videos} 段视频按分镜顺序用 compose_video 合成一条成片，先给方案。` });
+  out.followUps = extra;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, p.text + '\n' + results.join('\n'), c.id); cc.messages.push(out); cc.at = Date.now(); });
 }
 
@@ -209,14 +225,23 @@ async function selfReview(targets: { docId: string; title: string }[]): Promise<
   return items.length ? { items, at: Date.now() } : null;
 }
 
-// 追问卡片：发送所选答案 / 由 Agent 决定
+// 追问卡片：提交答案（气泡显示「我已确认以上信息」，完整答案交给模型并记进台账）/ 由 Agent 决定
 export function answerQuestions(messageAt: number, decide: boolean) {
   const c = chats().chat(); const m = c.messages.find(x => x.at === messageAt && x.questions); if (!m || !m.questions) return;
-  const answers = m.answers || {};
-  const composed = m.questions.map((q, qi) => { const picks = (answers[qi] || []).map(oi => q.options[oi]); return picks.length ? `${q.text}：${picks.join('、')}` : null; }).filter(Boolean).join('\n');
-  const text = decide ? '这些问题由你来定，按专业判断处理，之后不必再问。' : composed; if (!text) return;
+  const answers = m.answers || {}, texts = m.textAnswers || {};
+  const lines: string[] = []; const record: Record<string, string> = {}; let answered = 0;
+  m.questions.forEach((q, qi) => {
+    const picks = (answers[qi] || []).map(oi => optionLabel(q.options[oi])).filter(Boolean); const free = String(texts[qi] || '').trim();
+    const value = [...picks, free].filter(Boolean).join('、');
+    if (value) { answered++; lines.push(`${q.text}：${value}`); if (q.key) record[q.key] = value; } else lines.push(`${q.text}：（未回答，由你决定）`);
+  });
+  const text = decide ? '这些问题由你来定，按专业判断处理，之后不必再问。' : answered ? '我已确认以上信息：\n' + lines.join('\n') : ''; if (!text) return;
+  if (!decide && Object.keys(record).length) { try { const fmt = useFiles.getState().brief?.format; if (readLedger() || fmt) { if (!readLedger()) ensureLedger(fmt); updateLedger({ answers: record }); } } catch { /* ignore */ } }
   chats().mutate(all => { for (const cc of all) for (const mm of cc.messages) if (mm.at === messageAt) mm.questionsUsed = true; });
-  void send(text);
+  void send(text, { display: decide ? undefined : '我已确认以上信息' });
+}
+export function setTextAnswer(messageAt: number, qi: number, text: string) {
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { m.textAnswers = { ...(m.textAnswers || {}), [qi]: text }; } });
 }
 export function toggleAnswer(messageAt: number, qi: number, oi: number) {
   chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { const q = m.questions[qi]; if (!q) return; m.answers = m.answers || {}; const cur = m.answers[qi] || []; m.answers[qi] = q.multi ? (cur.includes(oi) ? cur.filter(x => x !== oi) : [...cur, oi]) : (cur.includes(oi) ? [] : [oi]); } });

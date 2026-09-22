@@ -44,8 +44,13 @@ export function attachFollowUps(message: Message, request: string, chatId: strin
   }
   message.followUps = options;
 }
+// 一批最多 8 题；选项可以是字符串或 {label, hint}；没有选项的题自动变成填空题
 export function normalizeQuestions(list: unknown): Question[] {
-  return (Array.isArray(list) ? list : []).slice(0, 3).map((q: any) => ({ text: String(q?.text || q?.question || '').trim().slice(0, 200), options: (Array.isArray(q?.options) ? q.options : []).map((o: any) => String(o).trim()).filter(Boolean).slice(0, 6), multi: !!q?.multi })).filter(q => q.text);
+  return (Array.isArray(list) ? list : []).slice(0, 8).map((q: any): Question => {
+    const options = (Array.isArray(q?.options) ? q.options : []).map((o: any) => typeof o === 'string' ? { label: o.trim() } : { label: String(o?.label ?? o?.text ?? '').trim(), hint: o?.hint ? String(o.hint).trim().slice(0, 80) : undefined }).filter((o: any) => o.label).slice(0, 8);
+    const type: Question['type'] = !options.length || q?.type === 'text' ? 'text' : (q?.type === 'multi' || q?.multi) ? 'multi' : 'single';
+    return { text: String(q?.text || q?.question || '').trim().slice(0, 200), type, options: type === 'text' ? [] : options, multi: type === 'multi', placeholder: q?.placeholder ? String(q.placeholder).trim().slice(0, 80) : undefined, key: q?.key ? String(q.key).trim().slice(0, 40) : undefined };
+  }).filter(q => q.text);
 }
 
 export function parseAgentPlan(content: string): PlanReply {

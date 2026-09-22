@@ -1,5 +1,5 @@
 // ===== Agent 的「手」：能对工作区里的文件做的操作。执行前必须确认（NO_CONFIRM_TOOLS 除外），删除类进回收站可撤销 =====
-import type { Action, MessageAction, PlanStep } from '../types';
+import type { Action, Artifact, MessageAction, PlanStep } from '../types';
 import { useFiles, findDoc, findMedia } from '../store';
 import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
@@ -9,8 +9,11 @@ import { generateImage, generateVideo, mediaReadyReason, fallbackNote } from '..
 import type { GenResult } from '../mediagen';
 import type { RatioKey } from '../mediamodels';
 import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
+import { updateLedger } from '../ledger';
+import { skillFor, stageName } from '../skills';
+import { composeVideos } from '../compose';
 
-export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; }
+export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; artifact?: Artifact; }
 export interface ToolContext {
   request: string; chatId: string;
   typeInto: (docId: string, from: string, to: string) => Promise<void>;   // 在工作区里逐行写入（执行器提供）
@@ -20,13 +23,14 @@ export interface ToolContext {
 }
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
-export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief']);
-export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video']);   // 自动模式下不用确认
+export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger']);
+export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'compose_video']);   // 自动模式下不用确认
 export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
 
 function requireDoc(id: unknown) { const d = findDoc(String(id || '').trim()); if (!d) throw new Error(`找不到 id 为「${id}」的文稿，请从文件清单里选择`); return d; }
 function requireMedia(id: unknown) { const m = findMedia(String(id || '').trim()); if (!m) throw new Error(`找不到 id 为「${id}」的图片或视频`); return m; }
 const openDocAction = (id: string, name: string): MessageAction => ({ id: 'open-doc:' + id, label: `打开「${baseName(name).slice(0, 14)}」` });
+const docArtifact = (id: string, name: string): Artifact => ({ id, kind: 'doc', name });
 
 export function saveBrief(fields: Record<string, any>): string[] {
   const next: Record<string, any> = {}; const saved: string[] = [];
@@ -44,6 +48,8 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   // ---- 追问与纲领 ----
   async save_brief(args) { const saved = saveBrief(args || {}); return saved.length ? `已记录创作纲领：${saved.join('、')}` : '创作纲领没有变化'; },
   async ask_user() { return '（追问已展示给用户）'; },
+  // 台账：阶段推进 / 答案 / 实体 / 片段，免确认
+  async update_ledger(args) { const l = updateLedger(args || {}); const parts = []; if (args?.stage) parts.push(`阶段 → ${stageName(skillFor(l.skill), l.stage)}`); if (args?.answers) parts.push(`答案 ${Object.keys(args.answers).length} 项`); if (args?.entities) parts.push(`实体 ${l.entities.length} 个`); if (args?.clips) parts.push(`片段 ${l.clips.length} 段`); return `台账已更新${parts.length ? '：' + parts.join('，') : ''}`; },
   // ---- 读取与打开（不需要确认）----
   async read_doc(args) { const d = requireDoc(args.id); return { summary: `已读取「${d.name}」（${wordCount(d.content)} 字）`, content: d.content.slice(0, 16000), actions: [openDocAction(d.id, d.name)] }; },
   async open_doc(args) { const d = requireDoc(args.id); useFiles.getState().openInPane(d.id); return `已打开「${d.name}」`; },
@@ -57,17 +63,17 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const existing = files.docs.find(d => d.name.toLowerCase() === name.toLowerCase());
     if (existing && args.overwrite) {
       await ctx.step(`重写「${existing.name}」`, () => ctx.typeInto(existing.id, '', content + '\n'));
-      return { summary: `已重写「${existing.name}」（${wordCount(content)} 字）`, actions: [openDocAction(existing.id, existing.name)], review: docRole(existing.name) === 'script' ? { docId: existing.id, title: existing.name } : null };
+      return { summary: `已重写「${existing.name}」（${wordCount(content)} 字）`, actions: [openDocAction(existing.id, existing.name)], review: docRole(existing.name) === 'script' ? { docId: existing.id, title: existing.name } : null, artifact: docArtifact(existing.id, existing.name) };
     }
     const doc = files.addDoc({ name, content: '', by: 'agent', chatId: ctx.chatId });
     await ctx.step(`新建「${doc.name}」并写入正文`, () => ctx.typeInto(doc.id, '', content + '\n'));
-    return { summary: `已写入「${doc.name}」（${wordCount(content)} 字）`, actions: [openDocAction(doc.id, doc.name)], review: docRole(doc.name) === 'script' ? { docId: doc.id, title: doc.name } : null };
+    return { summary: `已写入「${doc.name}」（${wordCount(content)} 字）`, actions: [openDocAction(doc.id, doc.name)], review: docRole(doc.name) === 'script' ? { docId: doc.id, title: doc.name } : null, artifact: docArtifact(doc.id, doc.name) };
   },
   async append_doc(args, ctx) {
     const d = requireDoc(args.id); const extra = String(args.content || '').trim(); if (!extra) throw new Error('缺少要追加的内容');
     const next = appendMarkdown(d.content, extra);
     await ctx.step(`在「${d.name}」末尾续写`, () => ctx.typeInto(d.id, d.content, next));
-    return { summary: `已在「${d.name}」末尾追加 ${wordCount(extra)} 字`, actions: [openDocAction(d.id, d.name)], review: docRole(d.name) === 'script' ? { docId: d.id, title: d.name } : null };
+    return { summary: `已在「${d.name}」末尾追加 ${wordCount(extra)} 字`, actions: [openDocAction(d.id, d.name)], review: docRole(d.name) === 'script' ? { docId: d.id, title: d.name } : null, artifact: docArtifact(d.id, d.name) };
   },
   async replace_section(args, ctx) {
     const d = requireDoc(args.id); const heading = String(args.heading || '').trim(); const content = String(args.content || '').trim();
@@ -75,7 +81,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const s = findSection(d.content, heading); if (!s) throw new Error(`「${d.name}」里找不到标题「${heading}」，请先 read_doc 确认标题`);
     const next = replaceSection(d.content, s, content);
     await ctx.step(`改写「${d.name}」的「${s.heading}」`, () => ctx.typeInto(d.id, d.content, next));
-    return { summary: `已改写「${d.name}」的章节「${s.heading}」`, actions: [openDocAction(d.id, d.name)], review: docRole(d.name) === 'script' ? { docId: d.id, title: d.name } : null };
+    return { summary: `已改写「${d.name}」的章节「${s.heading}」`, actions: [openDocAction(d.id, d.name)], review: docRole(d.name) === 'script' ? { docId: d.id, title: d.name } : null, artifact: docArtifact(d.id, d.name) };
   },
   async rename_doc(args) { const d = requireDoc(args.id); const name = String(args.name || '').trim(); if (!name) throw new Error('缺少新名称'); const old = d.name; useFiles.getState().renameDoc(d.id, name); const now = findDoc(d.id)!; return { summary: `已把「${old}」重命名为「${now.name}」`, actions: [openDocAction(d.id, now.name)] }; },
   async delete_doc(args) { const d = requireDoc(args.id); const entry = useFiles.getState().removeDoc(d.id); return { summary: `已删除「${d.name}」，已放入回收站，7 天内可恢复`, actions: entry ? [{ id: 'restore-trash:' + entry.trashId, label: '撤销删除' }] : [] }; },
@@ -91,7 +97,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
       r = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }] };
+    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name } };
   },
   async generate_video(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
@@ -100,7 +106,17 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
       r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }] };
+    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name } };
+  },
+  // 把若干段视频按顺序合成一条成片（浏览器本地合成，不计费，耗时约等于总时长）
+  async compose_video(args, ctx) {
+    const ids = (Array.isArray(args.clip_ids) ? args.clip_ids : []).map((x: unknown) => String(x || '').trim()).filter(Boolean);
+    if (!ids.length) throw new Error('缺少要合成的片段 id');
+    const clips = ids.map(id => { const m = requireMedia(id); if (m.kind !== 'video') throw new Error(`「${m.name}」不是视频`); return m; });
+    let item!: import('../types').MediaItem;
+    await ctx.step(`合成 ${clips.length} 段视频为成片`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal }); });
+    useFiles.getState().openInPane(item.id);
+    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
   },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
@@ -109,7 +125,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
 };
 
 // ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
-const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief' };
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', compose_video: 'video', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
 export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
 
 export function describeAction(a: Action): string {
@@ -132,6 +148,8 @@ export function describeAction(a: Action): string {
     case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); const parts = [from, secs ? `${secs} 秒` : '智能时长'].filter(Boolean); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${parts.join(' · ')}）`; }
     case 'save_brief': return '记录创作纲领';
     case 'ask_user': return '向你确认几个问题';
+    case 'update_ledger': { const parts = []; if (g.stage) parts.push(`阶段推进到「${stageName(skillFor(String(g.skill || useFiles.getState().brief?.format || 'other')), g.stage)}」`); if (g.answers) parts.push('记录答案'); if (g.entities) parts.push('更新实体清单'); if (g.clips) parts.push('更新片段清单'); return `更新台账${parts.length ? '：' + parts.join('、') : ''}`; }
+    case 'compose_video': { const n = Array.isArray(g.clip_ids) ? g.clip_ids.length : 0; return `把 ${n} 段视频按顺序合成成片「${g.name || '成片'}」（本地合成，约需成片总时长的时间）`; }
     case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;
     case 'switch_project': { const p = projects.list().find(x => x.id === String(g.id || '')); return `切换到项目「${p ? p.title : g.id}」（页面会重新加载）`; }
     case 'rename_project': { const p = projects.list().find(x => x.id === String(g.id || '')) || projects.active(); return `把项目「${p.title}」重命名为「${g.title || ''}」`; }

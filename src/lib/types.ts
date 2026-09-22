@@ -32,7 +32,7 @@ export interface MediaItem {
 export interface TrashEntry { trashId: string; deletedAt: number; doc?: Doc; media?: MediaItem; }
 
 export interface Brief {
-  format?: string; duration?: string; platform?: string; audience?: string; tone?: string;
+  format?: string; duration?: string; platform?: string; ratio?: string; audience?: string; tone?: string;
   references?: string; visualStyle?: string; taboos?: string; notes?: string; updatedAt?: number;
 }
 
@@ -46,7 +46,10 @@ export interface UiPrefs {
 
 // ===== 对话 =====
 export interface FollowUp { label: string; prompt: string; }
-export interface Question { text: string; options: string[]; multi: boolean; }
+// 追问：single 单选 / multi 多选 / text 填空；选项可带一行说明；key 用来把答案记进台账
+export interface QuestionOption { label: string; hint?: string; }
+export interface Question { text: string; type?: 'single' | 'multi' | 'text'; options: QuestionOption[]; multi: boolean; placeholder?: string; key?: string; }
+export interface Artifact { id: string; kind: 'doc' | 'image' | 'video'; name: string; }   // 执行结果里的产物卡片
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 export interface PlanStep { tool: string; kind: string; title: string; preview: string; destructive: boolean; status: StepStatus; result: string; logs: string[]; }
 export type PlanState = 'pending' | 'confirmed' | 'cancelled' | 'running' | 'reviewing' | 'done' | 'stopped' | 'error';
@@ -58,7 +61,8 @@ export interface MessageAction { id: string; label: string; }
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
-  text: string;
+  text: string;                        // 交给模型的完整文本
+  display?: string;                    // 气泡里显示的文案（问卷提交后显示「我已确认以上信息」，答案仍在 text 里）
   at: number;
   thinking?: string;
   streaming?: boolean;
@@ -66,7 +70,9 @@ export interface Message {
   attachments?: string[];              // 引用的媒体 id
   questions?: Question[];
   answers?: Record<number, number[]>;
+  textAnswers?: Record<number, string>;   // 填空题与「自己填写」的答案
   questionsUsed?: boolean;
+  artifacts?: Artifact[];
   plan?: Plan;
   log?: string[];
   review?: Review | null;
