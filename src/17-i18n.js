@@ -65,6 +65,7 @@
     });
     Object.assign(MOODIO_I18N_EN, {
       // 首页（顶栏 logo / 返回项目列表进入）：左侧栏 + 问候语 / 输入框、项目总览、素材库
+      '用 Moodio 网关时，这里填部署网关时设定的「访问口令」，不是 DeepSeek 等服务商的 API Key；只有 Base URL 直连服务商时才填它的 Key。': 'With the Moodio gateway, enter the access token set when the gateway was deployed, not the DeepSeek (or other provider) API key. Enter a provider key only when Base URL points to the provider directly.',
       '回到首页': 'Home', '首页': 'Home', '首页导航': 'Home navigation', '很高兴见到你，': 'Nice to see you, ', '查看历史对话': 'Chat history', '页脚': 'Footer',
       '想做什么？例如：帮我续写一场雨夜重逢的戏': 'What shall we make? e.g. write the next scene: a reunion on a rainy night',
       '条款': 'Terms', '隐私': 'Privacy', 'Cookie 偏好设置': 'Cookie preferences',
@@ -74,6 +75,7 @@
       '还没有项目。点击「新建项目」从空白开始。': 'No projects yet. Click "New project" to start from scratch.',
     });
     var MOODIO_I18N_PATTERNS = [
+      [/^(.*访问口令不正确)。Moodio 网关的 API Key 位置填的是网关的访问口令，不是 DeepSeek 的 key。$/, '$1. With the Moodio gateway, the API Key field takes the gateway access token, not the DeepSeek key.'],
       [/^(\d+) 个项目$/, (m, n) => `${n} ${n === '1' ? 'project' : 'projects'}`], [/^(\d+) 个剧集$/, (m, n) => `${n} ${n === '1' ? 'episode' : 'episodes'}`], [/^当前项目 · (\d+) 个素材$/, 'This project · $1 assets'],
       [/^(\d+) 分钟前$/, '$1 min ago'], [/^(\d+) 小时前$/, '$1 h ago'], [/^(\d+) 天前$/, '$1 d ago'], [/^(\d+) 月 (\d+) 日$/, '$1/$2'],
       [/^删除 (SHOT \d+)？$/, 'Delete $1?'], [/^删除 (SHOT \d+)$/, 'Delete $1'],
