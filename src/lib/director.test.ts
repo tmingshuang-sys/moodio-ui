@@ -114,4 +114,13 @@ describe('director', () => {
     director.autopilotTick(); expect(sent.length).toBe(1); expect(director.autopilotPaused()).toBe(true);   // 上一轮出错也不自动重发
     director.setAutopilot(false);
   });
+  it('follow-up suggestions follow the ledger stage instead of keyword defaults', async () => {
+    const planner = await import('./agent/planner');
+    ledger.updateLedger({ stage: 'prompts' });
+    const m: any = { role: 'assistant', text: '两份视频生成提示词已写好，请确认按此生成。', at: Date.now(), followUps: [] };
+    planner.attachFollowUps(m, '按片段提示词冻结格式写 2 份视频生成Prompt', store.useChats.getState().chat().id);
+    const labels = m.followUps.map((f: any) => f.label);
+    expect(labels).not.toContain('为剧本拆分镜'); expect(labels).not.toContain('生成视频提示词'); expect(labels).toContain('逐段核对片段方案');
+    expect(planner.stageFallbacks('storyboard').map(f => f.label)).toContain('检查分镜节奏');
+  });
 });

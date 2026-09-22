@@ -4,6 +4,8 @@ import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON, parsePl
 import { AGENT_TOOLS } from './tools';
 import { buildSystemPrompt, hasScriptDoc } from './prompt';
 import { readLedger } from '../ledger';
+import { STAGE_ORDER } from '../skills';
+import type { StageId } from '../skills';
 import type { ChatKind } from '../model';
 import { nextStep } from '../director';
 
@@ -45,12 +47,47 @@ export function fallbackFollowUps(text: string): FollowUp[] {
     { label: '设计主要人物', prompt: '请根据刚才的对话，提出主要人物的目标、弱点和关系设定，先给方案让我确认。' },
     { label: '写一场开场戏', prompt: '请根据刚才的对话写开场戏，先给节拍方案让我确认。' }];
 }
+// 有创作流程（台账）时按当前阶段给兜底建议：只给「这一步还能做什么」，不给已经做完的阶段的动作（分镜写完了就不再建议「为剧本拆分镜」）
+const STAGE_FALLBACKS: Record<StageId, FollowUp[]> = {
+  brief: [
+    { label: '先看几个故事方向', prompt: '先不写文件，给我 3 个不同方向的一句话故事概念，比较各自的核心冲突，我选一个再继续。' },
+    { label: '你来定，直接往下走', prompt: '纲领里没答的都用推荐值，直接进入下一阶段。' }],
+  model: [
+    { label: '先看故事方向', prompt: '在建模文稿的基础上先给我 3 个故事方向（各一句话），我选一个再写脚本。' },
+    { label: '补充一条我想强调的信息', prompt: '我想在建模文稿里补充一条信息：' }],
+  script: [
+    { label: '检查剧情逻辑', prompt: '请结合当前剧本检查因果关系、人物动机与节奏，列出最值得调整的三点。只给建议，不修改文件。' },
+    { label: '换一个故事方向', prompt: '当前脚本的方向我不满意，先给我 3 个不同的故事方向（各一句话），我选一个你再重写。' },
+    { label: '缩短或改时长', prompt: '请把脚本改成另一个总时长版本：' }],
+  assets: [
+    { label: '逐张检查参考图', prompt: '请逐张核对参考图是否符合冻结外形描述、五官锚点与画风基线（真人 / 卡通不能混），不符合的重新生成，并在台账里更新 ref。' },
+    { label: '调整产品三视图', prompt: '请按商品模型重新核对产品三视图的结构、颜色与角度，不对的重新生成后再拼成一张。' },
+    { label: '换一种视觉风格', prompt: '我想换一种视觉风格：' }],
+  storyboard: [
+    { label: '检查分镜节奏', prompt: '请对照脚本检查分镜表：镜头时长合计、景别与运镜的节奏、每个卖点 / 钩子是否落在具体镜头，列出要改的点。' },
+    { label: '减少镜头数', prompt: '请按生成策略把分镜表改成更少、更长的镜头，保持总时长不变。' }],
+  prompts: [
+    { label: '逐段核对片段方案', prompt: '请对照分镜表与台账逐段核对片段提示词：时段首尾相接、参考图引用、冻结外形描述、卡点与承接，列出要改的点并直接修正。' },
+    { label: '改成更少的段', prompt: '请把片段方案合并成更少、更长的片段（不超过当前视频模型的单段上限），重写对应的提示词文稿并更新台账。' },
+    { label: '换一种镜头风格', prompt: '我想把片段的镜头语言改成：' }],
+  video: [
+    { label: '检查已生成的片段', prompt: '请逐段检查已生成的视频是否符合片段提示词（人物、产品、场景是否一致），不符合的告诉我哪一段、怎么改。' },
+    { label: '重新生成某一段', prompt: '请重新生成第 ' }],
+  deliver: [
+    { label: '修改成片的某一段', prompt: '请修改成片的第 ' },
+    { label: '写一份交付说明', prompt: '请为成片写一份交付说明：结构、每段承担的内容、核心信息如何落地，存成「交付说明.md」。' },
+    { label: '开始下一个创作', prompt: '这一版就这样，帮我总结这次创作的经验，下次同类型可以直接复用哪些设定。' }],
+};
+export function stageFallbacks(stage: StageId): FollowUp[] { return STAGE_FALLBACKS[stage] || []; }
 export function attachFollowUps(message: Message, request: string, chatId: string) {
   message.followUpContext = { chatId };
   const options = normalizeFollowUps(message.followUps);
   // 导演算出的标准下一步永远排第一，用户不用猜下一步点什么
-  try { const step = nextStep(); if (step.kind === 'agent' && step.prompt && !options.some(o => o.prompt === step.prompt)) options.unshift({ label: step.label.slice(0, 24), prompt: step.prompt }); } catch { /* ignore */ }
-  for (const option of fallbackFollowUps(request + '\n' + message.text)) {
+  let stage: StageId | null = null;
+  try { const step = nextStep(); if (step.kind !== 'start') stage = step.stage; if (step.kind === 'agent' && step.prompt && !options.some(o => o.prompt === step.prompt)) options.unshift({ label: step.label.slice(0, 24), prompt: step.prompt }); } catch { /* ignore */ }
+  const ledger = readLedger(); const cur = stage || ledger?.stage || null;
+  const fallbacks = cur && STAGE_ORDER.includes(cur) ? stageFallbacks(cur) : fallbackFollowUps(request + '\n' + message.text);
+  for (const option of fallbacks) {
     if (options.length === 3) break;
     if (!options.some(x => x.label === option.label || x.prompt === option.prompt)) options.push(option);
   }
