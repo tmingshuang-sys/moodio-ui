@@ -15,6 +15,8 @@ const MIN_CHAT = 380, MIN_PANE = 420;
 export default function App() {
   const ui = useFiles(s => s.ui);
   const setUi = useFiles(s => s.setUi);
+  const fileCount = useFiles(s => s.docs.length + s.media.length);
+  const paneOpen = ui.paneOpen && fileCount > 0;   // 一个文件都没有时工作区不展开；Agent 生成或上传后 openInPane() 会打开
   const lang = useLang(s => s.lang);
   const mainRef = useRef<HTMLDivElement>(null);
   useEffect(() => { document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN'; }, [lang]);
@@ -38,17 +40,17 @@ export default function App() {
   const width = paneWidth(total);
 
   return (
-    <div className={`app${ui.sidebarCollapsed ? ' sidebar-collapsed' : ''}${ui.paneOpen ? ' pane-open' : ''}`}>
+    <div className={`app${ui.sidebarCollapsed ? ' sidebar-collapsed' : ''}${paneOpen ? ' pane-open' : ''}`}>
       <Sidebar />
       <main className="main" ref={mainRef}>
         <ChatPane />
-        {ui.paneOpen && (
+        {paneOpen && (
           <>
             <div className="divider" onPointerDown={onDividerDown} role="separator" aria-orientation="vertical" aria-label="调整工作区宽度" />
             <ResourcePane width={width} />
           </>
         )}
-        {!ui.paneOpen && <PaneHandle />}
+        {!paneOpen && fileCount > 0 && <PaneHandle />}
       </main>
       <AgentLive />
       <ToastHost />

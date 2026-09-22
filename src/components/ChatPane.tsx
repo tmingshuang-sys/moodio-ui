@@ -37,7 +37,8 @@ export default function ChatPane() {
       <header className="chat-head">
         <div className="chat-title" title={chat.title}>{chat.title}</div>
         <div className="chat-tools">
-          <button type="button" className={`chip-btn${ui.paneOpen ? ' active' : ''}`} onClick={() => setUi({ paneOpen: !ui.paneOpen })}><FolderOpen size={15} /><span>{t('对话文件')}</span>{fileCount > 0 && <em>{fileCount}</em>}</button>
+          {/* Agent 真的产出了文件才出现这个按钮；没有文件时工作区也不展开 */}
+          {fileCount > 0 && <button type="button" className={`chip-btn${ui.paneOpen ? ' active' : ''}`} onClick={() => setUi({ paneOpen: !ui.paneOpen })}><FolderOpen size={15} /><span>{t('对话文件')}</span><em>{fileCount}</em></button>}
           <button type="button" className="icon-btn" aria-label={t('分享')} title={t('分享')} onClick={() => toast('原型阶段暂不支持分享')}><Share2 size={17} /></button>
           <button type="button" className={`icon-btn${modelCfg()?.apiKey ? '' : ' attention'}`} aria-label={t('模型设置')} title={modelCfg()?.apiKey ? t('模型设置') : '还没连接模型，点击设置'} onClick={openModelSettings}><Settings2 size={17} /></button>
         </div>

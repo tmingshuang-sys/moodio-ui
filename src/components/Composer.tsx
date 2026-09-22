@@ -57,7 +57,7 @@ export default function Composer() {
     <div className="composer-wrap">
       <p className="composer-tip">{t('小技巧 输入 @ 引用工作区里的文稿或图片，助手会接着上次的思路创作')}</p>
       <div className="composer">
-        <textarea ref={ref} value={value} rows={2} placeholder={t('与 Moodio Agent 对话，剧本、分镜、提示词都会生成到右侧工作区…')} aria-label="给 Agent 的消息"
+        <textarea ref={ref} value={value} rows={2} aria-label="给 Agent 的消息"
           onChange={e => setValue(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } if (e.key === '@' ) { /* 光标处输入 @ 时弹出引用列表 */ setTimeout(() => { if (ref.current) atMenu(ref.current); }, 0); } }} />
         <div className="composer-tools">
@@ -69,7 +69,6 @@ export default function Composer() {
             : <button type="button" className={`send-btn${value.trim() ? ' ready' : ''}`} aria-label={t('发送')} onClick={submit} disabled={!value.trim()}><ArrowUp size={18} /></button>}
         </div>
       </div>
-      <p className="composer-foot">AI 可能会犯错，内容仅供参考，请核实重要信息</p>
     </div>
   );
 }

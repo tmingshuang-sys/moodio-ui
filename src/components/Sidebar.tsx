@@ -18,6 +18,7 @@ export default function Sidebar() {
   const chats = useChats(s => s.chats); const active = useChats(s => s.active);
   const setActive = useChats(s => s.setActive);
   const ui = useFiles(s => s.ui); const setUi = useFiles(s => s.setUi);
+  const fileCount = useFiles(s => s.docs.length + s.media.length);
   const busy = useAgent(s => s.busy);
   const [version, bump] = useState(0);
   useEffect(() => projects.subscribe(() => bump(x => x + 1)), []);
@@ -82,7 +83,7 @@ export default function Sidebar() {
       )}
       <nav className="sb-nav" aria-label="板块">
         <button type="button" className="sb-item" onClick={() => { startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
-        <button type="button" className={`sb-item${ui.paneOpen ? ' active' : ''}`} onClick={() => setUi({ paneOpen: !ui.paneOpen })} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
+        <button type="button" className={`sb-item${ui.paneOpen && fileCount > 0 ? ' active' : ''}`} onClick={() => { if (!fileCount) { toast(t('还没有文件。Agent 生成或上传文件后，工作区会自动打开。')); return; } setUi({ paneOpen: !ui.paneOpen }); }} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
         <button type="button" className="sb-item" onClick={openBrief} title={t('创作纲领')}><Compass size={18} /><span>{t('创作纲领')}</span></button>
       </nav>
       {!collapsed && (
@@ -109,7 +110,6 @@ export default function Sidebar() {
                 })}
               </div>
             ) : null)}
-            {!others.length && !chats.some(c => c.messages.length) && <p className="sb-empty">{t('还没有创作。点「创作」开始。')}</p>}
           </div>
         </div>
       )}

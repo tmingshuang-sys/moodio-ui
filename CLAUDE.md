@@ -57,7 +57,7 @@ npm run build          # vite build → dist/
 
 | 功能 | 入口 |
 |---|---|
-| 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle` |
+| 布局 / 分栏拖拽 | `App.tsx`（`ui.paneWidth`，最小对话 380 / 工作区 420）；工作区关掉后右缘把手 `PaneHandle`。**项目里一个文件都没有时工作区不展开**（`paneOpen = ui.paneOpen && fileCount > 0`），对话头部的「对话文件」按钮与右缘把手也不出现，侧栏「资源」只提示；Agent 生成或上传第一个文件时 `openInPane()` 才打开 |
 | 发送 / 回复 / 确认执行 | `runner.ts`：`send()` → `reply()`；`executePlan()` / `cancelPlan()`；`runActions()` 逐步标状态；`stopAgent()` |
 | 工具 | `tools.ts`：`AGENT_TOOLS`（save_brief / ask_user / read_doc / open_doc / open_media / export_doc / write_doc / append_doc / replace_section / rename_doc / delete_doc / rename_media / tag_media / delete_media / generate_image / generate_video / create_project / switch_project / rename_project）、`planSteps()` |
 | 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `buildInput()` / `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `gateway/worker.js` 的 `falProxy` 与 `mediaProxy` |
