@@ -27,7 +27,7 @@ export function FormatPicker({ compact = false, home = false }: { compact?: bool
   const entries = Object.entries(BRIEF_FORMATS).filter(([id]) => !home || HOME_FORMATS.includes(id));
   return (
     <div className={`format-picker${compact ? ' compact' : ''}${home ? ' home' : ''}`}>
-      {entries.map(([id, name]) => <button key={id} type="button" onClick={() => chooseFormat(id)}><span className="fp-icon"><Sparkles size={14} /></span>{t(name)}<small>{skillFor(id).name}</small></button>)}
+      {entries.map(([id, name]) => <button key={id} type="button" onClick={() => chooseFormat(id)}><Sparkles size={14} />{t(name)}<small>{skillFor(id).name}</small></button>)}
     </div>
   );
 }

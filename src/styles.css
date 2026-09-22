@@ -652,9 +652,7 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .format-picker.home { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px auto 0; max-width: none; }
 .format-picker.home button { flex: 0 0 auto; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 8px 14px; font-size: 13px; border-radius: 10px; white-space: nowrap; }
 .format-picker.home button small { font-size: 11px; }
-.format-picker .fp-icon { display: inline-flex; align-items: center; justify-content: center; }
-.format-picker.home .fp-icon { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg, #6a8bff, #a86eff); }   /* 首页类型卡的图标：固定的蓝紫渐变底，不动 */
-.format-picker.home .fp-icon svg { width: 12px; height: 12px; color: #fff; }
+.format-picker.home button svg { width: 13px; height: 13px; }
 
 /* 输入框里的小技巧：盖在文本区第一行的位置，开始打字就消失；轮换时上一条淡出上移、下一条淡入上移 */
 .composer { position: relative; }
@@ -676,6 +674,3 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .chat-empty.home .composer { position: relative; z-index: 1; }
 @keyframes glow-spin { to { --glow-angle: 360deg; } }
 @media (prefers-reduced-motion: reduce) { .chat-empty.home .composer-wrap::before { animation: none; } }
-
-/* 首页问候语里的用户名：蓝紫渐变文字（固定，不动） */
-.greeting em { background: linear-gradient(120deg, #5f86ff, #a86eff); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
