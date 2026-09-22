@@ -13,9 +13,9 @@ import { clock } from '../lib/time';
 import { toast } from './Toast';
 import { useT } from '../lib/i18n';
 
-const KIND_ICON: Record<string, ReactNode> = { write: <PenLine size={14} />, doc: <FileText size={14} />, media: <Image size={14} />, delete: <Trash2 size={14} />, project: <FolderKanban size={14} />, export: <Download size={14} />, brief: <Sparkles size={14} />, image: <Wand2 size={14} />, video: <Clapperboard size={14} />, other: <Dot size={14} /> };
+const KIND_ICON: Record<string, ReactNode> = { write: <PenLine size={14} />, doc: <FileText size={14} />, media: <Image size={14} />, delete: <Trash2 size={14} />, project: <FolderKanban size={14} />, export: <Download size={14} />, brief: <Sparkles size={14} />, image: <Wand2 size={14} />, video: <Clapperboard size={14} />, audio: <Music size={14} />, other: <Dot size={14} /> };
 // 连续同类步骤折成一组（写入文件 · 3 份、图片生成 · 完成 2/5 项），像执行了一批命令
-const GROUP_LABEL: Record<string, string> = { write: '写入文件', image: '图片生成', video: '视频生成', doc: '读取文件', media: '媒体操作', brief: '记录信息' };
+const GROUP_LABEL: Record<string, string> = { write: '写入文件', image: '图片生成', video: '视频生成', audio: '语音生成', doc: '读取文件', media: '媒体操作', brief: '记录信息' };
 
 function PlanCard({ plan }: { plan: Plan }) {
   const t = useT();

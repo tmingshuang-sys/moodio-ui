@@ -5,7 +5,7 @@ import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
-import { generateImage, generateVideo, mediaReadyReason, fallbackNote } from '../mediagen';
+import { generateImage, generateVideo, designVoice, generateSpeech, mediaReadyReason, fallbackNote, DEFAULT_VOICE_ID } from '../mediagen';
 import type { GenResult } from '../mediagen';
 import type { RatioKey } from '../mediamodels';
 import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
@@ -16,6 +16,11 @@ import { askAboutImages } from '../vision';
 import { makeSheet } from '../sheet';
 import { lintClips, lintSummary } from '../lint';
 
+// 按名字找台账实体：先全等，再按去掉括注的前缀对（模型常把「林小满（26 岁…）」简写成「林小满」）
+function matchEntity(name: string) {
+  const ents = readLedger()?.entities || []; const n = name.replace(/[（(].*$/, '').trim();
+  return ents.find(e => e.name === name) || ents.find(e => e.name.replace(/[（(].*$/, '').trim() === n) || ents.find(e => e.name.startsWith(n) || n.startsWith(e.name.replace(/[（(].*$/, '').trim())) || null;
+}
 export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; artifact?: Artifact; }
 export interface ToolContext {
   request: string; chatId: string;
@@ -28,7 +33,7 @@ export interface ToolContext {
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
 export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger', 'inspect_image', 'lint_clips']);
-export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'compose_video']);   // 自动模式下不用确认
+export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'generate_voice', 'generate_speech', 'compose_video']);   // 自动模式下不用确认
 export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
 
 function requireDoc(id: unknown) { const d = findDoc(String(id || '').trim()); if (!d) throw new Error(`找不到 id 为「${id}」的文稿，请从文件清单里选择`); return d; }
@@ -135,6 +140,40 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     useFiles.getState().openInPane(r.item.id);
     return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name, prompt: String(args.prompt || '') } };
   },
+  // 设计音色样本：按人物小传的音色行生成一段试听，并绑到台账实体的 voice 上（合成配音时用它的 voice id）
+  async generate_voice(args, ctx) {
+    const reason = mediaReadyReason(); if (reason) throw new Error(reason);
+    const entity = String(args.entity || args.name || '').trim(); if (!entity) throw new Error('缺少角色名（entity）');
+    const description = String(args.description || '').trim(); if (!description) throw new Error('缺少音色描述（description）');
+    let r!: GenResult;
+    await ctx.step(`设计「${entity}」的音色样本`, async () => {
+      r = await designVoice({ name: entity, description, sample: String(args.sample || '') }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
+    });
+    const target = matchEntity(entity);   // 台账里的实体名可能带括注（林小满（26 岁…）），按前缀对上就绑到它
+    updateLedger({ entities: [{ name: target?.name || entity, kind: target?.kind || (/旁白|画外音/.test(entity) ? '旁白' : '人物'), voice: r.item.id }] });
+    useFiles.getState().openInPane(r.item.id);
+    return { summary: `已为「${entity}」设计音色样本「${r.item.name}」并绑定到台账实体（voice）`, actions: [{ id: 'open-media:' + r.item.id, label: '试听' }], artifact: { id: r.item.id, kind: 'audio', name: r.item.name, prompt: description } };
+  },
+  // 合成配音：旁白或台词。entity 给了就用它绑定的音色样本，否则用 voice_media_id 指定的样本；都没有就用预置音色，不让流程卡住
+  async generate_speech(args, ctx) {
+    const reason = mediaReadyReason(); if (reason) throw new Error(reason);
+    const text = String(args.text || '').trim(); if (!text) throw new Error('缺少要合成的文本（text）');
+    const entity = String(args.entity || '').trim();
+    let sampleId = args.voice_media_id ? String(args.voice_media_id).trim() : '';
+    if (!sampleId && entity) sampleId = matchEntity(entity)?.voice || '';
+    const sample = sampleId ? requireMedia(sampleId) : null;
+    if (sample && sample.kind !== 'audio') throw new Error(`「${sample.name}」不是音频，不能当音色样本`);
+    const voiceId = sample?.voiceId;
+    if (sample && !voiceId) throw new Error(`「${sample.name}」没有 voice id（不是用 generate_voice 设计的样本），请先为「${entity || '该角色'}」设计音色`);
+    const name = args.name ? String(args.name) : `${entity || '配音'}-${text.slice(0, 10)}`;
+    let r!: GenResult;
+    await ctx.step(`合成配音「${name.slice(0, 20)}」（${text.length} 字）`, async () => {
+      r = await generateSpeech({ text, voiceId, name, group: args.group ? String(args.group) : undefined, speed: args.speed !== undefined ? Number(args.speed) : undefined, emotion: args.emotion ? String(args.emotion) : undefined }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
+    });
+    useFiles.getState().openInPane(r.item.id);
+    const secs = r.item.duration ? `，${r.item.duration.toFixed(1)} 秒` : '';
+    return { summary: `已用 ${r.model.name} 合成配音「${r.item.name}」（${voiceId ? '音色：' + (entity || sample!.name) : '预置音色 ' + DEFAULT_VOICE_ID}${secs}）并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '试听' }], artifact: { id: r.item.id, kind: 'audio', name: r.item.name, prompt: text } };
+  },
   // 把若干段视频按顺序合成一条成片（浏览器本地合成，不计费，耗时约等于总时长）
   async compose_video(args, ctx) {
     const ids = (Array.isArray(args.clip_ids) ? args.clip_ids : []).map((x: unknown) => String(x || '').trim()).filter(Boolean);
@@ -142,10 +181,12 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const clips = ids.map(id => { const m = requireMedia(id); if (m.kind !== 'video') throw new Error(`「${m.name}」不是视频`); return m; });
     const musicId = args.music_id ? String(args.music_id).trim() : ''; if (musicId) { const mu = requireMedia(musicId); if (mu.kind !== 'audio') throw new Error(`「${mu.name}」不是音频，不能当配乐`); }
     const subtitles = Array.isArray(args.subtitles) ? args.subtitles : [];
+    const voices = (Array.isArray(args.voices) ? args.voices : []).map((v: any) => ({ id: String(v?.media_id || v?.id || '').trim(), start: Math.max(0, Number(v?.start) || 0), volume: v?.volume !== undefined ? Number(v.volume) : undefined })).filter((v: { id: string }) => v.id);
+    for (const v of voices) { const a = requireMedia(v.id); if (a.kind !== 'audio') throw new Error(`「${a.name}」不是音频，不能当配音`); }
     let item!: import('../types').MediaItem;
-    await ctx.step(`合成 ${clips.length} 段视频为成片${subtitles.length ? `（${subtitles.length} 条字幕）` : ''}${musicId ? '（配乐）' : ''}`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal, musicId: musicId || undefined, musicVolume: args.music_volume !== undefined ? Number(args.music_volume) : undefined, subtitles, format: args.format === 'webm' ? 'webm' : 'mp4' }); });
+    await ctx.step(`合成 ${clips.length} 段视频为成片${subtitles.length ? `（${subtitles.length} 条字幕）` : ''}${voices.length ? `（${voices.length} 条配音）` : ''}${musicId ? '（配乐）' : ''}`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal, musicId: musicId || undefined, musicVolume: args.music_volume !== undefined ? Number(args.music_volume) : undefined, subtitles, voices, format: args.format === 'webm' ? 'webm' : 'mp4' }); });
     useFiles.getState().openInPane(item.id);
-    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${musicId ? '，已配乐' : ''}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
+    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${voices.length ? `，${voices.length} 条配音` : ''}${musicId ? '，已配乐' : ''}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
   },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
@@ -154,7 +195,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
 };
 
 // ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
-const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', compose_video: 'video', inspect_image: 'media', make_sheet: 'image', lint_clips: 'doc', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', generate_voice: 'audio', generate_speech: 'audio', compose_video: 'video', inspect_image: 'media', make_sheet: 'image', lint_clips: 'doc', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
 export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
 
 export function describeAction(a: Action): string {
@@ -178,10 +219,12 @@ export function describeAction(a: Action): string {
     case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;
     case 'generate_image': return `生成图片「${String(g.name || g.prompt || '').slice(0, 20)}」` + (IMAGE_RATIOS.includes(g.ratio) ? `（${g.ratio}）` : '');
     case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); const parts = [from, secs ? `${secs} 秒` : '智能时长'].filter(Boolean); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${parts.join(' · ')}）`; }
+    case 'generate_voice': return `设计「${String(g.entity || g.name || '').slice(0, 12)}」的音色样本`;
+    case 'generate_speech': { const txt = String(g.text || ''); return `合成配音「${String(g.name || g.entity || '配音').slice(0, 16)}」（${txt.length} 字${g.entity ? '，音色：' + String(g.entity).slice(0, 8) : ''}）`; }
     case 'save_brief': return '记录创作纲领';
     case 'ask_user': return '向你确认几个问题';
     case 'update_ledger': { const parts = []; if (g.stage) parts.push(`阶段推进到「${stageName(skillFor(String(g.skill || useFiles.getState().brief?.format || 'other')), g.stage)}」`); if (g.answers) parts.push('记录答案'); if (g.entities) parts.push('更新实体清单'); if (g.clips) parts.push('更新片段清单'); return `更新台账${parts.length ? '：' + parts.join('、') : ''}`; }
-    case 'compose_video': { const n = Array.isArray(g.clip_ids) ? g.clip_ids.length : 0; const subs = Array.isArray(g.subtitles) ? g.subtitles.length : 0; return `把 ${n} 段视频按顺序合成 MP4 成片「${g.name || '成片'}」${subs ? `，${subs} 条字幕` : ''}${g.music_id ? '，配乐「' + mediaName(g.music_id) + '」' : ''}（本地合成，约需成片总时长的时间）`; }
+    case 'compose_video': { const n = Array.isArray(g.clip_ids) ? g.clip_ids.length : 0; const subs = Array.isArray(g.subtitles) ? g.subtitles.length : 0; const vo = Array.isArray(g.voices) ? g.voices.length : 0; return `把 ${n} 段视频按顺序合成 MP4 成片「${g.name || '成片'}」${subs ? `，${subs} 条字幕` : ''}${vo ? `，${vo} 条配音` : ''}${g.music_id ? '，配乐「' + mediaName(g.music_id) + '」' : ''}（本地合成，约需成片总时长的时间）`; }
     case 'create_project': return `新建空白项目「${g.title || '新项目'}」并切换过去（页面会重新加载）`;
     case 'switch_project': { const p = projects.list().find(x => x.id === String(g.id || '')); return `切换到项目「${p ? p.title : g.id}」（页面会重新加载）`; }
     case 'rename_project': { const p = projects.list().find(x => x.id === String(g.id || '')) || projects.active(); return `把项目「${p.title}」重命名为「${g.title || ''}」`; }
@@ -192,6 +235,8 @@ export function describeAction(a: Action): string {
 export function previewAction(a: Action): string {
   const g = a?.args || {};
   if (['generate_image', 'generate_video'].includes(a?.tool) && g.prompt) return String(g.prompt).slice(0, 400);
+  if (a?.tool === 'generate_voice') return [g.description, g.sample ? '试听：' + g.sample : ''].filter(Boolean).join('\n').slice(0, 400);
+  if (a?.tool === 'generate_speech' && g.text) return String(g.text).slice(0, 400);
   if (['write_doc', 'append_doc', 'replace_section'].includes(a?.tool) && g.content) {
     const lines = String(g.content).split('\n').map(l => l.trim()).filter(Boolean);
     const shown = lines.slice(0, 6).map(l => l.slice(0, 60)); if (lines.length > 6) shown.push(`…（共 ${lines.length} 行）`);

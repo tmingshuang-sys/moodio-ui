@@ -7,7 +7,7 @@ import { readJSON, writeJSON } from './storage';
 import { useChats } from './store';
 
 export interface GenTask {
-  id: string; kind: 'image' | 'video'; provider: 'fal' | 'ark'; name: string; group: string; prompt: string; model: string;
+  id: string; kind: 'image' | 'video' | 'audio'; provider: 'fal' | 'ark'; name: string; group: string; prompt: string; model: string;
   createdAt: number; statusUrl?: string; responseUrl?: string; cancelUrl?: string; arkTaskId?: string;
   chatId?: string; messageAt?: number; stepIndex?: number;   // 对应计划卡里的哪一步，后台完成后补状态与产物
   state: 'running' | 'done' | 'failed'; error?: string; resultId?: string;

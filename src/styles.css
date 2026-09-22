@@ -638,3 +638,7 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .next-info { flex: 1 1 200px; min-width: 160px; }
 .next-stage { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .next-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+/* 台账视图：绑定了音色样本的实体，「音色」标记是个按钮，点了在工作区试听 */
+button.lg-chip-btn { appearance: none; border: 0; cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
+button.lg-chip-btn:hover { color: var(--ink); }

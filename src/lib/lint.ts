@@ -53,6 +53,15 @@ export function ledgerRows(md: string, opts: { requireLanding?: boolean } = {}):
 }
 export const sellingPointRows = (md: string) => ledgerRows(md).filter(r => /卖点/.test(r.kind || ''));
 export const activeSellingPoints = (md: string) => sellingPointRows(md).map(r => r.point);
+// 人物小传里的音色描述：标题下的一行「音色：…」（旁白也算一个人物；写「无」的不算）
+export function voiceDescriptions(md: string): { name: string; desc: string }[] {
+  const out: { name: string; desc: string }[] = []; let heading = '';
+  for (const raw of String(md || '').split('\n')) {
+    const line = raw.trim(); const h = /^#{2,3}\s+(.+)$/.exec(line); if (h) { heading = h[1].replace(/[（(].*$/, '').trim(); continue; }
+    const m = /^(?:[-*]\s*)?音色[：:]\s*(.+)$/.exec(line); if (m && heading) { const desc = m[1].trim(); if (desc.length >= 4 && !/^(无|不需要|没有)/.test(desc)) out.push({ name: heading, desc }); }
+  }
+  return out;
+}
 // 人物小传 / 人设 / 歌曲分析里的冻结外形描述：标题下最近的一行「冻结外形描述：…」
 export function frozenDescriptions(md: string): { name: string; desc: string }[] {
   const out: { name: string; desc: string }[] = []; let heading = '';

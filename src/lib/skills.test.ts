@@ -35,6 +35,8 @@ describe('skill packs', () => {
     // 样例：广告与故事片各有建模 + 片段样例，样例本身要过我们自己的冻结格式（时段相接、参考音频、无 BGM 尾注）
     for (const id of ['ad', 'film', 'series']) { const s = skills.skillFor(id); expect(s.samples?.model).toBeTruthy(); expect(s.samples?.clip).toMatch(/full-film range/); expect(s.samples?.clip).toContain('不生成 BGM'); }
     expect(skills.skillFor('film').samples!.clip).toContain('音色参考@音频1');
+    expect(lint.voiceDescriptions(skills.FILM_MODEL_SAMPLE).map(v => v.name)).toEqual(['老周', '女孩', '旁白']);
+    expect(lint.voiceDescriptions('## 甲\n音色：无\n## 乙\n- 音色：清亮少年音')).toEqual([{ name: '乙', desc: '清亮少年音' }]);
     const frozen = lint.frozenDescriptions(skills.FILM_MODEL_SAMPLE); expect(frozen.map(f => f.name)).toEqual(['老周', '女孩']);
     const film = lint.lintClipDocs([{ name: '视频生成Prompt-02.md', content: skills.FILM_CLIP_SAMPLE }], [], null, { frozen }); expect(film.errors).toEqual([]);
     const ad = lint.lintClipDocs([{ name: '视频生成Prompt-02.md', content: skills.AD_CLIP_SAMPLE }], [], null); expect(ad.errors).toEqual([]);

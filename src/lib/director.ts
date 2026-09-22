@@ -7,7 +7,7 @@ import { readLedger, ensureLedger, updateLedger } from './ledger';
 import type { Ledger } from './ledger';
 import { skillFor, skillStages, briefKeyOf, STAGE_ORDER } from './skills';
 import type { Skill, QuestionDef, StageId } from './skills';
-import { lintClips, parseSeconds, CLIP_DOC_RE } from './lint';
+import { lintClips, parseSeconds, voiceDescriptions, CLIP_DOC_RE } from './lint';
 import { docRole } from './markdown';
 import { currentVideoModel, effectivePreset } from './mediagen';
 import { projects, NEW_PROJECT_TITLE } from './projects';
@@ -37,8 +37,22 @@ const composedFilm = () => useFiles.getState().media.find(m => m.kind === 'video
 const totalSeconds = (brief: Brief) => parseSeconds(brief.duration) || (brief.format === 'ad' ? 60 : 60);
 // 只有产品 / 人物 / 艺人 / 对象必须有参考图；场景、道具、风格锚点可以只靠文字描述
 const NEEDS_REF_RE = /产品|人物|艺人|角色|对象/;
-const requiredEntities = (ledger: Ledger | null) => (ledger?.entities || []).filter(e => NEEDS_REF_RE.test(e.kind || ''));
+const NARRATOR_RE = /旁白|画外音/;   // 旁白只有声音没有形象，不要参考图
+const requiredEntities = (ledger: Ledger | null) => (ledger?.entities || []).filter(e => NEEDS_REF_RE.test(e.kind || '') && !NARRATOR_RE.test(e.name + ' ' + (e.kind || '')));
 const unlinkedImages = (ledger: Ledger | null) => { const refs = new Set((ledger?.entities || []).map(e => e.ref).filter(Boolean)); return useFiles.getState().media.filter(m => m.kind === 'image' && m.by === 'agent' && !refs.has(m.id)); };
+
+// 有音色行的角色（人物小传 / 人设文稿里的「音色：」）里还没绑音色样本的：素材阶段安排 generate_voice；用户可以整体跳过（flags.skipVoice）
+const stripNote = (s: string) => s.replace(/[（(].*$/, '').trim();
+const voiceDocs = () => useFiles.getState().docs.filter(d => /人物小传|人设与选题|创作脑图/.test(d.name));
+export function voiceCandidates(ledger: Ledger | null): { name: string; desc: string }[] {
+  if (ledger?.flags?.skipVoice) return [];
+  const bound = (ledger?.entities || []).filter(e => e.voice).map(e => stripNote(e.name));
+  const seen = new Set<string>();
+  return voiceDocs().flatMap(d => voiceDescriptions(d.content)).filter(v => { if (seen.has(v.name) || bound.some(b => b === v.name || b.startsWith(v.name) || v.name.startsWith(b))) return false; seen.add(v.name); return true; });
+}
+// 脚本里有旁白（排除分镜表表头的「对白·旁白」列名）
+const hasNarration = () => { const s = scriptDoc(); return !!s && s.content.split('\n').some(l => !/对白[·/]旁白/.test(l) && /\*\*旁白\*\*|^>?\s*旁白\s*[（(：:]|[|（(]\s*旁白\s*[）)：:]/.test(l)); };
+const narrationAudio = () => useFiles.getState().media.filter(m => m.kind === 'audio' && m.group === '配音');
 
 // 还没回答的问卷题：台账答案里没有、纲领对应字段也空
 export function unansweredQuestions(skill: Skill, bank: QuestionDef[], ledger: Ledger | null, brief: Brief): QuestionDef[] {
@@ -83,6 +97,8 @@ export function nextStep(): NextStep {
       const noRef = required.filter(e => !e.ref); const spare = unlinkedImages(ledger);
       if (noRef.length && spare.length) return { ...base, kind: 'agent', label: `绑定 ${spare.length} 张已生成的参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `已经生成了这些参考图但还没绑定到实体：${spare.map(m => `${m.id}（${m.name}）`).join('、')}。产品的多张视图先用 make_sheet 拼成一张三视图，然后用 update_ledger 把参考图 id 写进对应实体的 ref（${noRef.map(e => e.name).join('、')}），不要重新生成；确实缺的再补生成。` };
       if (noRef.length) return { ...base, kind: 'agent', label: `生成 ${noRef.length} 张参考图`, detail: noRef.map(e => e.name.slice(0, 12)).join('、'), prompt: `为还没有参考图的实体生成参考图：${noRef.map(e => `${e.name}（${e.kind}）`).join('、')}；产品先出三视图再用 make_sheet 拼成一张；生成完用 update_ledger 把参考图 id 写进对应实体的 ref。` };
+      const voices = voiceCandidates(ledger);
+      if (voices.length) return { ...base, kind: 'agent', label: `生成 ${voices.length} 个音色样本`, detail: voices.map(v => v.name).join('、'), billable: true, prompt: `为有对白的角色设计音色样本，每个角色一次 generate_voice：${voices.map(v => `${v.name}（entity 写「${v.name}」，description 写「${v.desc}」）`).join('；')}；sample 用该角色在脚本里的一句台词（旁白用第一句旁白）。样本会自动绑定到台账实体，不用再 update_ledger。` };
       if (!confirmed.includes('assets')) return { ...base, kind: 'confirm', checkpoint: 'assets', label: '参考图通过，进入分镜', detail: '不满意的告诉 Agent 重新生成' };
       return { ...base, kind: 'agent', label: '进入分镜', detail: '', prompt: '参考图已全部确认，用 update_ledger 把阶段推进到 storyboard，然后按分镜规范拆分镜表。' };
     }
@@ -102,7 +118,11 @@ export function nextStep(): NextStep {
       const clips = ledger?.clips || []; const n = clips.length || clipDocs().length;
       const made = clips.filter(c => c.mediaId).length;
       if (made < n) { const next = clips.find(c => !c.mediaId); return { ...base, kind: 'agent', label: `生成第 ${next ? next.no : made + 1} 段视频（${made}/${n}）`, detail: `约 ${estimateMinutes(n - made, b)} 分钟`, billable: true, prompt: `按顺序生成还没生成的片段（从第 ${next ? next.no : made + 1} 段起，一次可以安排全部剩余片段）：prompt 照抄对应「视频生成Prompt-NN.md」的正文，有参考图就用 from_media_id 绑定第一张；每段生成完用 update_ledger 把视频 id 写进 clips 的 mediaId。` }; }
-      if (!composedFilm()) return { ...base, kind: 'agent', label: '合成成片', detail: `约 ${Math.ceil(totalSeconds(b) / 60)} 分钟`, prompt: '所有片段已生成，用 compose_video 按片段顺序合成 MP4 成片：字幕从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字），媒体清单里有上传的音频就作配乐；合成完用 update_ledger 把阶段推进到 deliver。' };
+      if (!composedFilm()) {
+        const dubs = narrationAudio(); const wantNarration = hasNarration() && !ledger?.flags?.skipVoice && !dubs.length;
+        if (wantNarration) return { ...base, kind: 'agent', label: '合成旁白配音', detail: '按片段分段，成片时按时间轴放置', billable: true, prompt: '所有片段已生成。脚本里有旁白：先用 generate_speech 把旁白按片段分段合成（entity 写「旁白」，一段一条，name 写「旁白-01」这样的序号，text 只写旁白原文）；视频模型不支持音频参考时，需要清晰听到的台词也可以一并合成（entity 写角色名）。合成完下一步再合成成片。' };
+        return { ...base, kind: 'agent', label: '合成成片', detail: `约 ${Math.ceil(totalSeconds(b) / 60)} 分钟`, prompt: `所有片段已生成，用 compose_video 按片段顺序合成 MP4 成片：字幕从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字，只写台词本身）${dubs.length ? `；媒体库里的配音（${dubs.map(d => `${d.id} ${d.name}`).join('、')}）用 voices 按成片时间轴放到对应片段的起点` : ''}；媒体清单里有上传的音频就作配乐；合成完用 update_ledger 把阶段推进到 deliver。` };
+      }
       return { ...base, kind: 'agent', label: '交付', detail: '', prompt: '成片已合成，用 update_ledger 把阶段推进到 deliver，然后写交付说明：结构、每段承担的内容、核心信息如何落地，最后请我审阅。' };
     }
     case 'deliver': {
@@ -149,6 +169,7 @@ export function confirmCheckpoint(cp: Checkpoint) {
   updateLedger({ confirmed: [cp], entities: cp === 'assets' ? ledger.entities.filter(e => e.ref).map(e => ({ name: e.name, status: '已确认' })) : undefined });
   tick(); emit(); resume();
 }
+export function skipVoice() { updateLedger({ flags: { skipVoice: true }, notes: (readLedger()?.notes || '') + ' [跳过音色]' }); tick(); emit(); resume(); }
 export function skipAssets() { updateLedger({ confirmed: ['assets'], notes: (readLedger()?.notes || '') + ' [跳过参考图]' }); tick(); emit(); resume(); }
 export function skipLintGate() { updateLedger({ flags: { skipLint: true }, notes: (readLedger()?.notes || '') + ' [跳过片段校验]' }); tick(); emit(); resume(); }
 // 用户在检查点点了确认 / 跳过之后，一键模式要马上接着走，不用等下一轮 Agent 回复

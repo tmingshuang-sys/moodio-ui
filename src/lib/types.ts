@@ -28,6 +28,7 @@ export interface MediaItem {
   height?: number;
   model?: string;         // 生成它的模型名（智能匹配时可能不是面板里排第一的那个）
   duration?: number;      // 视频 / 音频时长（秒），合成成片时写入
+  voiceId?: string;       // 音色样本：声音模型返回的 voice id，合成配音时用它
 }
 
 export interface TrashEntry { trashId: string; deletedAt: number; doc?: Doc; media?: MediaItem; }
@@ -50,7 +51,7 @@ export interface FollowUp { label: string; prompt: string; }
 // 追问：single 单选 / multi 多选 / text 填空；选项可带一行说明；key 用来把答案记进台账
 export interface QuestionOption { label: string; hint?: string; }
 export interface Question { text: string; type?: 'single' | 'multi' | 'text'; options: QuestionOption[]; multi: boolean; placeholder?: string; key?: string; recommended?: number[]; }   // recommended：推荐选项下标，本地问卷会预选
-export interface Artifact { id: string; kind: 'doc' | 'image' | 'video'; name: string; prompt?: string; }   // 执行结果里的产物卡片；生成类带上提示词供质检
+export interface Artifact { id: string; kind: 'doc' | 'image' | 'video' | 'audio'; name: string; prompt?: string; }   // 执行结果里的产物卡片；生成类带上提示词供质检
 export interface ImageCheck { id: string; name: string; verdict: '通过' | '需重生成'; description: string; issues: string[]; }   // 视觉模型对参考图的质检结果
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 export interface PlanStep { tool: string; kind: string; title: string; preview: string; destructive: boolean; status: StepStatus; result: string; logs: string[]; }
@@ -105,6 +106,7 @@ export interface ModelConfig {
   mediaToken?: string;
   imageModel?: string;
   videoModel?: string;
+  voiceModel?: string;                 // 声音模型（'auto' = 智能匹配）
   videoImageModel?: string;
   imageRatio?: string;
   videoRatio?: string;

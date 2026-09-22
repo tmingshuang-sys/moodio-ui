@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Play, Check, SkipForward, Sparkles, Wand2 } from 'lucide-react';
 import { useFiles, useAgent } from '../lib/store';
-import { nextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, chooseFormat, askLocally, isAutopilot, setAutopilot, resetAutopilot } from '../lib/director';
+import { nextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, skipVoice, chooseFormat, askLocally, isAutopilot, setAutopilot, resetAutopilot } from '../lib/director';
 import type { NextStep } from '../lib/director';
 import { BRIEF_FORMATS } from '../lib/guides';
 import { skillFor, skillStages } from '../lib/skills';
@@ -55,6 +55,7 @@ export default function NextStepBar() {
         {step.kind === 'confirm' && <button type="button" className="next-secondary" onClick={askChange}>{t('让 Agent 修改')}</button>}
         {step.kind === 'confirm' && step.checkpoint === 'assets' && <button type="button" className="next-secondary" onClick={skipAssets}><SkipForward size={13} />{t('跳过参考图')}</button>}
         {step.kind === 'agent' && /校验/.test(step.label) && <button type="button" className="next-secondary" onClick={skipLintGate}><SkipForward size={13} />{t('跳过校验继续')}</button>}
+        {step.kind === 'agent' && /音色样本|旁白配音/.test(step.label) && <button type="button" className="next-secondary" onClick={skipVoice}><SkipForward size={13} />{t('跳过音色')}</button>}
         {busy ? <button type="button" className="next-primary busy" onClick={stopAgent}><span className="plan-spin" />{t('执行中，点击停止')}</button>
           : <button type="button" className="next-primary" onClick={primary}>{step.kind === 'confirm' ? <Check size={15} /> : step.kind === 'done' ? <Sparkles size={15} /> : <Play size={15} />}{step.label}</button>}
         <label className="next-auto" title={t('开着时，除删除和四个检查点外的步骤都自动执行')}><input type="checkbox" checked={auto} onChange={e => { setAutopilot(e.target.checked); setAuto(e.target.checked); if (e.target.checked && !busy) primary(); }} /><Wand2 size={13} />{t('一键模式')}</label>

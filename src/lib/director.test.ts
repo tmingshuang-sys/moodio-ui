@@ -70,4 +70,24 @@ describe('director', () => {
     director.skipLintGate();
     expect(ledger.readLedger()!.stage).toBe('video');
   });
+  it('asks for voice samples for characters with 音色 lines, never for narrator reference images, and lets the user skip', () => {
+    ledger.updateLedger({ stage: 'assets', entities: [{ name: '老周（58 岁司机）', kind: '人物', ref: 'm9' }, { name: '旁白', kind: '旁白' }] });
+    files().addDoc({ name: '人物小传.md', content: '# 人物小传\n## 老周\n冻结外形描述：灰白短发、鬓角霜色，深蓝色司机制服外套\n音色：沉稳温厚的中老年男声\n## 旁白\n音色：温暖磁性的中年男声\n' });
+    const step = director.nextStep();
+    expect(step).toMatchObject({ stage: 'assets', kind: 'agent', billable: true, label: '生成 2 个音色样本' });
+    expect(step.prompt).toContain('generate_voice'); expect(step.detail).toBe('老周、旁白');
+    ledger.updateLedger({ entities: [{ name: '老周（58 岁司机）', voice: 'a1' }] });   // 带括注的实体名也算绑上了
+    expect(director.nextStep().label).toBe('生成 1 个音色样本');
+    director.skipVoice();
+    expect(ledger.readLedger()!.flags.skipVoice).toBe(true);
+    expect(director.voiceCandidates(ledger.readLedger())).toEqual([]);
+  });
+  it('synthesises narration before composing when the script has 旁白 lines', () => {
+    ledger.updateLedger({ stage: 'video', flags: { skipVoice: false }, clips: [{ no: 1, mediaId: 'v1' }] });
+    const script = files().docs.find(d => d.name === '故事脚本.md')!;
+    files().updateDoc(script.id, { content: script.content + '| 02 | 4 | 街头 | 中景 | 暖 | **小航**（旁白）：每次出门都想带音乐 | 街声 | 跟拍 |\n' });
+    expect(director.nextStep()).toMatchObject({ kind: 'agent', label: '合成旁白配音', billable: true });
+    files().addMedia({ id: 'dub1', name: '旁白-01.mp3', kind: 'audio', mime: 'audio/mpeg', size: 1, group: '配音', createdAt: Date.now(), by: 'agent', duration: 4 });
+    const step = director.nextStep(); expect(step.label).toBe('合成成片'); expect(step.prompt).toContain('dub1 旁白-01.mp3');
+  });
 });

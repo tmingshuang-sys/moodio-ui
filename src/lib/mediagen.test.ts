@@ -155,3 +155,26 @@ describe('smart model matching', () => {
     expect((await load()).currentVideoModel()).toBe('fal-ai/veo3');                   // 第二次启动不再改回去
   });
 });
+
+describe('speech input', () => {
+  it('sends only the fields MiniMax speech accepts, asks for a url and boosts Chinese', async () => {
+    const { buildSpeechInput, DEFAULT_VOICE_ID } = await load();
+    const zh = buildSpeechInput({ text: '老周开末班公交二十年。', voiceId: 'v-laozhou', speed: 3, emotion: 'sad' });
+    expect(zh).toMatchObject({ prompt: '老周开末班公交二十年。', output_format: 'url', language_boost: 'Chinese', voice_setting: { voice_id: 'v-laozhou', speed: 2, emotion: 'sad' } });
+    expect(Object.keys(zh).sort()).toEqual(['audio_setting', 'language_boost', 'output_format', 'prompt', 'voice_setting']);
+    const en = buildSpeechInput({ text: 'Hello there', emotion: 'nope' });
+    expect(en).toMatchObject({ language_boost: 'auto', voice_setting: { voice_id: DEFAULT_VOICE_ID, speed: 1 } });
+    expect((en.voice_setting as any).emotion).toBeUndefined();
+  });
+  it('lists the voice chain and names the design model', async () => {
+    const { currentVoiceModel, modelDisplayName, MEDIA_DEFAULTS } = await load();
+    const mm = await import('./mediamodels');
+    expect(currentVoiceModel()).toBe(MEDIA_DEFAULTS.voiceModel);
+    expect(mm.AUTO_CHAINS.voice[0]).toBe(mm.VOICE_MODELS[0].id);
+    expect(modelDisplayName('voice', mm.VOICE_DESIGN_MODEL)).toBe('MiniMax 声音设计');
+    expect(modelDisplayName('voice', 'fal-ai/minimax/speech-2.8-hd')).toBe('MiniMax Speech 2.8 HD');
+    const custom = mm.presetFor(mm.VOICE_MODELS, 'fal-ai/minimax/speech-9', 'voice');
+    expect(custom.provider).toBe('fal'); expect(custom.duration).toBeUndefined(); expect(custom.ratio).toBeUndefined();   // 声音模型不带画幅 / 时长参数
+  });
+});
+

@@ -10,7 +10,7 @@ import { toast } from '../components/Toast';
 import { putBlob, cacheUrl, getBlob, imageSize } from './storage';
 import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue, arkImageSize, resolveDuration, AUTO, AUTO_CHAINS, isAuto, modelChain, findPreset, runWithFallback } from './mediamodels';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, VOICE_MODELS, VOICE_DESIGN_MODEL, VOICE_DESIGN_PRESET, presetFor, ratioValue, arkImageSize, resolveDuration, AUTO, AUTO_CHAINS, isAuto, modelChain, findPreset, runWithFallback } from './mediamodels';
 import type { ModelKind } from './mediamodels';
 
 export const MEDIA_DEFAULTS = {
@@ -18,6 +18,7 @@ export const MEDIA_DEFAULTS = {
   imageModel: AUTO,        // 智能匹配：Seedream 5.0 起，不可用时沿候选链换
   videoModel: AUTO,        // 智能匹配：Seedance 2.5 起
   videoImageModel: AUTO,
+  voiceModel: AUTO,        // 智能匹配：MiniMax Speech 2.8 HD 起
   imageRatio: '16:9' as RatioKey,
   videoRatio: '16:9' as RatioKey,
   videoDuration: '5',
@@ -48,14 +49,16 @@ export function mediaReadyReason(): string | null {
 export function currentImageModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.imageModel || MEDIA_DEFAULTS.imageModel); }
 export function currentVideoModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.videoModel || MEDIA_DEFAULTS.videoModel); }
 export function currentVideoImageModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.videoImageModel || MEDIA_DEFAULTS.videoImageModel); }
+export function currentVoiceModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.voiceModel || MEDIA_DEFAULTS.voiceModel); }
+const listFor = (kind: ModelKind) => kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : kind === 'voice' ? VOICE_MODELS : VIDEO_IMAGE_MODELS;
 // 面板与生成共用：智能匹配时按候选链第一个模型的能力显示选项
 export function effectivePreset(kind: ModelKind, id: string | undefined): ModelPreset {
-  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : VIDEO_IMAGE_MODELS;
+  const list = listFor(kind);
   return isAuto(id) ? (findPreset(list, AUTO_CHAINS[kind][0]) || presetFor(list, AUTO_CHAINS[kind][0], kind)) : presetFor(list, id, kind);
 }
 export function modelDisplayName(kind: ModelKind, id: string | undefined): string {
-  if (isAuto(id)) return '智能匹配';
-  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : VIDEO_IMAGE_MODELS;
+  if (isAuto(id)) return '智能匹配'; if (id === VOICE_DESIGN_MODEL) return VOICE_DESIGN_PRESET.name;
+  const list = listFor(kind);
   return findPreset(list, id)?.name || String(id);
 }
 // 旧配置里存的是具体模型 id：第一次带智能匹配的版本启动时改成默认的智能匹配（只做一次）
@@ -97,7 +100,7 @@ export const __test = { viaGateway, pickUrl, buildInput, arkPromptArgs };   // �
 
 export interface GenOptions { onProgress?: (text: string) => void; signal?: AbortSignal; task?: TaskRef; }
 // 任务落盘需要的元信息（结果叫什么、进哪个分区、用的哪个模型）
-interface TaskMeta { kind: 'image' | 'video'; name: string; group: string; prompt: string; model: string; ref?: TaskRef; }
+interface TaskMeta { kind: 'image' | 'video' | 'audio'; name: string; group: string; prompt: string; model: string; ref?: TaskRef; }
 const registerTask = (t: GenTask) => { try { useTasks.getState().add(t); } catch { /* ignore */ } };
 const finishTask = (id: string | null) => { if (id) try { useTasks.getState().remove(id); } catch { /* ignore */ } };
 
@@ -181,7 +184,7 @@ async function resumeOne(t: GenTask) {
   const ep = mediaEndpoint(); if (!ep) return;
   const ref: TaskRef = { chatId: t.chatId, messageAt: t.messageAt, stepIndex: t.stepIndex };
   try {
-    let url: string | undefined, contentType: string | undefined;
+    let url: string | undefined, contentType: string | undefined; let extra: Partial<MediaItem> = {};
     const deadline = t.createdAt + 30 * 60e3;
     if (t.provider === 'fal') {
       for (;;) {
@@ -193,7 +196,7 @@ async function resumeOne(t: GenTask) {
         await sleep(5000);
       }
       const done = await fetch(t.responseUrl!, { headers: authHeaders(ep) }); if (!done.ok) throw new Error('读取结果失败：' + await readError(done));
-      const hit = pickUrl(await done.json()); if (!hit) throw new Error('结果里没有文件地址'); url = hit.url; contentType = hit.contentType;
+      const data = await done.json(); const hit = pickUrl(data); if (!hit) throw new Error('结果里没有文件地址'); url = hit.url; contentType = hit.contentType; if (t.kind === 'audio') extra = audioExtra(data);
     } else {
       for (;;) {
         if (Date.now() > deadline) throw new Error('等待超过 30 分钟，放弃');
@@ -204,7 +207,7 @@ async function resumeOne(t: GenTask) {
         await sleep(5000);
       }
     }
-    const item = await storeResult(url!, { name: t.name, group: t.group, kind: t.kind, contentType, model: t.model });
+    const item = await storeResult(url!, { name: t.name, group: t.group, kind: t.kind, contentType, model: t.model, extra });
     useTasks.getState().remove(t.id);
     patchStep(ref, 'done', `后台完成：已生成「${item.name}」`, { id: item.id, kind: t.kind, name: item.name, prompt: t.prompt });
     toast(`后台任务完成：「${item.name}」`, { label: '查看', onClick: () => useFiles.getState().openInPane(item.id) });
@@ -228,18 +231,19 @@ export async function cancelTask(id: string) {
 }
 
 // 把结果地址下载进媒体库（经网关代下载，避免跨域）
-async function storeResult(url: string, { name, group, kind, contentType, model }: { name: string; group: string; kind: 'image' | 'video'; contentType?: string; model?: string }): Promise<MediaItem> {
+async function storeResult(url: string, { name, group, kind, contentType, model, extra }: { name: string; group: string; kind: 'image' | 'video' | 'audio'; contentType?: string; model?: string; extra?: Partial<MediaItem> }): Promise<MediaItem> {
   const ep = mediaEndpoint(); if (!ep) throw new Error('网关未配置');
   const res = await fetch(`${ep.base}/media?url=${encodeURIComponent(url)}`, { headers: { Authorization: 'Bearer ' + ep.token } });
   if (!res.ok) throw new Error('下载生成结果失败：' + await readError(res));
   const blob = await res.blob();
-  const mime = contentType || blob.type || (kind === 'image' ? 'image/png' : 'video/mp4');
-  const ext = (mime.split('/')[1] || (kind === 'image' ? 'png' : 'mp4')).replace(/[^a-z0-9]/gi, '').slice(0, 4);
+  const mime = contentType || blob.type || (kind === 'image' ? 'image/png' : kind === 'audio' ? 'audio/mpeg' : 'video/mp4');
+  const rawExt = (mime.split('/')[1] || (kind === 'image' ? 'png' : kind === 'audio' ? 'mp3' : 'mp4')).replace(/[^a-z0-9]/gi, '').slice(0, 4);
+  const ext = rawExt === 'mpeg' ? 'mp3' : rawExt;
   const id = uid('m');
   await putBlob(id, blob); cacheUrl(id, blob);
   const size = kind === 'image' ? await imageSize(blob) : null;
   const finalName = /\.[a-z0-9]{2,5}$/i.test(name) ? name : `${name}.${ext}`;
-  const meta: MediaItem = { id, name: finalName, kind, mime, size: blob.size, group, createdAt: Date.now(), by: 'agent', width: size?.width, height: size?.height, model };
+  const meta: MediaItem = { id, name: finalName, kind, mime, size: blob.size, group, createdAt: Date.now(), by: 'agent', width: size?.width, height: size?.height, model, ...(extra || {}) };
   useFiles.getState().addMedia(meta);
   return meta;
 }
@@ -349,4 +353,58 @@ export async function manualGenerate(kind: 'image' | 'video', req: ImageRequest 
     return result;
   }
   finally { useAgent.getState().set({ busy: false, glow: false, live: '', controller: null }); }
+}
+
+// ===== 声音：fal 上的 MiniMax——设计音色样本（voice-design）与合成旁白 / 台词（speech）=====
+// 音色样本是「一段试听 + voice id」：试听进媒体库当样本（台账实体的 voice 指向它），voice id 存在媒体项的 voiceId 上，合成配音时带上它。
+const hasCJK = (s: string) => /[\u3400-\u9fff]/.test(s);
+// 结果里的额外字段：设计音色返回 custom_voice_id，合成语音返回 duration_ms（后台恢复的任务也走这里）
+function audioExtra(data: any): Partial<MediaItem> {
+  const out: Partial<MediaItem> = {};
+  if (typeof data?.custom_voice_id === 'string' && data.custom_voice_id) out.voiceId = data.custom_voice_id;
+  const ms = Number(data?.duration_ms); if (Number.isFinite(ms) && ms > 0) out.duration = Math.round(ms) / 1000;
+  return out;
+}
+export interface VoiceRequest { name: string; description: string; sample: string; group?: string; }
+export async function designVoice(req: VoiceRequest, opts: GenOptions = {}): Promise<GenResult> {
+  const description = String(req.description || '').trim(); if (!description) throw new Error('缺少音色描述');
+  const sample = String(req.sample || '').trim().slice(0, 300) || '你好，这是我的声音，很高兴见到你。';
+  const name = sanitizeName(`${String(req.name || '角色').trim()}音色样本`); const group = req.group || '音色';
+  const o = labelled('voice', VOICE_DESIGN_MODEL, opts);
+  o.onProgress?.('提交生成任务…');
+  const data = await runFal(VOICE_DESIGN_MODEL, { prompt: description, preview_text: sample }, o, 3 * 60e3, { kind: 'audio', name, group, prompt: description, model: VOICE_DESIGN_PRESET.name, ref: opts.task });
+  const hit = pickUrl(data); if (!hit) throw new Error('生成结果里没有音频地址');
+  const extra = audioExtra(data); if (!extra.voiceId) throw new Error('声音模型没有返回音色 id');
+  o.onProgress?.('下载生成结果…');
+  const item = await storeResult(hit.url, { name, group, kind: 'audio', contentType: hit.contentType, model: VOICE_DESIGN_PRESET.name, extra });
+  return { item, model: VOICE_DESIGN_PRESET, skipped: [] };
+}
+
+export interface SpeechRequest { text: string; voiceId?: string; name?: string; group?: string; speed?: number; emotion?: string; }
+export const DEFAULT_VOICE_ID = 'Wise_Woman';   // 没设计音色时的兜底：MiniMax 预置音色，中英文都能说
+const EMOTIONS = new Set(['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'neutral']);
+// 只发模型认识的字段：文本、音色设置、语言增强；output_format 必须是 url（默认 hex 会把整段音频塞进 JSON）
+export function buildSpeechInput(req: SpeechRequest): Record<string, unknown> {
+  const text = String(req.text || '').trim();
+  const speed = Math.min(2, Math.max(0.5, Number(req.speed) || 1));
+  const voice_setting: Record<string, unknown> = { voice_id: String(req.voiceId || DEFAULT_VOICE_ID), speed, vol: 1, pitch: 0 };
+  if (req.emotion && EMOTIONS.has(req.emotion)) voice_setting.emotion = req.emotion;
+  return { prompt: text, voice_setting, language_boost: hasCJK(text) ? 'Chinese' : 'auto', output_format: 'url', audio_setting: { format: 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 } };
+}
+export async function generateSpeech(req: SpeechRequest, opts: GenOptions = {}): Promise<GenResult> {
+  const text = String(req.text || '').trim(); if (!text) throw new Error('缺少要合成的文本');
+  if (text.length > 2000) throw new Error('一次最多合成 2000 字，请分段');
+  const chain = modelChain('voice', currentVoiceModel(modelCfg()));
+  const run = await runWithFallback(chain, (id) => generateSpeechWith(id, text, req, labelled('voice', id, opts)), skipNote('voice', opts));
+  const skipped = run.skipped.map(s => ({ model: presetFor(VOICE_MODELS, s.model, 'voice'), reason: s.reason }));
+  return { item: run.result, model: presetFor(VOICE_MODELS, run.model, 'voice'), skipped };
+}
+async function generateSpeechWith(model: string, text: string, req: SpeechRequest, opts: GenOptions): Promise<MediaItem> {
+  const preset = presetFor(VOICE_MODELS, model, 'voice');
+  const name = sanitizeName(req.name || text.slice(0, 16)); const group = req.group || '配音';
+  opts.onProgress?.('提交生成任务…');
+  const data = await runFal(model, buildSpeechInput({ ...req, text }), opts, 3 * 60e3, { kind: 'audio', name, group, prompt: text, model: preset.name, ref: opts.task });
+  const hit = pickUrl(data); if (!hit) throw new Error('生成结果里没有音频地址');
+  opts.onProgress?.('下载生成结果…');
+  return storeResult(hit.url, { name, group, kind: 'audio', contentType: hit.contentType, model: preset.name, extra: { ...audioExtra(data), ...(req.voiceId ? { voiceId: req.voiceId } : {}) } });
 }

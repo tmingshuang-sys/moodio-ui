@@ -12,6 +12,15 @@ beforeAll(async () => {   // compose 依赖仓库模块，仓库在加载时会�
   ({ wrapSubtitle, activeSubtitle } = await import('./compose'));
 });
 
+describe('voices', () => {
+  it('drops tracks without an id, clamps start and volume, and sorts by start', async () => {
+    const { normalizeVoices } = await import('./compose');
+    expect(normalizeVoices([{ id: 'b', start: 5 }, { id: '', start: 0 }, { id: 'a', start: -2, volume: 5 }, { id: 'c', start: 1, volume: 0.4 }])).toEqual([
+      { id: 'a', start: 0, volume: 2 }, { id: 'c', start: 1, volume: 0.4 }, { id: 'b', start: 5, volume: 1 },
+    ]);
+    expect(normalizeVoices(undefined)).toEqual([]);
+  });
+});
 describe('subtitles', () => {
   it('wraps long lines at punctuation or spaces and keeps at most two lines', () => {
     expect(wrapSubtitle('雨夜街头，一盏红灯笼', 20)).toEqual(['雨夜街头，一盏红灯笼']);

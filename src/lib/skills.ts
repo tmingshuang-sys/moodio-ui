@@ -106,7 +106,7 @@ ${FROZEN_LABEL}：一段 40–80 字可复用描述（不出镜写「不出镜�
 export const OTHER_TEMPLATE = `「创作脑图.md」固定结构：## 目标　## 观众　## 核心信息　## 对象账本（| 编号 | 对象 | ${FROZEN_LABEL} | 作用 | 落在哪个片段 | 状态 |）　## 风格与调性　## 时长与画幅　## 证据来源`;
 
 // 有对白的类型共用：说话的角色需要音色样本，视频模型不支持音频参考时对白只进字幕
-export const DIALOGUE_CONTRACT = '对白契约：有对白的角色（含旁白）在人物小传里写「音色」一行；媒体库里有该角色 3–10 秒的音频样本时在台账实体的 voice 里绑定并在片段提示词的参考音频里引用，对白写成 {角色（音色参考@音频N，语气）：台词}；没有样本或视频模型不支持音频参考时，对白照写但不描述口型，成片合成时烧成字幕。';
+export const DIALOGUE_CONTRACT = '对白契约：有对白的角色（含旁白）在人物小传里写「音色」一行；素材阶段用 generate_voice 按这一行设计音色样本（自动绑定到台账实体的 voice）；视频模型支持音频参考时在片段提示词的参考音频里引用样本，对白写成 {角色（音色参考@音频N，语气）：台词}；不支持时对白照写但不描述口型、成片合成时烧成字幕，旁白用 generate_speech 合成后在 compose_video 的 voices 里按时间轴放置。';
 
 // ===== 样例（从两份竞品产物改写成我们的冻结格式；只做结构参考）=====
 export const AD_MODEL_SAMPLE = `# 营销脑图
@@ -258,10 +258,10 @@ function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; 
     { id: 'brief', name: '需求澄清', goal: '用问卷问清类型、时长、平台与画幅、受众、调性，答案用 save_brief 记录；信息够了就推进，不要反复追问。', outputs: '创作纲领', gate: '纲领里类型、时长、受众、调性齐全' },
     { id: 'model', name: s.modelName, goal: s.modelGoal, outputs: s.modelDocs.map(d => `「${d}」`).join('、'), gate: '建模文稿写完并经用户确认' },
     { id: 'script', name: '脚本', goal: '按写作规范写故事脚本，多场先给大纲再逐场写；写完用自审清单核对。人物名、产品名全片用同一写法并加粗，产品每次露出写明看得见的部位。', outputs: '「故事脚本.md」', gate: '脚本通过自审且用户确认' },
-    { id: 'assets', name: '素材检查', goal: '列出脚本涉及的实体，判断哪些需要参考图；按契约处理产品 / 人物参考图；生成后把实体和参考图 id 写进台账并请用户确认。', outputs: '参考图（媒体库）与台账里的实体清单', gate: '所有需要参考图的实体都有用户确认过的参考图' },
+    { id: 'assets', name: '素材检查', goal: '列出脚本涉及的实体，判断哪些需要参考图；按契约处理产品 / 人物参考图；生成后把实体和参考图 id 写进台账并请用户确认；有对白的角色（含旁白）用 generate_voice 按人物小传的音色行设计音色样本。', outputs: '参考图与音色样本（媒体库）与台账里的实体清单', gate: '所有需要参考图的实体都有用户确认过的参考图' },
     { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表（十列 + 全片 BGM），镜头总时长与纲领时长一致；脚本已经是分镜脚本表时只核对与微调。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
     { id: 'prompts', name: '片段方案', goal: `按总时长和单段上限（默认 ${s.clipSeconds} 秒）把分镜切成若干片段，每段一份按「片段提示词冻结格式」写的文稿：全片风格表逐字相同、主体绑定参考图并写清只采用什么、子镜头时段首尾相接且合计等于片段时长；片段清单写进台账 clips（no / seconds / shots / docId）；全部写完先用 lint_clips 自查，再用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成；系统会校验时长与卖点落地' },
-    { id: 'video', name: '生成成片', goal: '按片段顺序 generate_video，有参考图就用 from_media_id 或在提示词里复用同一段外形描述；全部生成后用 compose_video 按顺序合成 MP4 成片：字幕从脚本的台词 / 口播 / 字幕列生成（按各段时长累计起止秒数，每条不超过 20 字），媒体清单里有用户上传的音频就作配乐。', outputs: '片段视频与成片', gate: '成片合成完成' },
+    { id: 'video', name: '生成成片', goal: '按片段顺序 generate_video，有参考图就用 from_media_id 或在提示词里复用同一段外形描述；全部生成后用 compose_video 按顺序合成 MP4 成片：字幕从脚本的台词 / 口播 / 字幕列生成（按各段时长累计起止秒数，每条不超过 20 字），媒体清单里有用户上传的音频就作配乐；脚本有旁白就先用 generate_speech 按片段分段合成，compose_video 时用 voices 按时间轴放置。', outputs: '片段视频与成片', gate: '成片合成完成' },
     { id: 'deliver', name: '交付', goal: '总结成片：结构、每段承担的内容、核心信息如何落地；请用户审阅并说明要改哪一段。', outputs: '交付说明', gate: '用户验收' },
   ];
 }

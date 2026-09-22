@@ -3,14 +3,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, SlidersHorizontal } from 'lucide-react';
 import type { ModelPreset, RatioKey } from '../lib/mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_RESOLUTIONS, IMAGE_RESOLUTIONS, DURATION_MIN, DURATION_MAX, AUTO, AUTO_CHAINS, AUTO_LABEL, isAuto, findPreset } from '../lib/mediamodels';
-import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason, genMode as readGenMode, effectivePreset, modelDisplayName } from '../lib/mediagen';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, VOICE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_RESOLUTIONS, IMAGE_RESOLUTIONS, DURATION_MIN, DURATION_MAX, AUTO, AUTO_CHAINS, AUTO_LABEL, isAuto, findPreset } from '../lib/mediamodels';
+import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, currentVoiceModel, mediaReadyReason, genMode as readGenMode, effectivePreset, modelDisplayName } from '../lib/mediagen';
 import { CHAT_MODELS, CHAT_AUTO, CHAT_AUTO_ID, chatModelName, isAutoModel, modelProvider } from '../lib/model';
 import { modelCfg, saveModelCfg } from '../lib/model';
 import type { ModelConfig } from '../lib/types';
 import { useT } from '../lib/i18n';
 
-type Tab = 'video' | 'image' | 'chat';
+type Tab = 'video' | 'image' | 'voice' | 'chat';
 
 // 画面比例的小图示：按比例画一个圆角矩形
 function RatioIcon({ ratio }: { ratio: RatioKey }) {
@@ -20,8 +20,8 @@ function RatioIcon({ ratio }: { ratio: RatioKey }) {
 }
 
 // 列表顶部的「智能匹配模型」：默认从候选链第一个开始，不可用时自动换
-function AutoRow({ kind, active, onPick }: { kind: 'image' | 'video' | 'videoImage'; active: boolean; onPick: () => void }) {
-  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : VIDEO_IMAGE_MODELS;
+function AutoRow({ kind, active, onPick }: { kind: 'image' | 'video' | 'videoImage' | 'voice'; active: boolean; onPick: () => void }) {
+  const list = kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : kind === 'voice' ? VOICE_MODELS : VIDEO_IMAGE_MODELS;
   const first = findPreset(list, AUTO_CHAINS[kind][0])?.name || AUTO_CHAINS[kind][0];
   return (
     <button type="button" className={`mp-model${active ? ' active' : ''}`} onClick={onPick}>
@@ -86,7 +86,7 @@ export default function ModelPrefs() {
 
   const patch = (next: Partial<ModelConfig>) => { const merged = { ...(modelCfg() || {}), ...next }; saveModelCfg(merged); setCfgState(merged); };
 
-  const imageId = currentImageModel(cfg), videoId = currentVideoModel(cfg), videoImageId = currentVideoImageModel(cfg);
+  const imageId = currentImageModel(cfg), videoId = currentVideoModel(cfg), videoImageId = currentVideoImageModel(cfg), voiceId = currentVoiceModel(cfg);
   const imageRatio = (cfg.imageRatio || MEDIA_DEFAULTS.imageRatio) as RatioKey;
   const videoRatio = (cfg.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
   const duration = Number(cfg.videoDuration || MEDIA_DEFAULTS.videoDuration) || 5;
@@ -106,7 +106,7 @@ export default function ModelPrefs() {
   return (
     <>
       <button ref={btnRef} type="button" className={`tool-btn${open ? ' on' : ''}`} onClick={() => setOpen(v => !v)} aria-expanded={open} aria-haspopup="dialog"
-        aria-label={t('生成模型')} title={`${t('视频模型')} ${videoName} · ${t('图片模型')} ${imageName} · ${t('推理模型')} ${chatName}`}>
+        aria-label={t('生成模型')} title={`${t('视频模型')} ${videoName} · ${t('图片模型')} ${imageName} · ${t('声音模型')} ${modelDisplayName('voice', voiceId)} · ${t('推理模型')} ${chatName}`}>
         <SlidersHorizontal size={17} />
       </button>
       {open && (
@@ -114,10 +114,19 @@ export default function ModelPrefs() {
           <div className="mp-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'video'} className={tab === 'video' ? 'active' : ''} onClick={() => setTab('video')}>{t('视频模型')}</button>
             <button type="button" role="tab" aria-selected={tab === 'image'} className={tab === 'image' ? 'active' : ''} onClick={() => setTab('image')}>{t('图片模型')}</button>
+            <button type="button" role="tab" aria-selected={tab === 'voice'} className={tab === 'voice' ? 'active' : ''} onClick={() => setTab('voice')}>{t('声音模型')}</button>
             <button type="button" role="tab" aria-selected={tab === 'chat'} className={tab === 'chat' ? 'active' : ''} onClick={() => setTab('chat')}>{t('推理模型')}</button>
           </div>
           {notReady && tab !== 'chat' && <p className="mp-warn">{notReady}</p>}
-          {tab === 'chat' ? (
+          {tab === 'voice' ? (
+            <div className="mp-body">
+              <div className="mp-col mp-models">
+                <h4>{t('模型选择')}</h4>
+                <AutoRow kind="voice" active={isAuto(voiceId)} onPick={() => patch({ voiceModel: AUTO })} />
+                {VOICE_MODELS.map(m => <ModelRow key={m.id} preset={m} active={m.id === voiceId} onPick={() => patch({ voiceModel: m.id })} />)}
+              </div>
+            </div>
+          ) : tab === 'chat' ? (
             <div className="mp-body">
               <div className="mp-col mp-models">
                 <h4>{t('模型选择')}</h4>

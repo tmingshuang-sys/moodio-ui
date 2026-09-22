@@ -77,7 +77,7 @@ export default function LedgerView({ doc }: { doc: Doc }) {
           <ul className="lg-entities">{ledger.entities.map(e => (
             <li key={e.name}>
               {e.ref ? <button type="button" className="lg-thumb-btn" onClick={() => openInPane(e.ref!)}><Thumb id={e.ref} /></button> : <span className="lg-thumb empty"><ImageIcon size={16} /></span>}
-              <span className="lg-entity-name">{e.name}</span><em className="lg-chip">{e.kind || '实体'}</em><em className={`lg-chip${e.status === '已确认' ? ' ok' : e.ref ? ' warn' : ''}`}>{e.status || (e.ref ? '待确认' : '无参考图')}</em>{e.voice ? <em className="lg-chip">{t('音色')}</em> : null}
+              <span className="lg-entity-name">{e.name}</span><em className="lg-chip">{e.kind || '实体'}</em><em className={`lg-chip${e.status === '已确认' ? ' ok' : e.ref ? ' warn' : ''}`}>{e.status || (e.ref ? '待确认' : '无参考图')}</em>{e.voice ? <button type="button" className="lg-chip lg-chip-btn" onClick={() => openInPane(e.voice!)}>{t('音色')}</button> : null}
             </li>
           ))}</ul>
         ) : <p className="lg-empty">—</p>}

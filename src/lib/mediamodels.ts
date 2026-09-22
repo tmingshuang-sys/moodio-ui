@@ -89,13 +89,25 @@ export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
   { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10] },
 ];
 
+// 声音模型（fal 上托管的 MiniMax）：设计音色固定走 voice-design（按文字描述出一段试听并返回 voice id），合成配音在下面几档里选；
+// voice id 只在 MiniMax 系里通用，所以这里不混入别家的 TTS。fal 队列、轮询、代下载与图片 / 视频共用一套。
+export const VOICE_DESIGN_MODEL = 'fal-ai/minimax/voice-design';
+export const VOICE_DESIGN_PRESET: ModelPreset = { id: VOICE_DESIGN_MODEL, name: 'MiniMax 声音设计', hint: '按文字描述设计音色，返回试听与 voice id', provider: 'fal' };
+export const VOICE_MODELS: ModelPreset[] = [
+  { id: 'fal-ai/minimax/speech-2.8-hd', name: 'MiniMax Speech 2.8 HD', hint: '最新一代，中文自然，支持停顿与语气标记', provider: 'fal' },
+  { id: 'fal-ai/minimax/speech-2.6-hd', name: 'MiniMax Speech 2.6 HD', hint: '上一代稳定版', provider: 'fal' },
+  { id: 'fal-ai/minimax/speech-2.6-turbo', name: 'MiniMax Speech 2.6 Turbo', hint: '更快更便宜', provider: 'fal' },
+  { id: 'fal-ai/minimax/speech-02-hd', name: 'MiniMax Speech 02 HD', hint: '老版本，兜底', provider: 'fal' },
+];
+
 // ===== 智能匹配模型：id 为 AUTO 时按候选链依次尝试，遇到「模型不可用」类错误就换下一个 =====
 export const AUTO = 'auto';
-export type ModelKind = 'image' | 'video' | 'videoImage';
+export type ModelKind = 'image' | 'video' | 'videoImage' | 'voice';
 export const AUTO_CHAINS: Record<ModelKind, string[]> = {
   image: ['doubao-seedream-5-0-260128', 'doubao-seedream-5-0-flash-260915', 'doubao-seedream-4-5-251128', 'fal-ai/bytedance/seedream/v3/text-to-image', 'fal-ai/flux/dev'],
   video: ['doubao-seedance-2-5-260628', 'doubao-seedance-2-0-260128', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/text-to-video'],
   videoImage: ['doubao-seedance-2-5-260628', 'doubao-seedance-2-0-260128', 'doubao-seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/image-to-video'],
+  voice: ['fal-ai/minimax/speech-2.8-hd', 'fal-ai/minimax/speech-2.6-hd', 'fal-ai/minimax/speech-02-hd'],
 };
 export const AUTO_LABEL = '智能匹配模型';
 export function isAuto(id: string | undefined): boolean { return !id || id === AUTO; }
@@ -122,13 +134,13 @@ export function findPreset(list: ModelPreset[], id: string | undefined): ModelPr
   return list.find(m => m.id === String(id || '')) || null;
 }
 // 自定义 id 的兜底：带斜杠当成 fal，否则当成方舟；图片按 image_size、视频按 aspect_ratio + 时长
-export function presetFor(list: ModelPreset[], id: string | undefined, kind: 'image' | 'video' | 'videoImage'): ModelPreset {
+export function presetFor(list: ModelPreset[], id: string | undefined, kind: ModelKind): ModelPreset {
   const hit = findPreset(list, id);
   if (hit) return hit;
   const raw = String(id || '');
   const provider: Provider = raw.includes('/') ? 'fal' : 'ark';
   const fallback: ModelPreset = { id: raw, name: '自定义模型', hint: '按通用参数发送', provider };
   if (kind === 'image') { fallback.ratio = provider === 'ark' ? 'arg' : 'image_size'; fallback.resolution = provider === 'ark'; }
-  else { fallback.duration = true; fallback.resolution = provider === 'ark'; if (provider === 'ark') fallback.durationRange = [2, 30]; if (kind === 'video') fallback.ratio = provider === 'ark' ? 'arg' : 'aspect_ratio'; }
+  else if (kind !== 'voice') { fallback.duration = true; fallback.resolution = provider === 'ark'; if (provider === 'ark') fallback.durationRange = [2, 30]; if (kind === 'video') fallback.ratio = provider === 'ark' ? 'arg' : 'aspect_ratio'; }
   return fallback;
 }
