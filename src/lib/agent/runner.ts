@@ -306,7 +306,7 @@ export function setTextAnswer(messageAt: number, qi: number, text: string) {
   chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { m.textAnswers = { ...(m.textAnswers || {}), [qi]: text }; } });
 }
 export function toggleAnswer(messageAt: number, qi: number, oi: number) {
-  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { const q = m.questions[qi]; if (!q) return; m.answers = m.answers || {}; const cur = m.answers[qi] || []; m.answers[qi] = q.multi ? (cur.includes(oi) ? cur.filter(x => x !== oi) : [...cur, oi]) : (cur.includes(oi) ? [] : [oi]); } });
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { const q = m.questions[qi]; if (!q) return; m.answers = m.answers || {}; const cur = m.answers[qi] || []; m.answers[qi] = q.multi ? (cur.includes(oi) ? cur.filter(x => x !== oi) : [...cur, oi]) : [oi]; /* 单选再点已选项不取消，像单选框；多选才切换 */ } });
 }
 export function useFollowUp(messageAt: number, index: number) {
   const c = chats().chat(); const m = c.messages.find(x => x.at === messageAt); const option = m?.followUps?.[index]; if (!m || !option) return;

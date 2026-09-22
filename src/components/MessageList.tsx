@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard, ChevronLeft, ChevronRight, Film, Music } from 'lucide-react';
 import type { Artifact, Chat, Message, Plan, PlanStep, Question } from '../lib/types';
-import { useAgent, useFiles } from '../lib/store';
+import { useAgent, useFiles, useChats } from '../lib/store';
 import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, useFollowUp, reviewFix, restoreTrash, retryStep, send } from '../lib/agent/runner';
 import { skipLintGate } from '../lib/director';
 import { mediaUrl } from '../lib/storage';
@@ -82,6 +82,11 @@ function QuestionCard({ m, live }: { m: Message; live: boolean }) {
   const pick = (oi: number) => {
     if (!live) return; toggleAnswer(m.at, qi, oi);
     if (type === 'single' && qi < qs.length - 1) setTimeout(() => setPage(qi + 1), 220);   // 单选后自动翻到下一题
+    else if (type === 'single') setTimeout(() => {   // 最后一题也是单选：全部答完就直接发送，不用再点按钮
+      const fresh = useChats.getState().chat().messages.find(x => x.at === m.at); if (!fresh?.questions || fresh.questionsUsed) return;
+      const done = fresh.questions.every((_, i) => (fresh.answers?.[i] || []).length > 0 || !!String(fresh.textAnswers?.[i] || '').trim());
+      if (done) answerQuestions(m.at, false);
+    }, 260);
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (!live || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') return;
