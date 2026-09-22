@@ -6,7 +6,7 @@ import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreH
 import type { Doc, MediaItem } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
 import { previewLines, baseName, wordCount, plainText } from '../lib/markdown';
-import { timeAgo, formatBytes } from '../lib/time';
+import { timeAgo } from '../lib/time';
 import { mediaUrl, downloadText, getBlob, downloadBlob } from '../lib/storage';
 import { uploadFiles } from '../lib/upload';
 import { openMenuAt } from './Menu';
@@ -49,7 +49,7 @@ function MediaCard({ item, view, onOpen, onMenu }: { item: MediaItem; view: 'gri
   const url = useMediaUrl(item.id);
   if (view === 'list') return (
     <div className="file-row" onClick={onOpen} onContextMenu={e => { e.preventDefault(); onMenu(e.currentTarget); }}>
-      <span className="row-icon">{item.kind === 'image' ? <ImageIcon size={16} /> : item.kind === 'audio' ? <Music size={16} /> : <Film size={16} />}</span><span className="row-name">{item.name}</span><span className="row-meta">{item.group} · {formatBytes(item.size)}</span><span className="row-time">{timeAgo(item.createdAt)}</span>
+      <span className="row-icon">{item.kind === 'image' ? <ImageIcon size={16} /> : item.kind === 'audio' ? <Music size={16} /> : <Film size={16} />}</span><span className="row-name">{item.name}</span><span className="row-meta">{item.group}</span><span className="row-time">{timeAgo(item.createdAt)}</span>
       <button type="button" className="row-more" aria-label="更多" onClick={e => { e.stopPropagation(); onMenu(e.currentTarget); }}><MoreHorizontal size={16} /></button>
     </div>
   );
@@ -121,7 +121,6 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         <button type="button" className="back-btn" onClick={onBack}><ChevronLeft size={16} />{t('资源')}</button>
         <span className="kind-badge png">{item.kind === 'image' ? 'IMG' : item.kind === 'audio' ? 'AUDIO' : 'VIDEO'}</span>
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
-        <span className="view-meta">{item.width ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.size)}{item.model ? ` · ${item.model}` : ''}</span>
         <div className="view-tools">
           <label className="group-select">{t('分区')}<select value={groups.includes(item.group) ? item.group : '其他'} onChange={e => useFiles.getState().updateMedia(item.id, { group: e.target.value })}>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={async () => { const blob = await getBlob(item.id); if (blob) downloadBlob(item.name, blob); }}><Download size={17} /></button>
@@ -188,11 +187,15 @@ export default function ResourcePane({ width }: { width: number }) {
             <button type="button" className="icon-btn" aria-label={t('关闭工作区')} title={t('关闭工作区')} onClick={() => setUi({ paneOpen: false })}><X size={18} /></button>
           </header>
           <div className="pane-body">
+            {/* 有产物的分区才出现，不放空的占位框；搜索没结果时只给一行提示 */}
+            {q && !shownDocs.length && !images.length && !videos.length && !audios.length && <p className="pane-empty">{t('没有找到匹配的文件')}</p>}
+            {shownDocs.length > 0 && (
             <section className="pane-section">
               <h3>{t('文稿')}<small>共 {shownDocs.length} 个</small></h3>
-              {shownDocs.length ? <div className={ui.view === 'grid' ? 'file-grid' : 'file-list'}>{shownDocs.map(d => <DocCard key={d.id} doc={d} view={ui.view} onOpen={() => openInPane(d.id)} onMenu={el => docMenu(el, d)} />)}</div>
-                : <p className="pane-empty">{q ? t('没有找到匹配的文件') : t('还没有文稿。让 Agent 写剧本、拆分镜或生成提示词，产物会出现在这里。')}</p>}
+              <div className={ui.view === 'grid' ? 'file-grid' : 'file-list'}>{shownDocs.map(d => <DocCard key={d.id} doc={d} view={ui.view} onOpen={() => openInPane(d.id)} onMenu={el => docMenu(el, d)} />)}</div>
             </section>
+            )}
+            {images.length > 0 && (
             <section className="pane-section">
               <h3>{t('图片')}<small>共 {images.length} 个</small></h3>
               {images.length > 0 && (
@@ -201,9 +204,9 @@ export default function ResourcePane({ width }: { width: number }) {
                   {Object.entries(groupCounts).map(([g, n]) => <button key={g} type="button" className={imageGroup === g ? 'active' : ''} onClick={() => setImageGroup(g)}>{t(g)} <b>{n}</b></button>)}
                 </div>
               )}
-              {shownImages.length ? <div className={ui.view === 'grid' ? 'file-grid media' : 'file-list'}>{shownImages.map(m => <MediaCard key={m.id} item={m} view={ui.view} onOpen={() => openInPane(m.id)} onMenu={el => mediaMenu(el, m)} />)}</div>
-                : <p className="pane-empty">{q ? t('没有找到匹配的文件') : t('还没有图片或视频。点击输入框左下角的 + 上传，或拖拽文件到这里。')}</p>}
+              {shownImages.length > 0 && <div className={ui.view === 'grid' ? 'file-grid media' : 'file-list'}>{shownImages.map(m => <MediaCard key={m.id} item={m} view={ui.view} onOpen={() => openInPane(m.id)} onMenu={el => mediaMenu(el, m)} />)}</div>}
             </section>
+            )}
             {videos.length > 0 && (
               <section className="pane-section">
                 <h3>{t('视频')}<small>共 {videos.length} 个</small></h3>

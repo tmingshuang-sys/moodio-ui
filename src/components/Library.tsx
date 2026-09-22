@@ -6,7 +6,7 @@ import { projects } from '../lib/projects';
 import { allMedia, renameLibraryMedia, deleteLibraryMedia, restoreLibraryMedia, openInCreation } from '../lib/library';
 import type { LibraryItem } from '../lib/library';
 import { mediaUrl, getBlob, downloadBlob } from '../lib/storage';
-import { timeAgo, formatBytes } from '../lib/time';
+import { timeAgo } from '../lib/time';
 import { openMenuAt } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
@@ -43,7 +43,7 @@ function Card({ item, view, onOpen, onMenu }: { item: LibraryItem; view: View; o
     <div className="file-row" onClick={onOpen} onContextMenu={e => { e.preventDefault(); onMenu(e.currentTarget); }}>
       <span className="row-thumb"><Thumb item={item} onDuration={setDur} /></span>
       <span className="row-name">{item.name}</span>
-      <span className="row-meta">{[item.kind !== 'image' && dur ? fmtDuration(dur) : '', item.projectTitle, formatBytes(item.size)].filter(Boolean).join(' · ')}</span>
+      <span className="row-meta">{[item.kind !== 'image' && dur ? fmtDuration(dur) : '', item.projectTitle].filter(Boolean).join(' · ')}</span>
       <span className="row-time">{timeAgo(item.createdAt)}</span>
       {menuBtn('row-more')}
     </div>
@@ -63,7 +63,7 @@ function Card({ item, view, onOpen, onMenu }: { item: LibraryItem; view: View; o
 function Preview({ item, onClose, onMenu }: { item: LibraryItem; onClose: () => void; onMenu: (el: Element) => void }) {
   const t = useT(); const url = useMediaUrl(item.id);
   useEffect(() => { const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey); }, [onClose]);
-  const meta = [item.width ? `${item.width}×${item.height}` : '', formatBytes(item.size), item.model || '', item.projectTitle, timeAgo(item.createdAt)].filter(Boolean).join(' · ');
+  const meta = [item.projectTitle, timeAgo(item.createdAt)].filter(Boolean).join(' · ');   // 不展示大小 / 尺寸 / 模型名
   return (
     <div className="lib-preview" role="dialog" aria-label={item.name}>
       <header className="lib-preview-head">

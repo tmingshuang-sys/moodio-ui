@@ -117,7 +117,7 @@ describe('smart model matching', () => {
     expect(effectivePreset('image', 'auto').id).toBe('doubao-seedream-5-0-260128');
     expect(effectivePreset('image', 'auto').resolution).toBe(true);     // 面板按链首模型显示 2K / 4K
     expect(modelDisplayName('video', 'auto')).toBe('智能匹配');
-    expect(modelDisplayName('video', 'doubao-seedance-2-5-260628')).toBe('Seedance 2.5');
+    expect(modelDisplayName('video', 'dreamina-seedance-2-5-260628')).toBe('Seedance 2.5（BytePlus）');
   });
   it('only treats "model unavailable" errors as a reason to fall back', async () => {
     const m = await import('./mediamodels');
@@ -182,8 +182,8 @@ describe('video profile', () => {
   it('follows the effective model: auto → Seedance 2.5, the last model that actually ran when auto fell back, or the manual pick', async () => {
     let m = await load();
     expect(m.videoProfile()).toMatchObject({ longTake: true, maxClip: 30, keyframes: 'both' }); expect(m.videoProfile().model.name).toBe('Seedance 2.5（BytePlus）'); expect(m.videoProfile().model.provider).toBe('byteplus');
-    memory.set('moodio-last-video-model', 'doubao-seedance-1-0-pro-250528'); vi.resetModules(); m = await load();
-    expect(m.effectiveVideoId()).toBe('doubao-seedance-1-0-pro-250528'); expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 10 });
+    memory.set('moodio-last-video-model', 'seedance-1-0-pro-250528'); vi.resetModules(); m = await load();
+    expect(m.effectiveVideoId()).toBe('seedance-1-0-pro-250528'); expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 12 });
     memory.set('moodio-last-video-model', 'not-in-chain'); vi.resetModules(); m = await load();
     expect(m.effectiveVideoId()).toBe('dreamina-seedance-2-5-260628');
     const mm = await import('./mediamodels'); expect(mm.isArkLike('byteplus')).toBe(true); expect(mm.isArkLike('fal')).toBe(false);

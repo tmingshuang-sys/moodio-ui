@@ -65,10 +65,8 @@ export const IMAGE_MODELS: ModelPreset[] = [
   { id: 'fal-ai/flux/schnell', name: 'FLUX.1 schnell', hint: '最快，适合大量出草图', provider: 'fal', ratio: 'image_size' },
   { id: 'fal-ai/flux-pro/v1.1', name: 'FLUX1.1 pro', hint: '质感更好，成本更高', provider: 'fal', ratio: 'image_size' },
   { id: 'fal-ai/bytedance/seedream/v3/text-to-image', name: 'Seedream 3.0（fal）', hint: '字节，中文理解好', provider: 'fal', ratio: 'image_size', verified: true },
-  { id: 'doubao-seedream-5-0-260128', name: 'Seedream 5.0', hint: '方舟，最新一代，中文与版面最好', provider: 'ark', ratio: 'arg', resolution: true, verified: true },
-  { id: 'doubao-seedream-5-0-pro-260628', name: 'Seedream 5.0 Pro', hint: '方舟，质量更高', provider: 'ark', ratio: 'arg', resolution: true },
-  { id: 'doubao-seedream-5-0-flash-260915', name: 'Seedream 5.0 Flash', hint: '方舟，快且便宜', provider: 'ark', ratio: 'arg', resolution: true },
-  { id: 'doubao-seedream-4-5-251128', name: 'Seedream 4.5', hint: '方舟，上一代稳定版', provider: 'ark', ratio: 'arg', resolution: true },
+  { id: 'doubao-seedream-5-0-260128', name: 'Seedream 5.0', hint: '火山方舟，最新一代，中文与版面最好', provider: 'ark', ratio: 'arg', resolution: true, verified: true },
+  { id: 'doubao-seedream-4-5-251128', name: 'Seedream 4.5', hint: '火山方舟，上一代稳定版', provider: 'ark', ratio: 'arg', resolution: true },
   { id: 'seedream-5-0-260128', name: 'Seedream 5.0（BytePlus）', hint: 'BytePlus 海外版方舟，同款模型', provider: 'byteplus', ratio: 'arg', resolution: true },
   { id: 'dola-seedream-5-0-pro-260628', name: 'Seedream 5.0 Pro（BytePlus）', hint: 'BytePlus，质量更高', provider: 'byteplus', ratio: 'arg', resolution: true },
   { id: 'fal-ai/qwen-image', name: 'Qwen Image', hint: '通义，画面里的中文字更稳', provider: 'fal', ratio: 'image_size' },
@@ -81,11 +79,6 @@ export const VIDEO_MODELS: ModelPreset[] = [
   { id: 'dreamina-seedance-2-0-260128', name: 'Seedance 2.0（BytePlus）', hint: 'BytePlus，单段 4–15 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15 },
   { id: 'dreamina-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（BytePlus）', hint: 'BytePlus，极速推理，单段 4–15 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15 },
   { id: 'seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro（BytePlus）', hint: 'BytePlus，上一代稳定版，单段 2–12 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [2, 12], maxClip: 12, resolution: true },
-  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，最新一代，需在方舟控制台开通', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
-  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，全模态', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
-  { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast', hint: '方舟，极速推理', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
-  { id: 'doubao-seedance-2-0-mini-260615', name: 'Seedance 2.0 Mini', hint: '方舟，体验版，最便宜', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
-  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版，单段 5 / 10 秒', provider: 'ark', ratio: 'arg', duration: true, durations: [5, 10], maxClip: 10, resolution: true },
   { id: 'fal-ai/kling-video/v1/standard/text-to-video', name: '可灵 1.0 标准（fal）', hint: '稳定，5 秒约 5 分钟', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], maxClip: 10, verified: true },
   { id: 'fal-ai/kling-video/v2/master/text-to-video', name: '可灵 2.0 大师（fal）', hint: '质量好，较贵', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], maxClip: 10 },
   { id: 'fal-ai/veo3', name: 'Google Veo 3（fal）', hint: '自带音效，最贵', provider: 'fal', ratio: 'aspect_ratio', maxClip: 8 },
@@ -96,12 +89,10 @@ export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
   { id: 'dreamina-seedance-2-5-260628', name: 'Seedance 2.5（BytePlus）', hint: 'BytePlus，同一模型带首尾帧图', provider: 'byteplus', duration: true, durationRange: [4, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both' },
   { id: 'dreamina-seedance-2-0-260128', name: 'Seedance 2.0（BytePlus）', hint: 'BytePlus，同一模型带首尾帧图', provider: 'byteplus', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15, keyframes: 'both' },
   { id: 'seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro（BytePlus）', hint: 'BytePlus，上一代稳定版，单段 2–12 秒', provider: 'byteplus', duration: true, durationRange: [2, 12], maxClip: 12, resolution: true, keyframes: 'both' },
-  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，同一模型带首尾帧图', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both' },
-  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，同一模型带首尾帧图', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both' },
-  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版，单段 5 / 10 秒', provider: 'ark', duration: true, durations: [5, 10], maxClip: 10, resolution: true, keyframes: 'both' },
   { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10], maxClip: 10, keyframes: 'first' },
 ];
 
+// 火山方舟这边视频型号都用不了（2.5 / 2.0 Mini 未开通，其余欠费）、图片只剩 Seedream 5.0 / 4.5 开着，已按用户要求把用不了的从目录里去掉；视频全部走 BytePlus 与 fal
 // 声音模型（fal 上托管的 MiniMax）：设计音色固定走 voice-design（按文字描述出一段试听并返回 voice id），合成配音在下面几档里选；
 // voice id 只在 MiniMax 系里通用，所以这里不混入别家的 TTS。fal 队列、轮询、代下载与图片 / 视频共用一套。
 export const VOICE_DESIGN_MODEL = 'fal-ai/minimax/voice-design';
@@ -117,9 +108,9 @@ export const VOICE_MODELS: ModelPreset[] = [
 export const AUTO = 'auto';
 export type ModelKind = 'image' | 'video' | 'videoImage' | 'voice';
 export const AUTO_CHAINS: Record<ModelKind, string[]> = {
-  image: ['doubao-seedream-5-0-260128', 'seedream-5-0-260128', 'doubao-seedream-5-0-flash-260915', 'doubao-seedream-4-5-251128', 'fal-ai/bytedance/seedream/v3/text-to-image', 'fal-ai/flux/dev'],
-  video: ['dreamina-seedance-2-5-260628', 'doubao-seedance-2-5-260628', 'dreamina-seedance-2-0-260128', 'doubao-seedance-2-0-260128', 'dreamina-seedance-2-0-fast-260128', 'doubao-seedance-2-0-fast-260128', 'doubao-seedance-1-0-pro-250528', 'seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/text-to-video'],
-  videoImage: ['dreamina-seedance-2-5-260628', 'doubao-seedance-2-5-260628', 'dreamina-seedance-2-0-260128', 'doubao-seedance-2-0-260128', 'doubao-seedance-1-0-pro-250528', 'seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/image-to-video'],
+  image: ['doubao-seedream-5-0-260128', 'seedream-5-0-260128', 'doubao-seedream-4-5-251128', 'fal-ai/bytedance/seedream/v3/text-to-image', 'fal-ai/flux/dev'],
+  video: ['dreamina-seedance-2-5-260628', 'dreamina-seedance-2-0-260128', 'dreamina-seedance-2-0-fast-260128', 'seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/text-to-video'],
+  videoImage: ['dreamina-seedance-2-5-260628', 'dreamina-seedance-2-0-260128', 'seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/image-to-video'],
   voice: ['fal-ai/minimax/speech-2.8-hd', 'fal-ai/minimax/speech-2.6-hd', 'fal-ai/minimax/speech-02-hd'],
 };
 export const AUTO_LABEL = '智能匹配模型';

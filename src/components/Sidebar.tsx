@@ -71,7 +71,7 @@ export default function Sidebar() {
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`} aria-label="导航">
       <div className="sb-head">
-        <button type="button" className="sb-logo" onClick={e => openProjectMenu(e.currentTarget)} title={projects.active().title}>
+        <button type="button" className="sb-logo" onClick={() => { go('chat'); startCreation(); }} title={t('返回主页')}>
           <img src="./moodio-logo.svg" alt="" /><span className="sb-brand">Moodio</span>
         </button>
         <button type="button" className="icon-btn" onClick={() => setUi({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? '展开侧栏' : '收起侧栏'} title={collapsed ? '展开侧栏' : '收起侧栏'}><PanelLeft size={18} /></button>
