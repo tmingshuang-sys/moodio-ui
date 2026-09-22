@@ -1,7 +1,7 @@
 // ===== 执行器：reply() 只产出计划；用户点「确认执行」后 executePlan() 才调用工具；工具写文稿时在右侧工作区逐行写入 =====
 import type { Action, Artifact, FollowUp, Message, PlanStep, Review, ReviewItem } from '../types';
 import { useAgent, useChats, useFiles, findDoc } from '../store';
-import { modelCfg, callModel, writerCfg, partialPlanMessage, parsePlanJSON } from '../model';
+import { modelCfg, callModel, chatCfg, partialPlanMessage, parsePlanJSON } from '../model';
 import { AGENT_TOOLS, NO_CONFIRM_TOOLS, DESTRUCTIVE_TOOLS, GENERATE_TOOLS, planSteps, saveBrief } from './tools';
 import { genMode } from '../mediagen';
 import type { ToolContext, ToolResult } from './tools';
@@ -218,7 +218,7 @@ export async function executePlan(key: string, messageAt: number) {
 
 // 写完自审：用写作模型按当前类型的自查清单审读刚写的剧本文稿
 async function selfReview(targets: { docId: string; title: string }[]): Promise<Review | null> {
-  const cfg = modelCfg(); if (!cfg?.apiKey) return null; const wcfg = writerCfg(cfg);
+  const cfg = modelCfg(); if (!cfg?.apiKey) return null; const wcfg = chatCfg(cfg, 'write');
   const items: ReviewItem[] = [];
   for (const tgt of targets) {
     const doc = findDoc(tgt.docId); if (!doc || docRole(doc.name) !== 'script') continue;

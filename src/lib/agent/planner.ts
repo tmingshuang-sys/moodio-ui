@@ -1,6 +1,6 @@
 // ===== 规划器：把用户请求交给模型，得到 {message, actions, followUps}；追问与下一步建议的规整 =====
 import type { Action, Chat, FollowUp, Message, Question } from '../types';
-import { modelCfg, callModel, isCreativeRequest, writerCfg, parsePlanJSON } from '../model';
+import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON } from '../model';
 import { AGENT_TOOLS } from './tools';
 import { buildSystemPrompt, hasScriptDoc } from './prompt';
 
@@ -75,7 +75,7 @@ async function requestAgentPlan(request: (retry: boolean) => Promise<string>): P
 export async function remotePlan(text: string, chat: Chat, hooks: PlanHooks = {}): Promise<PlanReply | null> {
   const cfg = modelCfg(); if (!cfg?.apiKey) return null;
   const sys = buildSystemPrompt(text, chat);
-  const callCfg = isCreativeRequest(text) ? writerCfg(cfg) : cfg;
+  const callCfg = chatCfg(cfg, isCreativeRequest(text) ? 'write' : 'plan');
   return requestAgentPlan(async retry => {
     const repair = retry ? '\n上次回复未通过 JSON / actions 结构校验。请依据同一用户请求重新输出完整 JSON 对象，包含字符串 message 和数组 actions。字符串中的换行与引号必须正确转义，不要代码围栏、前后说明或截断内容。不要增加原请求以外的操作。' : '';
     if (retry) hooks.onStatus?.('正在修正模型回复格式…');

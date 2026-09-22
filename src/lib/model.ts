@@ -12,11 +12,42 @@ export const PROVIDER_DEFAULTS = {
 export function modelCfg(): ModelConfig | null { try { return JSON.parse(localStorage.getItem(MODEL_KEY) || 'null'); } catch { return null; } }
 export function saveModelCfg(cfg: ModelConfig | null) { if (cfg) localStorage.setItem(MODEL_KEY, JSON.stringify(cfg)); else localStorage.removeItem(MODEL_KEY); window.dispatchEvent(new CustomEvent('moodio:model-changed')); }
 export function modelProvider(cfg: ModelConfig | null | undefined): 'claude' | 'openai' { return cfg?.provider || (String(cfg?.apiKey || '').startsWith('sk-ant-') ? 'claude' : 'openai'); }
-export function modelLabel(cfg: ModelConfig | null | undefined): string { if (!cfg?.apiKey) return '未连接模型'; const p = modelProvider(cfg); return `${p === 'claude' ? 'Claude' : 'OpenAI 兼容'} · ${cfg.model || PROVIDER_DEFAULTS[p].model}`; }
+export function modelLabel(cfg: ModelConfig | null | undefined): string { if (!cfg?.apiKey) return '未连接模型'; const p = modelProvider(cfg); return `${p === 'claude' ? 'Claude' : 'OpenAI 兼容'} · ${isAutoModel(cfg) ? '智能匹配' : cfg.model || PROVIDER_DEFAULTS[p].model}`; }
 // 写作模型分工：创意类请求用写作模型（设置里单独指定），其余用默认模型
 const CREATIVE_RE = /(写|续写|改写|润色|扩写|重写|台词|对白|一场|整集|一集|脚本|广告|短片|大纲|梗概|节拍|小传|设定|风格|分镜|提示词|prompt)/i;
 export function isCreativeRequest(text: string): boolean { const t = String(text || ''); return CREATIVE_RE.test(t) && !/^(删除|重命名|导出|切换|打开|列出|读取|恢复|合并)/.test(t.trim()); }
 export function writerCfg(cfg: ModelConfig): ModelConfig { const model = String(cfg.writerModel || '').trim(); if (!model) return cfg; return { ...cfg, model, thinking: cfg.writerThinking || cfg.thinking }; }
+
+// ===== 推理（对话）模型目录：都经 Moodio 网关，按模型名分流到 DeepSeek 或 Moonshot =====
+export interface ChatPreset { id: string; name: string; hint: string; vendor: 'DeepSeek' | 'Kimi'; verified?: boolean; vision?: boolean; }
+export const CHAT_AUTO_ID = 'auto';
+export const CHAT_MODELS: ChatPreset[] = [
+  { id: 'deepseek-flash', name: 'DeepSeek Flash', hint: '快、便宜，日常对话与规划', vendor: 'DeepSeek', verified: true },
+  { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', hint: '写作质量更高，适合剧本与文案', vendor: 'DeepSeek' },
+  { id: 'kimi-k3', name: 'Kimi K3', hint: 'Moonshot 旗舰，支持看图与长上下文', vendor: 'Kimi', verified: true, vision: true },
+  { id: 'kimi-k2.6', name: 'Kimi K2.6', hint: 'Moonshot 上一代', vendor: 'Kimi' },
+];
+export type ChatKind = 'plan' | 'write' | 'vision';
+// 智能匹配的候选链：规划用快的，写作用强的，看图用能看图的；前一个不可用（未配置 / 不存在）就换下一个
+export const CHAT_AUTO: Record<ChatKind, string[]> = {
+  plan: ['deepseek-flash', 'kimi-k3', 'deepseek-v4-pro'],
+  write: ['deepseek-v4-pro', 'kimi-k3', 'deepseek-flash'],
+  vision: ['kimi-k3'],
+};
+export function isAutoModel(cfg: ModelConfig | null | undefined): boolean { const m = String(cfg?.model || '').trim(); return !m || m === CHAT_AUTO_ID; }
+export function isMoodioGateway(cfg: ModelConfig | null | undefined): boolean { return modelProvider(cfg) === 'openai' && (!cfg?.baseUrl || /moodio-gateway|workers\.dev/i.test(String(cfg.baseUrl))); }
+export function chatModelName(id: string | undefined): string { return isAutoModel({ model: id }) ? '智能匹配' : CHAT_MODELS.find(m => m.id === id)?.name || String(id); }
+// 按用途取实际要调的配置：候选链放在 candidates 里，callModel 遇到「模型不可用」就换下一个
+export function chatCfg(cfg: ModelConfig, kind: ChatKind): ModelConfig & { candidates?: string[] } {
+  if (kind === 'vision') { const v = visionCfg(cfg); return v || cfg; }
+  if (kind === 'write' && String(cfg.writerModel || '').trim()) return writerCfg(cfg);
+  if (!isAutoModel(cfg) || modelProvider(cfg) === 'claude') return kind === 'write' ? writerCfg(cfg) : cfg;
+  const chain = CHAT_AUTO[kind];
+  return { ...cfg, model: chain[0], candidates: chain, thinking: kind === 'write' ? (cfg.writerThinking || cfg.thinking) : cfg.thinking };
+}
+const MODEL_UNAVAILABLE_RE = /返回 (404|503)|not exist|not found|不存在|未配置|无法用|invalid model|model_not_found|does not exist/i;
+// 旧配置里存的是默认的具体模型名：第一次带智能匹配的版本启动时改成智能匹配（只做一次），之后用户手选的不再改
+(() => { try { if (typeof localStorage === 'undefined' || localStorage.getItem('moodio-chat-prefs-v2')) return; const cfg = modelCfg(); if (cfg && modelProvider(cfg) === 'openai' && (!cfg.model || cfg.model === PROVIDER_DEFAULTS.openai.model)) localStorage.setItem(MODEL_KEY, JSON.stringify({ ...cfg, model: CHAT_AUTO_ID })); localStorage.setItem('moodio-chat-prefs-v2', '1'); } catch { /* ignore */ } })();
 
 export interface CallOptions { signal?: AbortSignal; onText?: (text: string) => void; onReasoning?: (text: string) => void; images?: string[]; }   // images：data URL，交给支持图片输入的模型
 
@@ -26,7 +57,9 @@ export function visionCfg(cfg: ModelConfig | null | undefined): ModelConfig | nu
   if (!cfg?.apiKey) return null;
   const m = String(cfg.visionModel || '').trim();
   if (m) return { ...cfg, model: m, thinking: '' };
-  return VISION_RE.test(String(cfg.model || '')) ? { ...cfg, thinking: '' } : null;
+  if (!isAutoModel(cfg) && VISION_RE.test(String(cfg.model || ''))) return { ...cfg, thinking: '' };
+  if (isAutoModel(cfg) && isMoodioGateway(cfg)) return { ...cfg, model: CHAT_AUTO.vision[0], thinking: '' };   // 智能匹配：走网关时用 Kimi K3 看图
+  return null;
 }
 // OpenAI 兼容格式的用户消息：有图片时用 content 数组（文本 + image_url）
 export function openAIUserContent(t: string, images?: string[]): string | { type: string; text?: string; image_url?: { url: string } }[] {
@@ -193,9 +226,18 @@ export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { sig
   return content;
 }
 
-export async function callModel(cfg: ModelConfig, sys: string, t: string, opts: CallOptions = {}): Promise<string> {
-  try { return modelProvider(cfg) === 'claude' ? await callClaude(cfg, sys, t, opts) : await callOpenAI(cfg, sys, t, opts); }
-  catch (e) { throw explainModelError(e); }
+export async function callModel(cfg: ModelConfig & { candidates?: string[] }, sys: string, t: string, opts: CallOptions = {}): Promise<string> {
+  const chain = cfg.candidates?.length ? cfg.candidates : [cfg.model || ''];
+  let lastError: any = null;
+  for (let i = 0; i < chain.length; i++) {
+    const c = { ...cfg, model: chain[i] || cfg.model }; delete (c as any).candidates;
+    try { return modelProvider(c) === 'claude' ? await callClaude(c, sys, t, opts) : await callOpenAI(c, sys, t, opts); }
+    catch (e: any) {
+      lastError = e;
+      if (e?.name === 'AbortError' || i === chain.length - 1 || !MODEL_UNAVAILABLE_RE.test(String(e?.message || ''))) break;   // 只有「模型不可用」才换下一个
+    }
+  }
+  throw explainModelError(lastError);
 }
 
 export function explainModelError(e: any): Error {
@@ -206,7 +248,7 @@ export function explainModelError(e: any): Error {
 
 export async function probeModel(cfg: ModelConfig): Promise<string> {
   const sys = '你是连接测试助手，只回复 JSON：{"message":"OK","actions":[]}';
-  const content = modelProvider(cfg) === 'claude' ? await callClaude(cfg, sys, 'ping') : await callOpenAI(cfg, sys, 'ping');
+  const content = await callModel(chatCfg(cfg, 'plan'), sys, 'ping');
   return String(content || '').trim().slice(0, 80);
 }
 

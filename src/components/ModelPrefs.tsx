@@ -5,11 +5,12 @@ import { Check, SlidersHorizontal } from 'lucide-react';
 import type { ModelPreset, RatioKey } from '../lib/mediamodels';
 import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_RESOLUTIONS, IMAGE_RESOLUTIONS, DURATION_MIN, DURATION_MAX, AUTO, AUTO_CHAINS, AUTO_LABEL, isAuto, findPreset } from '../lib/mediamodels';
 import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason, genMode as readGenMode, effectivePreset, modelDisplayName } from '../lib/mediagen';
+import { CHAT_MODELS, CHAT_AUTO, CHAT_AUTO_ID, chatModelName, isAutoModel, modelProvider } from '../lib/model';
 import { modelCfg, saveModelCfg } from '../lib/model';
 import type { ModelConfig } from '../lib/types';
 import { useT } from '../lib/i18n';
 
-type Tab = 'video' | 'image';
+type Tab = 'video' | 'image' | 'chat';
 
 // 画面比例的小图示：按比例画一个圆角矩形
 function RatioIcon({ ratio }: { ratio: RatioKey }) {
@@ -28,6 +29,19 @@ function AutoRow({ kind, active, onPick }: { kind: 'image' | 'video' | 'videoIma
       <span className="mp-model-body">
         <span className="mp-model-name">{AUTO_LABEL}</span>
         <span className="mp-model-hint">默认 {first}，无法生成时自动换成可用的模型</span>
+      </span>
+    </button>
+  );
+}
+
+// 推理模型行：DeepSeek / Kimi，带厂商与「能看图」标记
+function ChatRow({ id, name, hint, badges, active, onPick }: { id: string; name: string; hint: string; badges?: string[]; active: boolean; onPick: () => void }) {
+  return (
+    <button type="button" className={`mp-model${active ? ' active' : ''}`} onClick={onPick} data-model={id}>
+      <span className="mp-check">{active && <Check size={14} strokeWidth={3} />}</span>
+      <span className="mp-model-body">
+        <span className="mp-model-name">{name}{(badges || []).map(b => <em key={b} className="mp-tag">{b}</em>)}</span>
+        <span className="mp-model-hint">{hint}</span>
       </span>
     </button>
   );
@@ -82,6 +96,8 @@ export default function ModelPrefs() {
   const mode = readGenMode(cfg);
   const videoName = modelDisplayName('video', videoId);
   const imageName = modelDisplayName('image', imageId);
+  const chatId = String(cfg.model || CHAT_AUTO_ID); const chatName = chatModelName(chatId); const isClaude = modelProvider(cfg) === 'claude';
+  const thinking = String(cfg.thinking || '');
   const videoPreset = effectivePreset('video', videoId);
   const imagePreset = effectivePreset('image', imageId);
   const videoImagePreset = effectivePreset('videoImage', videoImageId);
@@ -90,7 +106,7 @@ export default function ModelPrefs() {
   return (
     <>
       <button ref={btnRef} type="button" className={`tool-btn${open ? ' on' : ''}`} onClick={() => setOpen(v => !v)} aria-expanded={open} aria-haspopup="dialog"
-        aria-label={t('生成模型')} title={`${t('视频模型')} ${videoName} · ${t('图片模型')} ${imageName}`}>
+        aria-label={t('生成模型')} title={`${t('视频模型')} ${videoName} · ${t('图片模型')} ${imageName} · ${t('推理模型')} ${chatName}`}>
         <SlidersHorizontal size={17} />
       </button>
       {open && (
@@ -98,8 +114,28 @@ export default function ModelPrefs() {
           <div className="mp-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'video'} className={tab === 'video' ? 'active' : ''} onClick={() => setTab('video')}>{t('视频模型')}</button>
             <button type="button" role="tab" aria-selected={tab === 'image'} className={tab === 'image' ? 'active' : ''} onClick={() => setTab('image')}>{t('图片模型')}</button>
+            <button type="button" role="tab" aria-selected={tab === 'chat'} className={tab === 'chat' ? 'active' : ''} onClick={() => setTab('chat')}>{t('推理模型')}</button>
           </div>
-          {notReady && <p className="mp-warn">{notReady}</p>}
+          {notReady && tab !== 'chat' && <p className="mp-warn">{notReady}</p>}
+          {tab === 'chat' ? (
+            <div className="mp-body">
+              <div className="mp-col mp-models">
+                <h4>{t('模型选择')}</h4>
+                {isClaude ? <p className="mp-model-hint mp-note">{t('当前直连 Claude，推理模型在模型设置里填写。')}</p> : (
+                  <>
+                    <ChatRow id={CHAT_AUTO_ID} name={t('智能匹配模型')} hint={`${t('规划')} ${chatModelName(CHAT_AUTO.plan[0])} · ${t('写作')} ${chatModelName(CHAT_AUTO.write[0])} · ${t('看图')} ${chatModelName(CHAT_AUTO.vision[0])}，${t('不可用时自动换')}`} active={isAutoModel(cfg)} onPick={() => patch({ model: CHAT_AUTO_ID })} />
+                    {CHAT_MODELS.map(m => <ChatRow key={m.id} id={m.id} name={m.name} hint={m.hint} badges={[m.vendor, ...(m.vision ? [t('能看图')] : []), ...(m.verified ? ['实测'] : [])]} active={!isAutoModel(cfg) && chatId === m.id} onPick={() => patch({ model: m.id })} />)}
+                  </>
+                )}
+              </div>
+              <div className="mp-col mp-options">
+                <h4>{t('思考模式')}</h4>
+                <div className="mp-chips">
+                  {[['', t('跟随默认')], ['off', t('关闭')], ['low', t('低')], ['high', t('高')], ['max', t('最高')]].map(([v, label]) => <button key={v} type="button" className={v === thinking ? 'active' : ''} onClick={() => patch({ thinking: v })}>{label}</button>)}
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="mp-body">
             <div className="mp-col mp-models">
               <h4>{t('模型选择')}</h4>
@@ -175,6 +211,7 @@ export default function ModelPrefs() {
               </div>
             </div>
           </div>
+          )}
         </div>
       )}
     </>

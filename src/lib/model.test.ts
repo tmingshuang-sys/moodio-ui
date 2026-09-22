@@ -15,3 +15,38 @@ describe('vision support', () => {
     expect(visionCfg({ apiKey: 'x', provider: 'claude', model: 'claude-opus-5' })!.model).toBe('claude-opus-5');
   });
 });
+
+describe('chat model smart matching', () => {
+  it('resolves auto to a per-purpose candidate chain and respects explicit choices', async () => {
+    const m = await import('./model');
+    expect(m.isAutoModel({ apiKey: 'x' })).toBe(true); expect(m.isAutoModel({ apiKey: 'x', model: 'auto' })).toBe(true); expect(m.isAutoModel({ apiKey: 'x', model: 'kimi-k3' })).toBe(false);
+    const plan = m.chatCfg({ apiKey: 'x', model: 'auto', thinking: 'low' }, 'plan');
+    expect(plan.model).toBe('deepseek-flash'); expect(plan.candidates).toEqual(m.CHAT_AUTO.plan); expect(plan.thinking).toBe('low');
+    const write = m.chatCfg({ apiKey: 'x', model: 'auto', writerThinking: 'high' }, 'write');
+    expect(write.model).toBe('deepseek-v4-pro'); expect(write.thinking).toBe('high');
+    expect(m.chatCfg({ apiKey: 'x', model: 'auto', writerModel: 'kimi-k3' }, 'write').model).toBe('kimi-k3');   // 设置里明确指定的写作模型优先
+    expect(m.chatCfg({ apiKey: 'x', model: 'kimi-k3' }, 'plan')).toEqual({ apiKey: 'x', model: 'kimi-k3' });      // 手选模型不带候选链
+    expect(m.chatCfg({ apiKey: 'x', model: 'auto' }, 'vision').model).toBe('kimi-k3');                            // 智能匹配走网关时用 Kimi 看图
+    expect(m.chatCfg({ apiKey: 'x', model: 'auto', baseUrl: 'https://api.deepseek.com/v1' }, 'vision').candidates).toBeUndefined();   // 直连 DeepSeek 没有能看图的
+    expect(m.chatModelName('auto')).toBe('智能匹配'); expect(m.chatModelName('kimi-k3')).toBe('Kimi K3');
+  });
+  it('falls through the candidate chain only on model-unavailable errors', async () => {
+    const m = await import('./model');
+    const calls: string[] = [];
+    const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    (globalThis as any).fetch = async (_url: string, init: any) => {
+      const model = JSON.parse(init.body).model; calls.push(model);
+      if (model === 'deepseek-flash') return new Response(JSON.stringify({ error: { message: '网关还没有配置 DEEPSEEK_API_KEY' } }), { status: 503 });
+      if (model === 'kimi-k3') return reply('{"message":"from kimi"}');
+      return reply('{}');
+    };
+    const cfg = m.chatCfg({ apiKey: 'x', model: 'auto', baseUrl: 'https://moodio-gateway.moodio-ui.workers.dev/v1' }, 'plan');
+    expect(await m.callModel(cfg, 'sys', 'hi')).toBe('{"message":"from kimi"}');
+    expect(calls).toEqual(['deepseek-flash', 'kimi-k3']);
+    // 生成本身的错误不换模型
+    calls.length = 0;
+    (globalThis as any).fetch = async (_url: string, init: any) => { calls.push(JSON.parse(init.body).model); return new Response(JSON.stringify({ error: { message: 'content too long' } }), { status: 400 }); };
+    await expect(m.callModel(cfg, 'sys', 'hi')).rejects.toThrow('400');
+    expect(calls).toEqual(['deepseek-flash']);
+  });
+});

@@ -532,3 +532,7 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .img-verdict { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #e6efe8; color: #2f6b45; font-style: normal; font-size: 11px; }
 .img-verdict.bad { background: #f3e4e4; color: #9a3d3d; }
 .img-review-list li.is-bad .img-review-thumb { border-color: #d9b4b4; }
+
+/* 推理模型标签页：厂商 / 能看图 标记与直连 Claude 的说明 */
+.mp-model-name .mp-tag { padding: 0 5px; border-radius: 999px; background: var(--panel); color: var(--ink-3); font: 500 10px/15px var(--font-ui); font-style: normal; }
+.mp-note { padding: 8px; }

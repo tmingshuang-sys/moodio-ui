@@ -58,7 +58,7 @@ function PromptDialog({ d }: { d: Extract<DialogSpec, { kind: 'prompt' }> }) {
 
 function ModelDialog() {
   const close = useDialog(s => s.close);
-  const [cfg, setCfg] = useState<ModelConfig>(() => { const c = modelCfg() || {}; const prov = modelProvider(c); return { provider: prov, baseUrl: c.baseUrl || PROVIDER_DEFAULTS[prov].baseUrl, apiKey: c.apiKey || '', model: c.model || PROVIDER_DEFAULTS[prov].model, thinking: c.thinking || '', writerModel: c.writerModel || '', writerThinking: c.writerThinking || '', visionModel: c.visionModel || '', mediaBaseUrl: c.mediaBaseUrl || '', mediaToken: c.mediaToken || '', imageModel: c.imageModel || '', videoModel: c.videoModel || '', videoImageModel: c.videoImageModel || '' }; });
+  const [cfg, setCfg] = useState<ModelConfig>(() => { const c = modelCfg() || {}; const prov = modelProvider(c); return { provider: prov, baseUrl: c.baseUrl || PROVIDER_DEFAULTS[prov].baseUrl, apiKey: c.apiKey || '', model: c.model || (prov === 'openai' ? 'auto' : PROVIDER_DEFAULTS[prov].model), thinking: c.thinking || '', writerModel: c.writerModel || '', writerThinking: c.writerThinking || '', visionModel: c.visionModel || '', mediaBaseUrl: c.mediaBaseUrl || '', mediaToken: c.mediaToken || '', imageModel: c.imageModel || '', videoModel: c.videoModel || '', videoImageModel: c.videoImageModel || '' }; });
   const [test, setTest] = useState<{ state: 'pending' | 'ok' | 'fail'; text: string } | null>(null);
   const prov = cfg.provider || 'openai'; const pd = PROVIDER_DEFAULTS[prov];
   const setProvider = (p: 'claude' | 'openai') => { const other = PROVIDER_DEFAULTS[p === 'claude' ? 'openai' : 'claude']; const next = { ...cfg, provider: p }; if (!cfg.baseUrl || cfg.baseUrl === other.baseUrl) next.baseUrl = PROVIDER_DEFAULTS[p].baseUrl; if (!cfg.model || cfg.model === other.model) next.model = PROVIDER_DEFAULTS[p].model; setCfg(next); };
@@ -77,8 +77,8 @@ function ModelDialog() {
       <label>Base URL<input value={cfg.baseUrl || ''} onChange={e => setCfg({ ...cfg, baseUrl: e.target.value })} /></label>
       <label>API Key<input type="password" value={cfg.apiKey || ''} placeholder={pd.placeholder} onChange={e => setCfg({ ...cfg, apiKey: e.target.value })} /></label>
       <small className="note">用 Moodio 网关时，这里填部署网关时设定的「访问口令」，不是 DeepSeek 等服务商的 API Key；只有 Base URL 直连服务商时才填它的 Key。</small>
-      <label>模型<input value={cfg.model || ''} placeholder="deepseek-flash / kimi-k3" onChange={e => setCfg({ ...cfg, model: e.target.value })} /></label>
-      <small className="note">走 Moodio 网关时按模型名分流：kimi-k3 等 Kimi 模型走 Moonshot（支持看图），deepseek-* 走 DeepSeek。</small>
+      <label>模型<input value={cfg.model || ''} placeholder="auto / deepseek-flash / kimi-k3" onChange={e => setCfg({ ...cfg, model: e.target.value })} /></label>
+      <small className="note">auto = 智能匹配（规划用 DeepSeek Flash、写作用 DeepSeek V4 Pro、看图用 Kimi K3，不可用时自动换）；也可在输入框下方的模型面板「推理模型」里选。走 Moodio 网关时按模型名分流：kimi-* 走 Moonshot，deepseek-* 走 DeepSeek。</small>
       <label>思考模式<select value={cfg.thinking || ''} onChange={e => setCfg({ ...cfg, thinking: e.target.value })}><option value="">跟随模型默认（不发送参数）</option><option value="off">关闭</option><option value="low">开启 · low</option><option value="high">开启 · high</option><option value="max">开启 · max</option></select></label>
       <label>写作模型（可选）<input value={cfg.writerModel || ''} placeholder="例如 deepseek-v4-pro（留空同上）" onChange={e => setCfg({ ...cfg, writerModel: e.target.value })} /></label>
       <label>写作思考模式<select value={cfg.writerThinking || ''} onChange={e => setCfg({ ...cfg, writerThinking: e.target.value })}><option value="">同上</option><option value="off">关闭</option><option value="low">开启 · low</option><option value="high">开启 · high</option><option value="max">开启 · max</option></select></label>
