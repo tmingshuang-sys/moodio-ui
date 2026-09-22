@@ -62,7 +62,8 @@ export default function ModelPrefs() {
   const videoRatio = (cfg.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
   const duration = cfg.videoDuration || MEDIA_DEFAULTS.videoDuration;
   const resolution = cfg.videoResolution || MEDIA_DEFAULTS.videoResolution;
-  const activeName = tab === 'video' ? (findPreset(VIDEO_MODELS, videoId)?.name || '自定义') : (findPreset(IMAGE_MODELS, imageId)?.name || '自定义');
+  const videoName = findPreset(VIDEO_MODELS, videoId)?.name || '自定义';
+  const imageName = findPreset(IMAGE_MODELS, imageId)?.name || '自定义';
   const videoPreset = findPreset(VIDEO_MODELS, videoId);
   const imagePreset = findPreset(IMAGE_MODELS, imageId);
   const videoImagePreset = findPreset(VIDEO_IMAGE_MODELS, videoImageId);
@@ -70,8 +71,9 @@ export default function ModelPrefs() {
 
   return (
     <>
-      <button ref={btnRef} type="button" className={`tool-btn wide${open ? ' on' : ''}`} onClick={() => setOpen(v => !v)} aria-expanded={open} aria-haspopup="dialog" title={t('生成模型')}>
-        <SlidersHorizontal size={16} /><span>{activeName}</span>
+      <button ref={btnRef} type="button" className={`tool-btn${open ? ' on' : ''}`} onClick={() => setOpen(v => !v)} aria-expanded={open} aria-haspopup="dialog"
+        aria-label={t('生成模型')} title={`${t('生成模型')} · ${t('视频偏好')} ${videoName} · ${t('图片偏好')} ${imageName}`}>
+        <SlidersHorizontal size={17} />
       </button>
       {open && (
         <div ref={panelRef} className="mp-panel" role="dialog" aria-label={t('生成模型')} style={{ left: pos?.left ?? 0, bottom: pos?.bottom ?? 0, visibility: pos ? 'visible' : 'hidden' }}>
