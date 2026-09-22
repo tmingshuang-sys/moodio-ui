@@ -715,3 +715,9 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .sb-split::after { content: ''; position: absolute; left: 0; right: 0; top: 5px; height: 1px; background: var(--line); transition: background 120ms, height 120ms; }
 .sb-split:hover::after, body.is-resizing .sb-split::after { height: 2px; top: 4.5px; background: rgba(29, 29, 31, .3); }
 .sb-nav { flex: none; }
+
+/* 去剪映编辑：第一次授权草稿文件夹的说明弹窗 */
+.jy-setup p { margin: 0 0 10px; line-height: 1.6; }
+.jy-setup p:last-child { margin-bottom: 0; }
+.jy-setup .muted { color: var(--ink-2); font-size: 12px; }
+.jy-setup code { padding: 2px 6px; border-radius: 6px; background: var(--panel); font-size: 12px; }

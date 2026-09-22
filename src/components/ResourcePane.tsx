@@ -3,12 +3,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye, Clapperboard } from 'lucide-react';
-import { exportToJianying } from '../lib/jianying';
-// 去剪映编辑：写草稿目录（或下载 zip），过程用 toast 报进度
+import { exportToJianying, canWriteDirectly, hasExportDir } from '../lib/jianying';
+// 去剪映编辑：把片段按顺序导出成一个文件夹并唤起剪映（剪映不接受外部写入的草稿，只能把素材备好让用户拖到时间线）
 export async function runJianyingExport(mediaId?: string) {
   try {
-    const r = await exportToJianying(mediaId, t => toast(t));
-    toast(r.mode === 'direct' ? `已写入剪映草稿「${r.folder}」（${r.clips} 段），打开剪映即可在草稿列表里看到` : `浏览器不支持直接写入，已下载「${r.folder}.zip」：解压到 Movies/JianyingPro/User Data/Projects/com.lveditor.draft 再打开剪映`);
+    if (canWriteDirectly() && !(await hasExportDir())) {
+      const ok = await confirmDialog({ title: t('去剪映编辑'), okLabel: t('选择文件夹'), body: (
+        <div className="jy-setup">
+          <p>{t('会把成片的每个片段按顺序导出成 clip_01、clip_02…，再打开剪映。你在剪映里导入这个文件夹，按文件名顺序拖到时间线即可。')}</p>
+          <p>{t('第一次需要选一个存放片段的文件夹（建议「影片」），之后不用再选。')}</p>
+        </div>) });
+      if (!ok) return;
+    }
+    const r = await exportToJianying(mediaId, text => toast(text));
+    toast(r.mode === 'direct'
+      ? `已导出 ${r.clips} 段片段到「${r.folder}」并打开剪映，在剪映里导入这个文件夹，按 clip_01…的顺序拖到时间线`
+      : `已下载「${r.folder}.zip」：解压后在剪映里导入，按 clip_01…的顺序拖到时间线`);
   } catch (e: any) { if (e?.name !== 'AbortError') toast(`去剪映编辑失败：${e?.message || e}`); }
 }
 import type { Doc, MediaItem } from '../lib/types';
@@ -20,7 +30,7 @@ import { uploadFiles } from '../lib/upload';
 import { openMenuAt } from './Menu';
 import { confirmDialog, promptDialog } from './Dialogs';
 import { toast } from './Toast';
-import { useT } from '../lib/i18n';
+import { useT, t } from '../lib/i18n';
 import LedgerView from './LedgerView';
 import { LEDGER_NAME } from '../lib/ledger';
 
@@ -131,7 +141,7 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
         <div className="view-tools">
           <label className="group-select">{t('分区')}<select value={groups.includes(item.group) ? item.group : '其他'} onChange={e => useFiles.getState().updateMedia(item.id, { group: e.target.value })}>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
-          {item.kind === 'video' && <button type="button" className="chip-btn" title={t('把片段按顺序写成剪映草稿并打开剪映')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={15} /><span>{t('去剪映编辑')}</span></button>}
+          {item.kind === 'video' && <button type="button" className="icon-btn" aria-label={t('去剪映编辑')} title={t('把片段按顺序导出并打开剪映')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={17} /></button>}
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={async () => { const blob = await getBlob(item.id); if (blob) downloadBlob(item.name, blob); }}><Download size={17} /></button>
           <button type="button" className="icon-btn" aria-label="更多" onClick={e => openMenuAt(e.currentTarget, [
             { label: t('删除'), danger: true, onClick: async () => { if (await confirmDialog({ title: '删除文件', body: `删除「${item.name}」？7 天内可撤销。`, okLabel: '删除', danger: true })) { const entry = useFiles.getState().removeMedia(item.id); onBack(); toast(`已删除「${item.name}」`, entry ? { label: '撤销', onClick: () => useFiles.getState().restoreTrash(entry.trashId) } : undefined); } } },

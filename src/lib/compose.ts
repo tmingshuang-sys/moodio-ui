@@ -2,7 +2,7 @@
 // 首选 WebCodecs + mp4-muxer 直接编出 H.264 + AAC 的 MP4（Chrome / Edge）；不支持 WebCodecs 时退回 MediaRecorder 录成 WebM。
 // 画面靠实时播放逐帧画到 canvas（字幕也画在这一步），声音用 OfflineAudioContext 把各段原声与配乐离线混好再编码，所以耗时约等于成片总时长。
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
-import type { MediaItem } from './types';
+import type { MediaItem, ComposeRecipe } from './types';
 import { uid } from './types';
 import { useFiles } from './store';
 import { mediaUrl, getBlob, putBlob, cacheUrl } from './storage';
@@ -108,9 +108,9 @@ async function pickAudioCodec(): Promise<{ config: AudioEncoderConfig; mux: 'aac
   return null;
 }
 
-async function saveResult(blob: Blob, name: string, ext: string, width: number, height: number, duration: number): Promise<MediaItem> {
+async function saveResult(blob: Blob, name: string, ext: string, width: number, height: number, duration: number, recipe: ComposeRecipe): Promise<MediaItem> {
   const id = uid('m'); await putBlob(id, blob); cacheUrl(id, blob);
-  const meta: MediaItem = { id, name: `${name.replace(/\.(webm|mp4)$/i, '')}.${ext}`, kind: 'video', mime: blob.type, size: blob.size, group: '其他', createdAt: Date.now(), by: 'agent', width, height, model: '本地合成', duration: Math.round(duration * 10) / 10 };
+  const meta: MediaItem = { id, name: `${name.replace(/\.(webm|mp4)$/i, '')}.${ext}`, kind: 'video', mime: blob.type, size: blob.size, group: '其他', createdAt: Date.now(), by: 'agent', width, height, model: '本地合成', duration: Math.round(duration * 10) / 10, compose: recipe };
   useFiles.getState().addMedia(meta);
   return meta;
 }
@@ -131,18 +131,19 @@ export async function composeVideos(ids: string[], opts: ComposeOptions = {}): P
   const volume = Math.max(0, Math.min(1, Number(opts.musicVolume ?? 0.3)));
   const voices = await loadVoices(opts.voices, total);
   const clipVolume = Math.max(0, Math.min(1, Number(opts.clipVolume ?? 1)));
+  const recipe: ComposeRecipe = { clips: ids.slice(), musicId: music ? opts.musicId : undefined, musicVolume: volume, clipVolume, subtitles: subs, voices: normalizeVoices(opts.voices).filter(v => v.start < total) };   // 记在成片上，去剪映编辑时按它铺轨
   const useMp4 = (opts.format || 'mp4') === 'mp4' && mp4Supported();
   let stop = false; const onAbort = () => { stop = true; }; signal?.addEventListener('abort', onAbort);
   try {
-    if (useMp4) return await composeMp4({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, clipVolume, name, onProgress, isStopped: () => stop });
-    return await composeWebm({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, clipVolume, name, onProgress, isStopped: () => stop });
+    if (useMp4) return await composeMp4({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, clipVolume, name, recipe, onProgress, isStopped: () => stop });
+    return await composeWebm({ videos, blobs, durations, total, canvas, g, subs, music, volume, voices, clipVolume, name, recipe, onProgress, isStopped: () => stop });
   } finally {
     signal?.removeEventListener('abort', onAbort);
     videos.forEach(v => { v.pause(); v.removeAttribute('src'); v.load(); });
   }
 }
 
-interface Job { videos: HTMLVideoElement[]; blobs: Blob[]; durations: number[]; total: number; canvas: HTMLCanvasElement; g: CanvasRenderingContext2D; subs: Subtitle[]; music: Blob | null; voices: LoadedVoice[]; clipVolume: number; volume: number; name: string; onProgress?: (t: string) => void; isStopped: () => boolean; }
+interface Job { videos: HTMLVideoElement[]; blobs: Blob[]; durations: number[]; total: number; canvas: HTMLCanvasElement; g: CanvasRenderingContext2D; subs: Subtitle[]; music: Blob | null; voices: LoadedVoice[]; clipVolume: number; volume: number; name: string; recipe: ComposeRecipe; onProgress?: (t: string) => void; isStopped: () => boolean; }
 
 // 逐段实时播放，每一帧回调里画到 canvas 并交给 onFrame
 async function playThrough(job: Job, onFrame: (globalTime: number) => void) {
@@ -169,7 +170,7 @@ async function playThrough(job: Job, onFrame: (globalTime: number) => void) {
 }
 
 async function composeMp4(job: Job): Promise<MediaItem> {
-  const { canvas, blobs, durations, total, music, volume, voices, clipVolume, name, onProgress } = job;
+  const { canvas, blobs, durations, total, music, volume, voices, clipVolume, name, recipe, onProgress } = job;
   const vconf = await pickVideoCodec(canvas.width, canvas.height); const aconf = await pickAudioCodec();
   // firstTimestampBehavior 用 offset：mp4-muxer 默认要求第一帧时间戳必须是 0，否则在编码器回调里抛错、帧被悄悄丢掉
   const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: canvas.width, height: canvas.height }, audio: aconf ? { codec: aconf.mux, sampleRate: SAMPLE_RATE, numberOfChannels: 2 } : undefined, fastStart: 'in-memory', firstTimestampBehavior: 'offset' });
@@ -205,12 +206,12 @@ async function composeMp4(job: Job): Promise<MediaItem> {
   onProgress?.('写入文件…');
   muxer.finalize();
   const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
-  return saveResult(blob, name, 'mp4', canvas.width, canvas.height, total);
+  return saveResult(blob, name, 'mp4', canvas.width, canvas.height, total, recipe);
 }
 
 // 退路：MediaRecorder 录 WebM（画面同样逐帧画 canvas，声音用实时 AudioContext 混）
 async function composeWebm(job: Job): Promise<MediaItem> {
-  const { videos, canvas, music, volume, voices, clipVolume, name, onProgress, total } = job;
+  const { videos, canvas, music, volume, voices, clipVolume, name, recipe, onProgress, total } = job;
   if (typeof MediaRecorder === 'undefined') throw new Error('当前浏览器不支持本地合成');
   const audio = new AudioContext(); const dest = audio.createMediaStreamDestination();
   videos.forEach(v => { if (clipVolume <= 0) { v.muted = true; return; } v.muted = false; try { const gain = audio.createGain(); gain.gain.value = clipVolume; audio.createMediaElementSource(v).connect(gain).connect(dest); } catch { /* ignore */ } });
@@ -225,5 +226,5 @@ async function composeWebm(job: Job): Promise<MediaItem> {
   finally { if (rec.state !== 'inactive') rec.stop(); await stopped; await audio.close().catch(() => {}); }
   onProgress?.('写入文件…');
   const blob = new Blob(chunks, { type: mime || 'video/webm' }); if (!blob.size) throw new Error('没有录到画面');
-  return saveResult(blob, name, 'webm', canvas.width, canvas.height, total);
+  return saveResult(blob, name, 'webm', canvas.width, canvas.height, total, recipe);
 }

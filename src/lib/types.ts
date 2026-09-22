@@ -29,7 +29,11 @@ export interface MediaItem {
   model?: string;         // 生成它的模型名（智能匹配时可能不是面板里排第一的那个）
   duration?: number;      // 视频 / 音频时长（秒），合成成片时写入
   voiceId?: string;       // 音色样本：声音模型返回的 voice id，合成配音时用它
+  compose?: ComposeRecipe; // 本地合成的成片记它的配方，导出剪映草稿时按它铺配乐 / 配音 / 字幕轨
 }
+
+// 成片的合成配方：由哪几段拼成（按顺序）、配乐与音量、片段原声音量、字幕（秒）、配音（媒体 id + 起点秒）
+export interface ComposeRecipe { clips: string[]; musicId?: string; musicVolume?: number; clipVolume?: number; subtitles?: { start: number; end: number; text: string }[]; voices?: { id: string; start: number; volume?: number }[]; }
 
 export interface TrashEntry { trashId: string; deletedAt: number; doc?: Doc; media?: MediaItem; }
 
