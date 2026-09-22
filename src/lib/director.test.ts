@@ -102,4 +102,15 @@ describe('director', () => {
     director.skipSong(); expect(ledger.readLedger()!.flags.skipSong).toBe(true);
     files().setBrief({ format: prevFormat });
   });
+  it('autopilot never resends the identical prompt and pauses after a failed turn', () => {
+    const sent: string[] = []; director.setSender(t => { sent.push(t); }); director.setAutopilot(true); director.resetAutopilot();
+    expect(director.nextStep().kind).toBe('agent');
+    director.autopilotTick(); expect(sent.length).toBe(1); expect(director.autopilotPaused()).toBe(false);
+    director.autopilotTick(); expect(sent.length).toBe(1); expect(director.autopilotPaused()).toBe(true);   // 同一提示不重复发
+    director.resetAutopilot(); expect(director.autopilotPaused()).toBe(false);
+    const chat = store.useChats.getState().chat();
+    store.useChats.getState().push(chat.id, { role: 'assistant', text: '模型请求失败：网络断了。未执行任何文件操作。', at: Date.now() + 5 });
+    director.autopilotTick(); expect(sent.length).toBe(1); expect(director.autopilotPaused()).toBe(true);   // 上一轮出错也不自动重发
+    director.setAutopilot(false);
+  });
 });

@@ -181,14 +181,15 @@ function tickOnce(): boolean {
 // 检查点确认：记进台账；参考图检查点顺手把实体状态改成已确认
 export function confirmCheckpoint(cp: Checkpoint) {
   const { brief } = useFiles.getState(); if (!has(brief?.format)) return;
+  lastAuto = ''; lastAutoAt = Date.now(); paused = false;
   const ledger = readLedger() || ensureLedger(brief!.format).ledger;
   updateLedger({ confirmed: [cp], entities: cp === 'assets' ? ledger.entities.filter(e => e.ref).map(e => ({ name: e.name, status: '已确认' })) : undefined });
   tick(); emit(); resume();
 }
-export function skipSong() { updateLedger({ flags: { skipSong: true }, notes: (readLedger()?.notes || '') + ' [没有歌曲音频]' }); tick(); emit(); resume(); }
-export function skipVoice() { updateLedger({ flags: { skipVoice: true }, notes: (readLedger()?.notes || '') + ' [跳过音色]' }); tick(); emit(); resume(); }
-export function skipAssets() { updateLedger({ confirmed: ['assets'], notes: (readLedger()?.notes || '') + ' [跳过参考图]' }); tick(); emit(); resume(); }
-export function skipLintGate() { updateLedger({ flags: { skipLint: true }, notes: (readLedger()?.notes || '') + ' [跳过片段校验]' }); tick(); emit(); resume(); }
+export function skipSong() { lastAuto = ''; lastAutoAt = Date.now(); paused = false; updateLedger({ flags: { skipSong: true }, notes: (readLedger()?.notes || '') + ' [没有歌曲音频]' }); tick(); emit(); resume(); }
+export function skipVoice() { lastAuto = ''; lastAutoAt = Date.now(); paused = false; updateLedger({ flags: { skipVoice: true }, notes: (readLedger()?.notes || '') + ' [跳过音色]' }); tick(); emit(); resume(); }
+export function skipAssets() { lastAuto = ''; lastAutoAt = Date.now(); paused = false; updateLedger({ confirmed: ['assets'], notes: (readLedger()?.notes || '') + ' [跳过参考图]' }); tick(); emit(); resume(); }
+export function skipLintGate() { lastAuto = ''; lastAutoAt = Date.now(); paused = false; updateLedger({ flags: { skipLint: true }, notes: (readLedger()?.notes || '') + ' [跳过片段校验]' }); tick(); emit(); resume(); }
 // 用户在检查点点了确认 / 跳过之后，一键模式要马上接着走，不用等下一轮 Agent 回复
 const resume = () => { setTimeout(() => { try { autopilotTick(); } catch (e) { console.warn('autopilot', e); } }, 300); };
 
@@ -233,13 +234,20 @@ export function applyAnswersToBrief(record: Record<string, string>) {
 }
 
 // 一键模式：每轮结束后由导演决定是否自动发出下一步；同一提示连续两次没推进就停，检查点必停
-let lastAuto = ''; let autoRepeats = 0;
+// 同一提示绝不自动重发（说明上一轮没推进），上一轮出错也不重发：都进入「暂停」，停靠卡里提示用户点当前步骤重试；用户任何一次手动操作（点步骤 / 确认检查点 / 跳过）都会清掉暂停
+let lastAuto = ''; let lastAutoAt = 0; let paused = false;
+const FAILURE_RE = /^(模型请求失败|执行时出错|已停止)|后续规划失败|模型回复格式不正确|达到长度上限|输出中断/;
+function lastTurnFailed(): boolean {
+  const c = useChats.getState().chat(); const m = [...c.messages].reverse().find(x => x.role === 'assistant');
+  return !!m && m.at > lastAutoAt && (m.plan?.state === 'error' || FAILURE_RE.test(String(m.text || '').trim()));
+}
+export function autopilotPaused() { return paused; }
 export function autopilotTick() {
   if (!isAutopilot() || useAgent.getState().busy) return;
   tick(); const step = nextStep(); emit();
   if (step.kind === 'ask' && step.questions) { const chat = useChats.getState().chat(); const last = chat.messages[chat.messages.length - 1]; if (!(last?.questions && !last.questionsUsed)) askLocally(step.questions); return; }
   if (step.kind !== 'agent' || !step.prompt || !sender) return;
-  if (step.prompt === lastAuto) { autoRepeats++; if (autoRepeats >= 2) return; } else { lastAuto = step.prompt; autoRepeats = 0; }
-  sender(step.prompt);
+  if (lastTurnFailed() || step.prompt === lastAuto) { if (!paused) { paused = true; emit(); } return; }
+  paused = false; lastAuto = step.prompt; lastAutoAt = Date.now(); sender(step.prompt);
 }
-export function resetAutopilot() { lastAuto = ''; autoRepeats = 0; }
+export function resetAutopilot() { lastAuto = ''; lastAutoAt = Date.now(); paused = false; emit(); }

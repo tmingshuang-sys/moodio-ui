@@ -213,7 +213,7 @@ async function readOpenAIStream(res: Response, { signal, onText, onReasoning }: 
 
 export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning, images }: CallOptions = {}): Promise<string> {
   const streaming = typeof onText === 'function';
-  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' }, max_tokens: 8192 };   // 不写 max_tokens 时 DeepSeek 默认 4K，整份剧本塞进 JSON 会被截断
+  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };   // 不发 max_tokens：思考型模型会把思维链算进上限，固定 8192 曾把写剧本那一轮截断
   const think = String(cfg.thinking || '');
   if (think === 'off') body.thinking = { type: 'disabled' };
   else if (['low', 'high', 'max'].includes(think)) { body.thinking = { type: 'enabled' }; body.reasoning_effort = think; delete body.temperature; }

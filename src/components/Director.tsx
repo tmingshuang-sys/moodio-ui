@@ -5,7 +5,7 @@ import { LEDGER_NAME } from '../lib/ledger';
 const DOCK_KEY = 'moodio-dock-open';   // 步骤清单卡收起 / 展开的记忆
 import { useFiles, useAgent } from '../lib/store';
 import { pickFiles, uploadFiles } from '../lib/upload';
-import { nextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, skipVoice, skipSong, chooseFormat, askLocally, isAutopilot, setAutopilot, resetAutopilot } from '../lib/director';
+import { nextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, skipVoice, skipSong, chooseFormat, askLocally, isAutopilot, setAutopilot, resetAutopilot, autopilotPaused } from '../lib/director';
 import type { NextStep } from '../lib/director';
 import { BRIEF_FORMATS } from '../lib/guides';
 import { skillFor, skillStages } from '../lib/skills';
@@ -83,6 +83,7 @@ export default function NextStepBar() {
             })}
           </ol>
           {step.detail && step.kind !== 'done' && <p className="dock-detail">{step.detail}</p>}
+          {auto && !busy && autopilotPaused() && step.kind === 'agent' && <p className="dock-paused">{t('一键模式已暂停：上一步没有推进。点当前步骤重试，或告诉 Agent 怎么改。')}</p>}
           {secondary.length > 0 && <div className="dock-secondary">{secondary}</div>}
         </div>
       )}
