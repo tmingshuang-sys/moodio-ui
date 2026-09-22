@@ -3903,3 +3903,5 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     }
     /* Agent 空状态占位：.agent-empty 的 display:flex 会盖过 hidden 属性，有消息时仍占一屏高度（首页面板更高时会露出来），显式隐藏 */
     .agent-empty[hidden] { display: none; }
+    /* 首页（含项目总览 / 素材库）顶栏只留 logo 与右侧操作：项目名 / 剧集切换、返回按钮和「剧本 / 资产 / 创作」导航要进入具体项目才显示（窄屏规则里 .top-nav 带 !important，这里同样加） */
+    body.home-page .project-identity .bare-button, body.home-page .project-identity .episode-switch, body.home-page .top-nav { display: none !important; }
