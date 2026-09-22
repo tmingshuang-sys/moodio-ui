@@ -66,7 +66,7 @@ npm run check          # 对 src/*.js 逐个 node --check
 | 功能 | 入口 |
 |---|---|
 | 全局重绘 | `function render()` |
-| 首页（顶栏 logo） | `state.projectPage==='home'`：src/06 的 render 覆盖切 `body.home-page` 与 `#home-surface`；面板首页模式 `agentHomeMode()`（src/11，固定居中放大、不收起、不可拖动）；入口 / 示例提示在 src/18-home.js；样式在 styles.css 末尾「首页」段 |
+| 首页（顶栏 logo / 返回项目列表） | 参考正式版首页：问候语 + 居中输入框 + 项目卡片。`state.projectPage==='home'`：src/06 的 render 覆盖切 `body.home-page` 与 `#home-surface`，并调用 `renderHomePage()`（src/18：问候语、项目卡片、历史入口）；面板首页模式 `agentHomeMode()`（src/11：把 `#agent-panel` 搬进 `#home-agent-slot`，无对话时只露输入框，有消息或看历史时 `body.home-chatting` 铺满整页；离开首页搬回 body）；新建项目弹窗 `openNewProjectDialog()`（src/08）；样式在 styles.css 末尾「首页」段 |
 | 保存 / 新建剧集 | `persistWorkspace()`、`freshWorkspace()` |
 | 封面页 | `renderCover()`（空白封面用 `file.blank` 与 `data-placeholder`） |
 | 资产侧栏 | `.project-rail`，`alignAssetsRail()` 已改为固定内边距 |

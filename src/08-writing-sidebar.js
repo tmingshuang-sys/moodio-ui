@@ -493,7 +493,7 @@
         const pRename = event.target.closest('[data-project-rename]'), pDel = event.target.closest('[data-project-delete]'), pNew = event.target.closest('[data-project-new]'), pSwitch = event.target.closest('[data-project-switch]');
         if (pRename) { const p = moodioProjects.active(); closeEpisodeMenu(); openFlowDialog('重命名项目', `<label>项目名称<input id="project-name-input" value="${escapeHtml(p?.title || '')}" maxlength="40"></label>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="rename" data-project-id="${p?.id || ''}">保存</button>`); setTimeout(() => $('#project-name-input')?.select(), 30); return; }
         if (pDel) { const id = pDel.dataset.projectDelete; const p = moodioProjects.list().find(x => x.id === id); if (!p) return; closeEpisodeMenu(); openFlowDialog('删除项目', `<p>删除项目 <strong>${escapeHtml(p.title)}</strong>？它的全部剧集、文档、分镜、资产和对话会被删除，<strong>无法恢复</strong>。建议先在「导出文档」里导出项目备份。</p>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="delete" data-project-id="${p.id}">删除项目</button>`); return; }
-        if (pNew) { closeEpisodeMenu(); openFlowDialog('新建项目', `<p>新项目从空白开始：一集、空白封面与剧本、无资产。当前项目会先自动保存。</p><label>项目名称<input id="project-name-input" value="新项目" maxlength="40"></label>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="create">创建并切换</button>`); setTimeout(() => $('#project-name-input')?.select(), 30); return; }
+        if (pNew) { closeEpisodeMenu(); openNewProjectDialog(); return; }
         if (pSwitch) { const id = pSwitch.dataset.projectSwitch; if (id !== moodioProjects.active()?.id) { captureVisibleEdits(); closeEpisodeMenu(); showToast('正在切换项目…'); moodioProjects.switchTo(id); } return; }
         const edit = event.target.closest('[data-episode-edit]'), del = event.target.closest('[data-episode-delete]'), create = event.target.closest('[data-episode-new]'), row = event.target.closest('[data-episode]');
         if (edit) { renamingEpisodeId = edit.dataset.episodeEdit; return renderEpisodeMenu(); }
@@ -926,3 +926,9 @@
     })();
 
     /* ===== 空白页面 = 云文档编辑器：标题、富文本正文、字体/字号/样式工具、图片视频、划线评论 ===== */
+
+    // 新建项目弹窗：剧集菜单与首页的「新建」卡片共用，确认逻辑在上面 [data-project-dialog="create"] 的处理器里
+    function openNewProjectDialog() {
+      openFlowDialog('新建项目', `<p>新项目从空白开始：一集、空白封面与剧本、无资产。当前项目会先自动保存。</p><label>项目名称<input id="project-name-input" value="新项目" maxlength="40"></label>`, flowButton('close-dialog', '取消') + `<button class="canvas-action primary" data-project-dialog="create">创建并切换</button>`);
+      setTimeout(() => $('#project-name-input')?.select(), 30);
+    }

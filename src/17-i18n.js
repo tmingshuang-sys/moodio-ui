@@ -64,14 +64,13 @@
       '保存失败，分镜尚未恢复。请重试撤销。': 'Could not save. The shot has not been restored. Please try undo again.'
     });
     Object.assign(MOODIO_I18N_EN, {
-      // 首页（顶栏 logo 进入）
-      '回到首页': 'Home', '首页': 'Home', '试试这些': 'Try these',
-      '你好，我是 Moodio Agent': 'Hi, I\'m Moodio Agent',
-      '告诉我你想做什么：写一场戏、拆分镜、整理资产，或者直接提问。': 'Tell me what you want to do: write a scene, break down shots, organise assets, or just ask.',
-      '总结剧本进度': 'Summarise the script', '新建故事梗概': 'New synopsis',
-      '输入框中有未发送内容，请先发送或清空。': 'The input box has unsent text. Send or clear it first.',
+      // 首页（顶栏 logo / 返回项目列表进入）：问候语 + 输入框 + 项目卡片
+      '回到首页': 'Home', '首页': 'Home', '很高兴见到你，': 'Nice to see you, ', '查看历史对话': 'Chat history', '页脚': 'Footer',
+      '想做什么？例如：帮我续写一场雨夜重逢的戏': 'What shall we make? e.g. write the next scene: a reunion on a rainy night',
+      '新建': 'New', '当前': 'Current', '条款': 'Terms', '隐私': 'Privacy', 'Cookie 偏好设置': 'Cookie preferences',
     });
     var MOODIO_I18N_PATTERNS = [
+      [/^(\d+) 个剧集$/, (m, n) => `${n} ${n === '1' ? 'episode' : 'episodes'}`], [/^(\d+) 分钟前$/, '$1 min ago'], [/^(\d+) 小时前$/, '$1 h ago'], [/^(\d+) 天前$/, '$1 d ago'], [/^(\d+) 月 (\d+) 日$/, '$1/$2'],
       [/^删除 (SHOT \d+)？$/, 'Delete $1?'], [/^删除 (SHOT \d+)$/, 'Delete $1'],
       [/^(\d+) 处待检查$/, '$1 issues to check'], [/^第 (\d+) 段$/, 'Paragraph $1'],
       [/^(\d+) 个版本$/, (m, n) => `${n} ${n === '1' ? 'version' : 'versions'}`], [/^\/ (\d+) 场$/, '/ $1 scenes'], [/^\/ (\d+) 节$/, '/ $1 sections'], [/^\/ — 节$/, '/ — sections'], [/^\/ (\d+) 个镜头$/, '/ $1 shots'],

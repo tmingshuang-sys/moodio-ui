@@ -515,7 +515,7 @@
       $('.workspace').style.visibility=state.projectPage==='scripts'?'visible':'hidden';
       $('#agent-fab').style.removeProperty('visibility');   // 入口显隐由面板状态统一控制
       if(typeof agentHomeMode==='function')agentHomeMode(home);
-      if(home){persistWorkspace();return;}
+      if(home){if(typeof renderHomePage==='function')renderHomePage();persistWorkspace();return;}
       if(state.projectPage==='create'){renderCreatePage();persistWorkspace();return;}
       if(state.projectPage==='assets'){renderAssetsPage();persistWorkspace();return;}
       $('#project-surface').innerHTML='';

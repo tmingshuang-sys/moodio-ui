@@ -6,7 +6,8 @@
       if(!store.active||!store.chats.some(c=>c.id===store.active)) store.active=store.chats[0].id;
       const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(store));}catch(e){}};
       const panel=$('#agent-panel'); if(!panel) return;
-      let homeMode=false, panelHiddenBeforeHome=false;   // 首页模式：面板就是页面本身，见下方 agentHomeMode
+      let homeMode=false, panelHiddenBeforeHome=false, homePlaceholder=null;   // 首页模式，见下方 agentHomeMode / homeSync
+      const HOME_PLACEHOLDER='想做什么？例如：帮我续写一场雨夜重逢的戏';   // 首页问候页输入框的占位文案
       // 面板从隐藏变为显示时滚到最新消息（隐藏状态下 scrollHeight 为 0，渲染时的滚动不生效）
       function agentScrollToLatest(){ requestAnimationFrame(()=>{ const body=$('#agent-body'), msgs=$('#agent-messages'); if(msgs) msgs.scrollTop=msgs.scrollHeight; if(body) body.scrollTop=body.scrollHeight; }); }
       new MutationObserver(()=>{ if(!panel.classList.contains('hidden')) { refreshAgentFormatNotice(); agentScrollToLatest(); } }).observe(panel,{attributes:true,attributeFilter:['class']});
@@ -257,21 +258,29 @@
         live.style.setProperty('--tail-x',Math.max(18,Math.min(cx-left,w-18))+'px');
       }
       function agentEnd(){ agentGlow(false); $('#agent-cursor')?.classList.add('hidden'); $('#agent-live')?.classList.add('hidden'); document.querySelectorAll('.agent-focus,.agent-typing').forEach(e=>e.classList.remove('agent-focus','agent-typing')); }
-      // ===== 首页模式：面板固定在首页正中放大显示（样式见 styles.css 末尾「首页」段），不可拖动 / 缩放 / 关闭；离开首页恢复原来的浮窗显隐 =====
-      function homeSync(){ document.body.classList.toggle('home-chatting',homeMode&&(chat().messages.length>0||$('#agent-back').getAttribute('aria-pressed')==='true')); }   // 有对话内容或看历史列表时问候区收紧
+      // ===== 首页模式（样式见 styles.css 末尾「首页」段）：进入首页时把面板搬进 #home-agent-slot——没有对话内容时只露出输入框（问候页），
+      // 开始对话后（body.home-chatting）面板铺满页面；不可拖动 / 缩放 / 关闭。离开首页把面板搬回 body，恢复浮窗 =====
+      function homeSync(){
+        const chatting=homeMode&&(chat().messages.length>0||$('#agent-back').getAttribute('aria-pressed')==='true');   // 有消息或在看历史列表 = 对话模式
+        document.body.classList.toggle('home-chatting',chatting);
+        const ta=$('#agent-input'), want=homeMode&&!chatting?HOME_PLACEHOLDER:'输入消息...';
+        if(ta&&homePlaceholder!==want){ homePlaceholder=want; ta.setAttribute('placeholder',want); }
+      }
       agentHomeMode=function(on){
         on=!!on; if(on===homeMode) return; homeMode=on;
-        const live=$('#agent-live');
+        const live=$('#agent-live'), slot=$('#home-agent-slot');
         if(on){
           panelHiddenBeforeHome=panel.classList.contains('hidden');
           if(live?.classList.contains('as-bubble')){ live.classList.remove('as-bubble'); live.style.left=''; live.style.top=''; delete live.dataset.side; execPanelWasOpen=false; }   // 执行中进入首页：气泡改回顶部胶囊，面板直接显示
           $('#agent-quick-pop')?.classList.add('hidden');
+          if(slot&&panel.parentElement!==slot) slot.appendChild(panel);
           panel.classList.remove('hidden');
           renderAgent();
           setTimeout(()=>{ if(homeMode) $('#agent-input')?.focus({preventScroll:true}); },30);
         } else {
+          if(panel.parentElement!==document.body){ const toast=$('#toast'); if(toast) document.body.insertBefore(panel,toast); else document.body.appendChild(panel); }   // 搬回 body（原位置在 #toast 之前）
           if($('#agent-glow')?.classList.contains('on')) agentExecMode(true);   // 执行中离开首页（Agent 切到工作区）：按常规收起面板、状态改为吉祥物旁气泡，结束后恢复
-          else if(panelHiddenBeforeHome&&!chat().messages.length) panel.classList.add('hidden');   // 进首页前是收起的且还没聊过：离开后照旧收起；聊过了就留着浮窗，方便接着说（回复里的「打开剧本」等按钮也走这里）
+          else if(panelHiddenBeforeHome&&!chat().messages.length) panel.classList.add('hidden');   // 进首页前是收起的且还没聊过：离开后照旧收起；聊过了就留着浮窗，方便接着说
         }
         homeSync();
       };

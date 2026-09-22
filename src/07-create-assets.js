@@ -867,7 +867,7 @@
     document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideWorkspaceTip();document.querySelectorAll('.canvas-menu[open]').forEach(d=>d.open=false);}});
     document.addEventListener('click',e=>{document.querySelectorAll('.canvas-menu[open]').forEach(d=>{if(!d.contains(e.target))d.open=false;});});
     // Project-level navigation outside this standalone writing prototype is explicitly marked.
-    document.querySelectorAll('.share-button,.top-actions .bare-button,.project-identity .bare-button').forEach(button=>{
+    document.querySelectorAll('.share-button,.top-actions .bare-button').forEach(button=>{   // 「返回项目列表」已接到首页（src/18-home.js）
       button.setAttribute('aria-disabled','true');button.dataset.tooltip=(button.getAttribute('aria-label') || button.textContent.trim())+'：当前设计稿仅演示剧本工作区';
       button.addEventListener('click',e=>{e.preventDefault();showToast('当前设计稿仅演示剧本工作区，此入口待接入');});
     });

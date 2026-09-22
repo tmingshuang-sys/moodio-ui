@@ -109,16 +109,12 @@
   </div>
 
   <section id="home-surface" class="home-surface hidden" aria-label="首页">
-    <div class="home-hero">
-      <img class="home-mascot" id="home-mascot" alt="" width="64" height="64" draggable="false" decoding="async" hidden>
-      <h1 class="home-title">你好，我是 Moodio Agent</h1>
-      <p class="home-subtitle">告诉我你想做什么：写一场戏、拆分镜、整理资产，或者直接提问。</p>
-      <div class="home-chips" aria-label="试试这些">
-        <button type="button" data-home-prompt="帮我在剧本末尾续写一场戏">续写一场戏</button>
-        <button type="button" data-home-prompt="为最新一场创建分镜">为最新一场创建分镜</button>
-        <button type="button" data-home-prompt="请梳理当前剧本的故事进展和主要人物，先给出总结，不要修改任何内容">总结剧本进度</button>
-        <button type="button" data-home-prompt="帮我新建一份「故事梗概」文档">新建故事梗概</button>
-      </div>
+    <div class="home-idle" id="home-idle">
+      <h1 class="home-greeting">很高兴见到你，<em id="home-user-name">Thomas</em></h1>
+      <div class="home-agent-slot" id="home-agent-slot"></div>
+      <button type="button" class="home-history-link" id="home-history-link" data-home-history hidden>查看历史对话</button>
+      <div class="home-projects" id="home-projects" aria-label="项目"></div>
+      <div class="home-footer" aria-label="页脚"><button type="button" data-home-foot>条款</button><button type="button" data-home-foot>隐私</button><button type="button" data-home-foot>Cookie</button><button type="button" data-home-foot>DMCA</button><button type="button" data-home-foot>Cookie 偏好设置</button></div>
     </div>
   </section>
 

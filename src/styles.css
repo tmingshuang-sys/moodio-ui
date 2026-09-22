@@ -3816,47 +3816,67 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .shot-delete-error { color: #b83a3a; }
     .shot-delete-error:empty { display: none; }
 
-    /* ===== 首页（点击顶栏 logo 进入）：页面本身就是 Agent 对话框。
-     * #home-surface 铺满顶栏以下区域，上部是问候与示例提示；#agent-panel 在 body.home-page 下固定居中放大（!important 盖过拖动 / 缩放留下的行内样式），
-     * 隐藏浮动入口、关闭 / 固定按钮与缩放手柄；有对话内容后（body.home-chatting）问候区收紧，把空间让给消息。 ===== */
+    /* ===== 首页（点击顶栏 logo 或「返回项目列表」进入）：参考正式版首页——问候语 + 居中输入框 + 项目卡片。
+     * 进入首页时 src/11 把 #agent-panel 搬进 #home-agent-slot：没有对话内容时（闲置）只露出输入框；一旦开始对话（body.home-chatting）
+     * 面板铺满顶栏以下整个页面，消息与输入框收成居中一栏。!important 只用来盖过拖动 / 缩放留下的行内样式。 ===== */
     .logo[data-go-home] { cursor: pointer; }
     .logo[data-go-home]:hover img { filter: brightness(1.06); }
     .logo[data-go-home]:focus-visible { outline: 2px solid #694178; outline-offset: 3px; border-radius: 6px; }
-    #home-surface { position: fixed; inset: var(--topbar) 0 0; z-index: 400; background: var(--app-background); overflow: hidden; }
-    body.home-page { --home-hero: 208px; --home-panel-w: min(880px, 100vw - 48px); --home-gap: 24px; }
-    body.home-page.home-chatting { --home-hero: 84px; }
-    .home-hero { box-sizing: border-box; height: var(--home-hero); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; padding: 22px 24px 0; text-align: center; transition: height 260ms var(--ease-out), padding 260ms var(--ease-out); }
-    body.home-chatting .home-hero { padding-top: 14px; }
-    .home-mascot { width: 64px; height: 64px; object-fit: contain; transition: width 260ms var(--ease-out), height 260ms var(--ease-out); }
-    .home-title { margin: 0; font: 600 22px/1.3 var(--font-ui); letter-spacing: -.01em; color: var(--ink); transition: font-size 260ms var(--ease-out); }
-    .home-subtitle { margin: 0; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
-    .home-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
-    .home-chips button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border: 1px solid #dcd8e3; border-radius: 999px; background: #faf8fc; color: #60466e; font: 500 13px/1.4 var(--font-ui); cursor: pointer; }
-    .home-chips button::before { content: '✦'; font-size: 11px; opacity: .7; }
-    .home-chips button:hover { background: #f0ebf5; border-color: #b5a5c3; }
-    .home-chips button:focus-visible { outline: 2px solid #694178; outline-offset: 2px; }
-    body.home-chatting .home-subtitle, body.home-chatting .home-chips { display: none; }
-    body.home-chatting .home-mascot { width: 36px; height: 36px; }
-    body.home-chatting .home-title { font-size: 17px; }
+    #home-surface { position: fixed; inset: var(--topbar) 0 0; z-index: 400; overflow: auto; background-color: var(--app-background); background-image: radial-gradient(circle, rgba(31, 38, 35, .13) 1px, transparent 1.4px); background-size: 22px 22px; }
+    .home-idle { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 28px; padding: max(64px, 22vh) 24px 28px; }
+    .home-greeting { margin: 0; font: 400 40px/1.25 Georgia, "Songti SC", "Noto Serif SC", serif; letter-spacing: .01em; color: var(--ink); text-align: center; }
+    .home-greeting em { font-style: italic; }
+    #home-agent-slot { width: min(720px, 100%); }
+    .home-history-link { margin-top: -16px; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; color: var(--ink-3); cursor: pointer; }
+    .home-history-link:hover { color: var(--ink); background: rgba(31, 38, 35, .05); }
+    .home-projects { display: flex; gap: 16px; width: min(720px, 100%); overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: none; }
+    .home-projects::-webkit-scrollbar { display: none; }
+    .home-project { flex: none; width: 152px; padding: 0; border: 0; background: transparent; text-align: left; color: var(--ink); font: 13px/1.4 var(--font-ui); cursor: pointer; }
+    .home-project:focus-visible { outline: 2px solid #694178; outline-offset: 3px; border-radius: 6px; }
+    .home-project-thumb { position: relative; display: grid; place-items: center; height: 88px; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(135deg, #f1f1ef 0%, #e6e6e3 100%); color: var(--ink-3); overflow: hidden; transition: border-color 120ms ease, box-shadow 160ms ease; }
+    .home-project:not(.home-project-new) .home-project-thumb::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, transparent 0 9px, rgba(255, 255, 255, .5) 9px 10px); }   /* 参考图里的浅纹理占位 */
+    .home-project:not(.home-project-new) .home-project-thumb .icon { position: absolute; right: 8px; bottom: 8px; z-index: 1; width: 16px; height: 16px; }
+    .home-project:hover .home-project-thumb { border-color: var(--line-strong); box-shadow: 0 6px 18px rgba(31, 38, 35, .1); }
+    .home-project.current .home-project-thumb { border-color: #b5a5c3; }
+    .home-project-current-tag { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 7px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 10px; line-height: 1.4; }
+    .home-project strong { display: block; margin-top: 8px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .home-project small { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .home-project-new { width: 84px; }
+    .home-project-new .home-project-thumb { display: flex; flex-direction: column; justify-content: center; gap: 4px; border: 1px dashed var(--line-strong); background: transparent; font-size: 12px; color: var(--ink-2); }
+    .home-project-new .home-project-thumb .icon { width: 18px; height: 18px; }
+    .home-footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: auto; padding-top: 40px; }
+    .home-footer button { padding: 0; border: 0; background: transparent; font-size: 12px; color: var(--ink-3); cursor: pointer; }
+    .home-footer button:hover { color: var(--ink); }
+    /* 首页上的面板：通用（两态共用） */
     body.home-page #agent-fab { display: none !important; }
-    body.home-page #agent-panel {
-      top: calc(var(--topbar) + var(--home-hero)) !important; bottom: var(--home-gap) !important;
-      left: calc((100vw - var(--home-panel-w)) / 2) !important; right: auto !important;
-      width: var(--home-panel-w) !important; height: auto !important;
-      transition: top 260ms var(--ease-out);
-    }
     body.home-page #agent-panel .agent-resize, body.home-page #agent-close, body.home-page #agent-pin { display: none; }
     body.home-page #agent-panel .agent-head { cursor: default; }
-    body.home-page #agent-panel .agent-body { padding: 16px 24px; }
-    body.home-page #agent-panel .agent-msg { max-width: 80%; font-size: 14px; }
-    body.home-page #agent-panel .agent-composer { margin: 8px 16px 14px; }
-    body.home-page #agent-live { top: calc(var(--topbar) + 12px); bottom: auto; left: 50%; transform: translateX(-50%); }
+    body.home-page #agent-live { top: calc(var(--topbar) + 62px); bottom: auto; left: 50%; transform: translateX(-50%); }
+    /* 闲置态：面板退成一个输入框，嵌在问候语与项目卡片之间 */
+    body.home-page:not(.home-chatting) #agent-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; }
+    body.home-page:not(.home-chatting) #agent-panel .agent-head, body.home-page:not(.home-chatting) #agent-panel .agent-body, body.home-page:not(.home-chatting) #agent-panel .agent-foot, body.home-page:not(.home-chatting) #agent-panel .agent-motion-surface { display: none; }
+    body.home-page:not(.home-chatting) #agent-panel .agent-composer { margin: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 6px 22px rgba(31, 38, 35, .07); }
+    body.home-page:not(.home-chatting) #agent-panel .agent-composer:focus-within { border-color: var(--line-strong); }
+    body.home-page:not(.home-chatting) #agent-panel .agent-composer textarea { min-height: 64px; padding: 18px 18px 8px; font-size: 15px; }
+    body.home-page:not(.home-chatting) #agent-panel .agent-tools { padding: 2px 12px 12px 10px; }
+    /* 对话态：面板铺满整页，消息与输入框居中一栏 */
+    body.home-page.home-chatting #home-surface { overflow: hidden; background-color: #fff; background-image: none; }
+    body.home-page.home-chatting .home-idle { display: block; min-height: 100%; padding: 0; }
+    body.home-page.home-chatting .home-idle > :not(#home-agent-slot) { display: none; }
+    body.home-page.home-chatting #home-agent-slot { width: auto; }
+    body.home-page.home-chatting #agent-panel { position: absolute !important; inset: 0 !important; width: auto !important; height: auto !important; border: 0; border-radius: 0; background: #fff; box-shadow: none; animation: home-chat-in 260ms var(--ease-out); }
+    @keyframes home-chat-in { from { opacity: 0; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { body.home-page.home-chatting #agent-panel { animation: none; } }
+    body.home-page.home-chatting #agent-panel .agent-head { height: 52px; padding: 0 16px 0 12px; border-bottom: 1px solid var(--line); }
+    body.home-page.home-chatting #agent-panel .agent-body { padding: 24px 24px 8px; }
+    body.home-page.home-chatting #agent-panel .agent-messages, body.home-page.home-chatting #agent-panel .agent-history, body.home-page.home-chatting #agent-panel .agent-format-notice, body.home-page.home-chatting #agent-panel .agent-empty { max-width: 880px; margin: 0 auto; }
+    body.home-page.home-chatting #agent-panel .agent-msg { max-width: 80%; font-size: 14px; }
+    body.home-page.home-chatting #agent-panel .agent-composer { width: min(880px, 100% - 32px); margin: 8px auto 16px; }
     @media (max-width: 600px) {
-      body.home-page { --home-hero: 150px; --home-panel-w: calc(100vw - 16px); --home-gap: 8px; }
-      body.home-page.home-chatting { --home-hero: 80px; }
-      body.home-chatting .home-hero { padding-top: 10px; }
-      .home-chips { display: none; }
-      .home-title { font-size: 18px; }
+      .home-idle { gap: 22px; padding: 56px 16px 20px; }
+      .home-greeting { font-size: 28px; }
+      body.home-page.home-chatting #agent-panel .agent-body { padding: 16px 12px 4px; }
+      body.home-page.home-chatting #agent-panel .agent-composer { width: calc(100% - 16px); margin: 6px auto 8px; }
     }
     /* Agent 空状态占位：.agent-empty 的 display:flex 会盖过 hidden 属性，有消息时仍占一屏高度（首页面板更高时会露出来），显式隐藏 */
     .agent-empty[hidden] { display: none; }
