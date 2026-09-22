@@ -379,7 +379,7 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 
 /* ===== 输入框下方的「模型」按钮与偏好面板（src/components/ModelPrefs.tsx）：左侧选模型，右侧调画面比例与时长 ===== */
 .tool-btn.on { background: var(--active); color: var(--ink); border-color: var(--line-strong); }   /* 模型面板打开时按钮保持按下态 */
-.mp-panel { position: fixed; z-index: 480; width: min(620px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 120px)); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: var(--shadow-pop); animation: menu-in 160ms var(--ease-out); overflow: hidden; }
+.mp-panel { position: fixed; z-index: 480; width: min(620px, calc(100vw - 32px)); height: min(560px, calc(100vh - 120px)); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: var(--shadow-pop); animation: menu-in 160ms var(--ease-out); overflow: hidden; }
 .mp-tabs { flex: none; display: inline-flex; gap: 2px; margin: 12px 12px 0; padding: 3px; border-radius: 10px; background: var(--panel); align-self: flex-start; }
 .mp-tabs button { height: 30px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-size: 13px; }
 .mp-tabs button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(31, 38, 35, .14); font-weight: 500; }

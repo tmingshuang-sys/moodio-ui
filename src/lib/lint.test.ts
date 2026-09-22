@@ -21,6 +21,10 @@ const clip = (no: number, seconds: number, ranges: string[], body = '', exposure
 const ledger = `# 营销脑图\n## 卖点账本\n| 编号 | 卖点 | 优先级 | 篇幅权重 | 内容 | 证明方式 | 落在哪个片段 | 状态 |\n|---|---|---|---|---|---|---|---|\n| USP-01 | 便携轻巧，单手可握 | P00 | 高 | x | y | 2 | 已激活 |\n| SP-01 | 防水设计 | P0 | 中 | x | y | 3 | 已激活 |\n| SP-02 | 长续航 | P1 | 低 | x | y | - | 备选 |\n`;
 
 describe('clip lint', () => {
+  it('rejects clips longer than the video model allows when a limit is given', () => {
+    expect(lintClipDocs([clip(1, 20, ['0-20'])], [], null, { maxClip: 10 }).errors.some(e => /超过当前视频模型单段上限 10 秒/.test(e))).toBe(true);
+    expect(lintClipDocs([clip(1, 20, ['0-20'])], [], null, { maxClip: 30 }).errors).toEqual([]);
+  });
   it('parses brief durations in the common Chinese forms', () => {
     expect(parseSeconds('60 秒')).toBe(60); expect(parseSeconds('1 分钟')).toBe(60); expect(parseSeconds('3 分 42 秒')).toBe(222); expect(parseSeconds('90s')).toBe(90); expect(parseSeconds('')).toBeNull();
   });

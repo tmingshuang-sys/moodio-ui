@@ -125,6 +125,7 @@ export default function ModelPrefs() {
                 <AutoRow kind="voice" active={isAuto(voiceId)} onPick={() => patch({ voiceModel: AUTO })} />
                 {VOICE_MODELS.map(m => <ModelRow key={m.id} preset={m} active={m.id === voiceId} onPick={() => patch({ voiceModel: m.id })} />)}
               </div>
+              <div className="mp-col mp-options" />
             </div>
           ) : tab === 'chat' ? (
             <div className="mp-body">

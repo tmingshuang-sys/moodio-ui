@@ -9,7 +9,8 @@ import { skillFor, skillStages, briefKeyOf, STAGE_ORDER } from './skills';
 import type { Skill, QuestionDef, StageId } from './skills';
 import { lintClips, parseSeconds, voiceDescriptions, CLIP_DOC_RE } from './lint';
 import { docRole } from './markdown';
-import { currentVideoModel, effectivePreset } from './mediagen';
+import { videoProfile } from './mediagen';
+import { planClipSeconds, strategyLabel } from './strategy';
 import { projects, NEW_PROJECT_TITLE } from './projects';
 import { BRIEF_FORMATS } from './guides';
 
@@ -58,9 +59,11 @@ const narrationAudio = () => useFiles.getState().media.filter(m => m.kind === 'a
 export function unansweredQuestions(skill: Skill, bank: QuestionDef[], ledger: Ledger | null, brief: Brief): QuestionDef[] {
   return bank.filter(q => { if (ledger?.answers?.[q.key]) return false; const bk = briefKeyOf(q); return !(bk && has((brief as any)[bk])); });
 }
-export function expectedClips(skill: Skill, brief: Brief): number { return Math.max(1, Math.ceil(totalSeconds(brief) / skill.clipSeconds)); }
+// 片段数按生成策略定：长片段优先时单段约 20 秒，分镜接续时按类型默认与模型上限的较小者
+export function expectedClips(skill: Skill, brief: Brief): number { return Math.max(1, Math.ceil(totalSeconds(brief) / planClipSeconds(skill, videoProfile()))); }
 export function estimateMinutes(clips: number, brief: Brief): number {
-  const preset = effectivePreset('video', currentVideoModel()); const perClip = preset?.provider === 'ark' ? 3 : 6;
+  const p = videoProfile(); const secs = planClipSeconds(skillFor(brief.format), p);
+  const perClip = p.model.provider === 'ark' ? Math.max(3, Math.round(secs * 0.3)) : 6;   // 方舟大致按秒数算；fal 的可灵 5 秒约 5 分钟
   return Math.round(clips * perClip + totalSeconds(brief) / 60 + 1);
 }
 
@@ -103,12 +106,12 @@ export function nextStep(): NextStep {
       return { ...base, kind: 'agent', label: '进入分镜', detail: '', prompt: '参考图已全部确认，用 update_ledger 把阶段推进到 storyboard，然后按分镜规范拆分镜表。' };
     }
     case 'storyboard': {
-      if (storyboardDoc() || ((skill.id === 'ad' || skill.id === 'short') && shotTableInScript())) return { ...base, kind: 'agent', label: '进入片段方案', detail: '分镜已就绪', prompt: `分镜已就绪，用 update_ledger 把阶段推进到 prompts，然后按片段提示词冻结格式写 ${expectedClips(skill, b)} 份「视频生成Prompt-NN.md」，全片风格表逐字相同，主体绑定参考图，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。` };
-      return { ...base, kind: 'agent', label: '拆分镜表', detail: cur.goal, prompt: '按分镜规范把脚本拆成「分镜表.md」（十列 + 全片 BGM），镜头总时长与纲领时长一致。' };
+      if (storyboardDoc() || ((skill.id === 'ad' || skill.id === 'short') && shotTableInScript())) { const p = videoProfile(); return { ...base, kind: 'agent', label: '进入片段方案', detail: '分镜已就绪', prompt: `分镜已就绪，用 update_ledger 把阶段推进到 prompts，然后按片段提示词冻结格式与生成策略「${strategyLabel(p)}」写约 ${expectedClips(skill, b)} 份「视频生成Prompt-NN.md」（单段约 ${planClipSeconds(skill, p)} 秒、不超过 ${p.maxClip} 秒，最后一段可短，段数可少不可多），全片风格表逐字相同，主体绑定参考图，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。` }; }
+      return { ...base, kind: 'agent', label: '拆分镜表', detail: cur.goal, prompt: '按分镜规范把脚本拆成「分镜表.md」（十列 + 全片 BGM），镜头总时长与纲领时长一致；镜头时长与运镜按系统提示里的生成策略安排（「长片段优先」时多用长镜头、少切碎，「分镜接续」时单镜不超过模型单段上限）。' };
     }
     case 'prompts': {
       const n = expectedClips(skill, b); const have = clipDocs().length;
-      if (!have) return { ...base, kind: 'agent', label: `写 ${n} 份片段提示词`, detail: cur.goal, prompt: `按片段提示词冻结格式写 ${n} 份「视频生成Prompt-NN.md」（单段 ${skill.clipSeconds} 秒，最后一段可短），全片风格表逐字相同，主体绑定参考图并原样带冻结外形描述，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。` };
+      if (!have) { const p = videoProfile(); return { ...base, kind: 'agent', label: `写约 ${n} 份片段提示词`, detail: cur.goal, prompt: `按片段提示词冻结格式与生成策略「${strategyLabel(p)}」写约 ${n} 份「视频生成Prompt-NN.md」（单段约 ${planClipSeconds(skill, p)} 秒、不超过 ${p.maxClip} 秒，最后一段可短，段数可少不可多），全片风格表逐字相同，主体绑定参考图并原样带冻结外形描述，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。` }; }
       const r = lintClips();
       if (r.errors.length && !ledger?.flags?.skipLint) return { ...base, kind: 'agent', label: `修正 ${r.errors.length} 处校验问题`, detail: r.errors[0], prompt: `片段提示词校验未通过：\n${r.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}\n请只修改有问题的文稿（write_doc overwrite 或 replace_section），并把台账 clips 改正确。` };
       if (!confirmed.includes('prompts')) return { ...base, kind: 'confirm', checkpoint: 'prompts', label: `确认按此生成（${have} 段，约 ${estimateMinutes(have, b)} 分钟）`, detail: '生成按次计费；先在工作区看一遍片段提示词', billable: true };
@@ -117,7 +120,14 @@ export function nextStep(): NextStep {
     case 'video': {
       const clips = ledger?.clips || []; const n = clips.length || clipDocs().length;
       const made = clips.filter(c => c.mediaId).length;
-      if (made < n) { const next = clips.find(c => !c.mediaId); return { ...base, kind: 'agent', label: `生成第 ${next ? next.no : made + 1} 段视频（${made}/${n}）`, detail: `约 ${estimateMinutes(n - made, b)} 分钟`, billable: true, prompt: `按顺序生成还没生成的片段（从第 ${next ? next.no : made + 1} 段起，一次可以安排全部剩余片段）：prompt 照抄对应「视频生成Prompt-NN.md」的正文，有参考图就用 from_media_id 绑定第一张；每段生成完用 update_ledger 把视频 id 写进 clips 的 mediaId。` }; }
+      if (made < n) {
+        const next = clips.find(c => !c.mediaId); const no = next ? next.no : made + 1; const p = videoProfile();
+        const prev = clips.find(c => c.no === no - 1); const chained = !p.longTake && p.keyframes !== 'none' && !!prev?.mediaId;   // 分镜接续：一次只生成一段，接上一段末帧
+        const prompt = chained
+          ? `只生成第 ${no} 段（分镜接续）：generate_video 的 prompt 照抄「视频生成Prompt-${String(no).padStart(2, '0')}.md」的正文，duration 用文稿的时长，from_video_id 写「${prev!.mediaId}」（接上一段末帧）；生成完用 update_ledger 把视频 id 写进 clips 第 ${no} 段的 mediaId。`
+          : `按顺序生成还没生成的片段（从第 ${no} 段起${p.longTake ? '，一次可以安排全部剩余片段' : '，一次一段'}）：每段 generate_video 的 prompt 照抄对应「视频生成Prompt-NN.md」的正文，duration 用文稿的时长${p.keyframes !== 'none' ? '，有关键帧图就用 from_media_id 绑定' : ''}；每段生成完用 update_ledger 把视频 id 写进 clips 的 mediaId。`;
+        return { ...base, kind: 'agent', label: `生成第 ${no} 段视频（${made}/${n}）`, detail: `约 ${estimateMinutes(n - made, b)} 分钟`, billable: true, prompt };
+      }
       if (!composedFilm()) {
         const dubs = narrationAudio(); const wantNarration = hasNarration() && !ledger?.flags?.skipVoice && !dubs.length;
         if (wantNarration) return { ...base, kind: 'agent', label: '合成旁白配音', detail: '按片段分段，成片时按时间轴放置', billable: true, prompt: '所有片段已生成。脚本里有旁白：先用 generate_speech 把旁白按片段分段合成（entity 写「旁白」，一段一条，name 写「旁白-01」这样的序号，text 只写旁白原文）；视频模型不支持音频参考时，需要清晰听到的台词也可以一并合成（entity 写角色名）。合成完下一步再合成成片。' };

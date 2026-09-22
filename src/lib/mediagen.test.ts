@@ -178,3 +178,21 @@ describe('speech input', () => {
   });
 });
 
+describe('video profile', () => {
+  it('follows the effective model: auto → Seedance 2.5, the last model that actually ran when auto fell back, or the manual pick', async () => {
+    let m = await load();
+    expect(m.videoProfile()).toMatchObject({ longTake: true, maxClip: 30, keyframes: 'both' }); expect(m.videoProfile().model.name).toBe('Seedance 2.5');
+    memory.set('moodio-last-video-model', 'doubao-seedance-1-0-pro-250528'); vi.resetModules(); m = await load();
+    expect(m.effectiveVideoId()).toBe('doubao-seedance-1-0-pro-250528'); expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 10 });
+    memory.set('moodio-last-video-model', 'not-in-chain'); vi.resetModules(); m = await load();
+    expect(m.effectiveVideoId()).toBe('doubao-seedance-2-5-260628');
+    memory.set('moodio-model-prefs-v2', '1'); setCfg({ videoModel: 'fal-ai/kling-video/v1/standard/text-to-video' }); vi.resetModules(); m = await load();
+    expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 10 }); expect(m.videoProfile().model.name).toBe('可灵 1.0 标准（fal）');
+  });
+  it('builds Ark content with first and last frame roles', async () => {
+    const { __test } = await load();
+    expect(__test.arkVideoContent('t', 'data:a', 'data:b')).toEqual([{ type: 'text', text: 't' }, { type: 'image_url', image_url: { url: 'data:a' }, role: 'first_frame' }, { type: 'image_url', image_url: { url: 'data:b' }, role: 'last_frame' }]);
+    expect(__test.arkVideoContent('t')).toEqual([{ type: 'text', text: 't' }]);
+  });
+});
+

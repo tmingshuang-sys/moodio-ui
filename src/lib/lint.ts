@@ -1,6 +1,7 @@
 // ===== 片段方案校验：子镜头时段首尾相接且等于片段时长、片段之和等于纲领总时长、每个已激活卖点至少落在一个片段里 =====
 // 进入「生成成片」阶段前由 update_ledger 把关；Agent 也可用 lint_clips 自查。
 import { useFiles } from './store';
+import { videoProfile } from './mediagen';
 import { CLIP_FOCUS_LABELS } from './guides';
 import { FROZEN_LABEL } from './skills';
 
@@ -98,7 +99,7 @@ function landed(sp: SellingPoint, clipTexts: Map<number, string>): boolean {
   return bg.some(b => exposure.includes(b));
 }
 
-export interface LintExtras { frozen?: { name: string; desc: string }[]; segments?: { name: string; start: number; end: number }[]; hooks?: SellingPoint[]; }
+export interface LintExtras { frozen?: { name: string; desc: string }[]; segments?: { name: string; start: number; end: number }[]; hooks?: SellingPoint[]; maxClip?: number; }   // maxClip = 当前视频模型的单段上限
 export function lintClipDocs(docs: { name: string; content: string }[], sellingPoints: (string | SellingPoint)[], totalSeconds: number | null, extras: LintExtras = {}): ClipLint {
   const points: SellingPoint[] = sellingPoints.map(p => typeof p === 'string' ? { point: p } : p);
   const errors: string[] = [], warnings: string[] = [];
@@ -107,6 +108,7 @@ export function lintClipDocs(docs: { name: string; content: string }[], sellingP
   clips.forEach((c, i) => {
     if (c.no !== i + 1) warnings.push(`片段编号不连续：第 ${i + 1} 份是「${c.name}」`);
     if (!c.seconds) { errors.push(`「${c.name}」没有写「时长：N秒」`); return; }
+    if (extras.maxClip && c.seconds > extras.maxClip + 0.01) errors.push(`「${c.name}」时长 ${c.seconds} 秒超过当前视频模型单段上限 ${extras.maxClip} 秒，请拆成两段或换模型`);
     if (!c.ranges.length) { errors.push(`「${c.name}」没有按「0-4秒」这样的时段写子镜头`); return; }
     let cursor = 0;
     for (const [a, b] of c.ranges) { if (Math.abs(a - cursor) > 0.01) errors.push(`「${c.name}」时段 ${a}-${b} 秒与前一段不相接（应从 ${cursor} 秒开始）`); if (b <= a) errors.push(`「${c.name}」时段 ${a}-${b} 秒结束早于开始`); cursor = b; }
@@ -149,7 +151,7 @@ export function lintClips(): ClipLint {
   const frozen = others.filter(d => /人物小传|人设与选题|歌曲分析|创作脑图/.test(d.name)).flatMap(d => frozenDescriptions(d.content));
   const song = docs.find(d => /^歌曲分析\.md$/.test(d.name)); const segments = song ? songSegments(song.content) : [];
   const hookDoc = docs.find(d => /^钩子账本\.md$/.test(d.name)); const hooks = hookDoc ? ledgerRows(hookDoc.content, { requireLanding: false }).filter(r => r.time !== undefined || /钩子/.test(r.kind || '')) : [];
-  return lintClipDocs(docs.map(d => ({ name: d.name, content: d.content })), points, parseSeconds(brief?.duration), { frozen, segments, hooks });
+  return lintClipDocs(docs.map(d => ({ name: d.name, content: d.content })), points, parseSeconds(brief?.duration), { frozen, segments, hooks, maxClip: videoProfile().maxClip });
 }
 export function lintSummary(r: ClipLint): string {
   const head = `片段 ${r.clips.length} 段，合计 ${r.clips.reduce((s, c) => s + c.seconds, 0)} 秒${r.sellingPoints.length ? `，账本元素 ${r.sellingPoints.length} 个` : ''}`;

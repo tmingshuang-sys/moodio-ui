@@ -1,11 +1,12 @@
 // ===== Agent 的「手」：能对工作区里的文件做的操作。执行前必须确认（NO_CONFIRM_TOOLS 除外），删除类进回收站可撤销 =====
-import type { Action, Artifact, MessageAction, PlanStep } from '../types';
+import type { Action, Artifact, MessageAction, PlanStep, MediaItem } from '../types';
 import { useFiles, findDoc, findMedia } from '../store';
 import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../guides';
-import { generateImage, generateVideo, designVoice, generateSpeech, mediaReadyReason, fallbackNote, DEFAULT_VOICE_ID } from '../mediagen';
+import { generateImage, generateVideo, designVoice, generateSpeech, mediaReadyReason, fallbackNote, videoProfile, DEFAULT_VOICE_ID } from '../mediagen';
+import { captureFrame } from '../frames';
 import type { GenResult } from '../mediagen';
 import type { RatioKey } from '../mediamodels';
 import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
@@ -133,12 +134,23 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   },
   async generate_video(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
+    const notes: string[] = [];
+    let fromMediaId = args.from_media_id ? String(args.from_media_id) : undefined;
+    if (!fromMediaId && args.from_video_id) {   // 分镜接续：截上一段的末帧当这一段的首帧（本地截帧，不计费）
+      const prev = requireMedia(String(args.from_video_id)); if (prev.kind !== 'video') throw new Error(`「${prev.name}」不是视频，不能取末帧`);
+      let frame!: MediaItem;
+      await ctx.step(`截取「${prev.name}」的末帧作首帧`, async () => { frame = await captureFrame(prev.id, 'last'); });
+      fromMediaId = frame.id; notes.push(`首帧接自「${prev.name}」的末帧（关键帧图「${frame.name}」）`);
+    }
+    let toMediaId = args.to_media_id ? String(args.to_media_id) : undefined;
+    if (toMediaId && !fromMediaId) { notes.push('没有首帧，已忽略尾帧图'); toMediaId = undefined; }
+    if (toMediaId && videoProfile().keyframes !== 'both') { notes.push('当前图生视频模型不收尾帧图，已忽略 to_media_id'); toMediaId = undefined; }
     let r!: GenResult;
     await ctx.step(`生成视频「${String(args.name || args.prompt || '').slice(0, 20)}」`, async () => {
-      r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
+      r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId, toMediaId }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name, prompt: String(args.prompt || '') } };
+    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}${notes.length ? '（' + notes.join('；') + '）' : ''}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name, prompt: String(args.prompt || '') } };
   },
   // 设计音色样本：按人物小传的音色行生成一段试听，并绑到台账实体的 voice 上（合成配音时用它的 voice id）
   async generate_voice(args, ctx) {
@@ -218,7 +230,7 @@ export function describeAction(a: Action): string {
     case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
     case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;
     case 'generate_image': return `生成图片「${String(g.name || g.prompt || '').slice(0, 20)}」` + (IMAGE_RATIOS.includes(g.ratio) ? `（${g.ratio}）` : '');
-    case 'generate_video': { const from = g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); const parts = [from, secs ? `${secs} 秒` : '智能时长'].filter(Boolean); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${parts.join(' · ')}）`; }
+    case 'generate_video': { const from = g.from_video_id ? `接「${mediaName(g.from_video_id)}」的末帧` : g.from_media_id ? `以「${mediaName(g.from_media_id)}」为首帧${g.to_media_id ? '、「' + mediaName(g.to_media_id) + '」为尾帧' : ''}` : (VIDEO_RATIOS.includes(g.ratio) ? String(g.ratio) : ''); const secs = String(g.duration || '').replace(/[^0-9]/g, ''); const parts = [from, secs ? `${secs} 秒` : '智能时长'].filter(Boolean); return `生成视频「${String(g.name || g.prompt || '').slice(0, 20)}」（${parts.join(' · ')}）`; }
     case 'generate_voice': return `设计「${String(g.entity || g.name || '').slice(0, 12)}」的音色样本`;
     case 'generate_speech': { const txt = String(g.text || ''); return `合成配音「${String(g.name || g.entity || '配音').slice(0, 16)}」（${txt.length} 字${g.entity ? '，音色：' + String(g.entity).slice(0, 8) : ''}）`; }
     case 'save_brief': return '记录创作纲领';

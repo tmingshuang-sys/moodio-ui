@@ -49,7 +49,7 @@ describe('director', () => {
     director.confirmCheckpoint('assets');
     expect(ledger.readLedger()!.entities.every(e => e.status === '已确认')).toBe(true);
     expect(ledger.readLedger()!.stage).toBe('prompts');                                     // 广告脚本已是分镜脚本表，分镜阶段自动过
-    expect(director.nextStep()).toMatchObject({ stage: 'prompts', kind: 'agent' }); expect(director.nextStep().label).toContain('4 份');   // 60 秒 ÷ 15 秒
+    expect(director.nextStep()).toMatchObject({ stage: 'prompts', kind: 'agent' }); expect(director.nextStep().label).toContain('3 份');   // 60 秒 ÷ 20 秒：默认 Seedance 2.5，长片段优先
     files().addDoc({ name: '视频生成Prompt-01.md', content: '时长：15秒，比例：9:16。任务：生成品牌TVC。\n\n0-15秒\n拍法：固定\n画面内容：小航单手握住音箱\n品牌/产品露出：产品1在掌心，便携轻巧\n声音：{a}\n' });
     expect(director.nextStep()).toMatchObject({ kind: 'confirm', checkpoint: 'prompts', billable: true });
     director.confirmCheckpoint('prompts'); expect(ledger.readLedger()!.stage).toBe('video');

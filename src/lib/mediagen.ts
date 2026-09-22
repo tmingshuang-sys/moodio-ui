@@ -12,6 +12,8 @@ import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
 import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, VOICE_MODELS, VOICE_DESIGN_MODEL, VOICE_DESIGN_PRESET, presetFor, ratioValue, arkImageSize, resolveDuration, AUTO, AUTO_CHAINS, isAuto, modelChain, findPreset, runWithFallback } from './mediamodels';
 import type { ModelKind } from './mediamodels';
+import { makeProfile } from './strategy';
+import type { VideoProfile } from './strategy';
 
 export const MEDIA_DEFAULTS = {
   baseUrl: PROVIDER_DEFAULTS.openai.baseUrl.replace(/\/v1$/, ''),
@@ -50,6 +52,16 @@ export function currentImageModel(cfg: ModelConfig | null = modelCfg()) { return
 export function currentVideoModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.videoModel || MEDIA_DEFAULTS.videoModel); }
 export function currentVideoImageModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.videoImageModel || MEDIA_DEFAULTS.videoImageModel); }
 export function currentVoiceModel(cfg: ModelConfig | null = modelCfg()) { return String(cfg?.voiceModel || MEDIA_DEFAULTS.voiceModel); }
+// 生成策略要按「实际会用到的视频模型」判断能力：智能匹配时优先看上次真正跑成的那个（还在候选链里才算），没有就按候选链第一个
+const LAST_VIDEO_KEY = 'moodio-last-video-model';
+export function effectiveVideoId(cfg: ModelConfig | null = modelCfg()): string {
+  const wanted = currentVideoModel(cfg); if (!isAuto(wanted)) return wanted;
+  try { const last = localStorage.getItem(LAST_VIDEO_KEY) || ''; if (last && AUTO_CHAINS.video.includes(last)) return last; } catch { /* ignore */ }
+  return AUTO_CHAINS.video[0];
+}
+export function videoProfile(cfg: ModelConfig | null = modelCfg()): VideoProfile {
+  return makeProfile(presetFor(VIDEO_MODELS, effectiveVideoId(cfg), 'video'), effectivePreset('videoImage', currentVideoImageModel(cfg)));
+}
 const listFor = (kind: ModelKind) => kind === 'image' ? IMAGE_MODELS : kind === 'video' ? VIDEO_MODELS : kind === 'voice' ? VOICE_MODELS : VIDEO_IMAGE_MODELS;
 // 面板与生成共用：智能匹配时按候选链第一个模型的能力显示选项
 export function effectivePreset(kind: ModelKind, id: string | undefined): ModelPreset {
@@ -96,7 +108,7 @@ export function arkPromptArgs(preset: ModelPreset, prompt: string, { ratio, dura
   return args.length ? `${prompt} ${args.join(' ')}` : prompt;
 }
 
-export const __test = { viaGateway, pickUrl, buildInput, arkPromptArgs };   // 仅供单元测试
+export const __test = { viaGateway, pickUrl, buildInput, arkPromptArgs, arkVideoContent };   // 仅供单元测试
 
 export interface GenOptions { onProgress?: (text: string) => void; signal?: AbortSignal; task?: TaskRef; }
 // 任务落盘需要的元信息（结果叫什么、进哪个分区、用的哪个模型）
@@ -292,7 +304,7 @@ async function generateImageWith(model: string, prompt: string, req: ImageReques
   return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'image', contentType, model: preset.name });
 }
 
-export interface VideoRequest { prompt: string; name?: string; group?: string; ratio?: RatioKey; duration?: string | number; fromMediaId?: string; model?: string; }
+export interface VideoRequest { prompt: string; name?: string; group?: string; ratio?: RatioKey; duration?: string | number; fromMediaId?: string; toMediaId?: string; model?: string; }   // toMediaId = 尾帧图，只发给收首尾帧的模型
 export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): Promise<GenResult> {
   const prompt = String(req.prompt || '').trim(); if (!prompt) throw new Error('缺少画面描述');
   const cfg = modelCfg();
@@ -302,6 +314,7 @@ export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): P
   const wanted = req.model || (fromImage ? currentVideoImageModel(cfg) : currentVideoModel(cfg));
   const chain = modelChain(kind, wanted);
   const run = await runWithFallback(chain, (id) => generateVideoWith(id, prompt, req, cfg, labelled(kind, id, opts)), skipNote(kind, opts));
+  try { localStorage.setItem(LAST_VIDEO_KEY, run.model); } catch { /* ignore */ }   // 生成策略下次按这个模型的能力来定
   const skipped = run.skipped.map(s => ({ model: presetFor(list, s.model, kind), reason: s.reason }));
   return { item: run.result, model: presetFor(list, run.model, kind), skipped };
 }
@@ -314,29 +327,38 @@ async function generateVideoWith(model: string, prompt: string, req: VideoReques
   opts.onProgress?.(`时长 ${duration} 秒`);
   const ratio = (req.ratio || cfg?.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
   const resolution = cfg?.videoResolution || MEDIA_DEFAULTS.videoResolution;
-  let imageDataUrl = '';
-  if (fromImage) {
-    const src = findMedia(req.fromMediaId!); if (!src) throw new Error(`找不到 id 为「${req.fromMediaId}」的图片`);
-    if (src.kind !== 'image') throw new Error('参考素材必须是图片');
-    const blob = await getBlob(src.id); if (!blob) throw new Error(`「${src.name}」的文件不在本机媒体库里`);
-    imageDataUrl = await new Promise<string>((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(new Error('读取参考图失败')); fr.readAsDataURL(blob); });
-  }
+  const imageDataUrl = fromImage ? await imageDataUrlOf(req.fromMediaId!) : '';
+  const lastDataUrl = fromImage && req.toMediaId && preset.keyframes === 'both' ? await imageDataUrlOf(req.toMediaId) : '';   // 尾帧只发给收首尾帧的模型
   opts.onProgress?.('提交生成任务…');
   let url: string, contentType: string | undefined;
   if (preset.provider === 'ark') {
     const text = arkPromptArgs(preset, prompt, { ratio: fromImage ? undefined : ratio, duration, resolution });
-    const content: unknown[] = [{ type: 'text', text }];
-    if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
+    const content = arkVideoContent(text, imageDataUrl, lastDataUrl);
     url = await runArkVideo(model, content, opts, 12 * 60e3, { kind: 'video', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task });
   } else {
     const input = buildInput(preset, prompt, { ratio: fromImage ? undefined : ratio, duration });
-    if (imageDataUrl) input.image_url = imageDataUrl;
+    if (imageDataUrl) input.image_url = imageDataUrl; if (lastDataUrl) input.tail_image_url = lastDataUrl;
     const result = await runFal(model, input, opts, 12 * 60e3, { kind: 'video', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task });
     const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有视频地址');
     url = hit.url; contentType = hit.contentType;
   }
   opts.onProgress?.('下载生成结果…');
   return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'video', contentType, model: preset.name });
+}
+
+// 媒体库里的图片 → data URL（首帧 / 尾帧参考图随请求体发给上游）
+async function imageDataUrlOf(id: string): Promise<string> {
+  const src = findMedia(id); if (!src) throw new Error(`找不到 id 为「${id}」的图片`);
+  if (src.kind !== 'image') throw new Error(`「${src.name}」不是图片`);
+  const blob = await getBlob(src.id); if (!blob) throw new Error(`「${src.name}」的文件不在本机媒体库里`);
+  return new Promise<string>((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(new Error('读取参考图失败')); fr.readAsDataURL(blob); });
+}
+// 方舟视频任务的 content：文本 + 首帧图（role first_frame）+ 尾帧图（role last_frame）
+export function arkVideoContent(text: string, first?: string, last?: string): unknown[] {
+  const content: unknown[] = [{ type: 'text', text }];
+  if (first) content.push({ type: 'image_url', image_url: { url: first }, role: 'first_frame' });
+  if (last) content.push({ type: 'image_url', image_url: { url: last }, role: 'last_frame' });
+  return content;
 }
 
 // 不经 Agent 的手动生成（输入框「+」菜单）：占用同一套忙碌状态与流光，可用胶囊上的「停止」中断

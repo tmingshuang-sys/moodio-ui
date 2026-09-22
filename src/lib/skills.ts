@@ -259,8 +259,8 @@ function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; 
     { id: 'model', name: s.modelName, goal: s.modelGoal, outputs: s.modelDocs.map(d => `「${d}」`).join('、'), gate: '建模文稿写完并经用户确认' },
     { id: 'script', name: '脚本', goal: '按写作规范写故事脚本，多场先给大纲再逐场写；写完用自审清单核对。人物名、产品名全片用同一写法并加粗，产品每次露出写明看得见的部位。', outputs: '「故事脚本.md」', gate: '脚本通过自审且用户确认' },
     { id: 'assets', name: '素材检查', goal: '列出脚本涉及的实体，判断哪些需要参考图；按契约处理产品 / 人物参考图；生成后把实体和参考图 id 写进台账并请用户确认；有对白的角色（含旁白）用 generate_voice 按人物小传的音色行设计音色样本。', outputs: '参考图与音色样本（媒体库）与台账里的实体清单', gate: '所有需要参考图的实体都有用户确认过的参考图' },
-    { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表（十列 + 全片 BGM），镜头总时长与纲领时长一致；脚本已经是分镜脚本表时只核对与微调。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
-    { id: 'prompts', name: '片段方案', goal: `按总时长和单段上限（默认 ${s.clipSeconds} 秒）把分镜切成若干片段，每段一份按「片段提示词冻结格式」写的文稿：全片风格表逐字相同、主体绑定参考图并写清只采用什么、子镜头时段首尾相接且合计等于片段时长；片段清单写进台账 clips（no / seconds / shots / docId）；全部写完先用 lint_clips 自查，再用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成；系统会校验时长与卖点落地' },
+    { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表（十列 + 全片 BGM），镜头总时长与纲领时长一致；脚本已经是分镜脚本表时只核对与微调。镜头时长与运镜按生成策略安排：「长片段优先」时多用长镜头与场面调度、少切碎，「分镜接续」时单镜不超过模型单段上限并在切换处安排可衔接的构图。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
+    { id: 'prompts', name: '片段方案', goal: `按总时长、当前视频模型的单段上限与生成策略（系统提示里的「长片段优先 / 分镜接续」）把分镜切成若干片段，每段一份按「片段提示词冻结格式」写的文稿：全片风格表逐字相同、主体绑定参考图并写清只采用什么、子镜头时段首尾相接且合计等于片段时长；片段清单写进台账 clips（no / seconds / shots / docId）；全部写完先用 lint_clips 自查，再用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成；系统会校验时长与卖点落地' },
     { id: 'video', name: '生成成片', goal: '按片段顺序 generate_video，有参考图就用 from_media_id 或在提示词里复用同一段外形描述；全部生成后用 compose_video 按顺序合成 MP4 成片：字幕从脚本的台词 / 口播 / 字幕列生成（按各段时长累计起止秒数，每条不超过 20 字），媒体清单里有用户上传的音频就作配乐；脚本有旁白就先用 generate_speech 按片段分段合成，compose_video 时用 voices 按时间轴放置。', outputs: '片段视频与成片', gate: '成片合成完成' },
     { id: 'deliver', name: '交付', goal: '总结成片：结构、每段承担的内容、核心信息如何落地；请用户审阅并说明要改哪一段。', outputs: '交付说明', gate: '用户验收' },
   ];

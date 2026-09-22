@@ -19,6 +19,9 @@ export interface ModelPreset {
   resolution?: boolean;            // 是否可设分辨率（方舟视频 480p/720p/1080p，方舟图片 2K/4K）
   verified?: boolean;              // 本仓库实际跑通过
   audioRef?: boolean;              // 能把音色样本当参考音频传给模型（mediagen 目前只传图片参考，接通后再在预设上打开）
+  maxClip?: number;                // 规划片段时的单段上限（秒）；不填按 durations / durationRange 推（strategy.ts 的 clipLimit）
+  longTake?: boolean;              // 长视频能力：单段 15 秒以上且一致性好（Seedance 2.x），片段方案以长片段优先
+  keyframes?: 'first' | 'both';    // 图生视频收首帧图 / 首尾帧图（方舟 Seedance 首尾帧都收，fal 可灵只收首帧）
 }
 
 export const IMAGE_RATIOS: RatioKey[] = ['16:9', '9:16', '1:1', '4:3', '3:4'];
@@ -71,22 +74,22 @@ export const IMAGE_MODELS: ModelPreset[] = [
 ];
 
 export const VIDEO_MODELS: ModelPreset[] = [
-  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，最新一代，需在方舟控制台开通', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，全模态', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast', hint: '方舟，极速推理', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'doubao-seedance-2-0-mini-260615', name: 'Seedance 2.0 Mini', hint: '方舟，体验版，最便宜', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'fal-ai/kling-video/v1/standard/text-to-video', name: '可灵 1.0 标准（fal）', hint: '稳定，5 秒约 5 分钟', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], verified: true },
-  { id: 'fal-ai/kling-video/v2/master/text-to-video', name: '可灵 2.0 大师（fal）', hint: '质量好，较贵', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10] },
-  { id: 'fal-ai/veo3', name: 'Google Veo 3（fal）', hint: '自带音效，最贵', provider: 'fal', ratio: 'aspect_ratio' },
-  { id: 'fal-ai/minimax/video-01', name: 'MiniMax 海螺（fal）', hint: '镜头语言好，参数固定', provider: 'fal' },
+  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，最新一代，需在方舟控制台开通', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
+  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，全模态', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
+  { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast', hint: '方舟，极速推理', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
+  { id: 'doubao-seedance-2-0-mini-260615', name: 'Seedance 2.0 Mini', hint: '方舟，体验版，最便宜', provider: 'ark', ratio: 'arg', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30 },
+  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版，单段 5 / 10 秒', provider: 'ark', ratio: 'arg', duration: true, durations: [5, 10], maxClip: 10, resolution: true },
+  { id: 'fal-ai/kling-video/v1/standard/text-to-video', name: '可灵 1.0 标准（fal）', hint: '稳定，5 秒约 5 分钟', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], maxClip: 10, verified: true },
+  { id: 'fal-ai/kling-video/v2/master/text-to-video', name: '可灵 2.0 大师（fal）', hint: '质量好，较贵', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], maxClip: 10 },
+  { id: 'fal-ai/veo3', name: 'Google Veo 3（fal）', hint: '自带音效，最贵', provider: 'fal', ratio: 'aspect_ratio', maxClip: 8 },
+  { id: 'fal-ai/minimax/video-01', name: 'MiniMax 海螺（fal）', hint: '镜头语言好，参数固定', provider: 'fal', maxClip: 6 },
 ];
 
 export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
-  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，同一模型带首帧图', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，同一模型带首帧图', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true },
-  { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10] },
+  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，同一模型带首尾帧图', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both' },
+  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，同一模型带首尾帧图', provider: 'ark', duration: true, durationRange: [2, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both' },
+  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版，单段 5 / 10 秒', provider: 'ark', duration: true, durations: [5, 10], maxClip: 10, resolution: true, keyframes: 'both' },
+  { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10], maxClip: 10, keyframes: 'first' },
 ];
 
 // 声音模型（fal 上托管的 MiniMax）：设计音色固定走 voice-design（按文字描述出一段试听并返回 voice id），合成配音在下面几档里选；
