@@ -10,7 +10,8 @@ import { toast } from '../components/Toast';
 import { putBlob, cacheUrl, getBlob, imageSize } from './storage';
 import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, VOICE_MODELS, VOICE_DESIGN_MODEL, VOICE_DESIGN_PRESET, presetFor, ratioValue, arkImageSize, resolveDuration, AUTO, AUTO_CHAINS, isAuto, modelChain, findPreset, runWithFallback } from './mediamodels';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, VOICE_MODELS, VOICE_DESIGN_MODEL, VOICE_DESIGN_PRESET, presetFor, ratioValue, arkImageSize, resolveDuration, AUTO, AUTO_CHAINS, isAuto, modelChain, findPreset, runWithFallback, isArkLike } from './mediamodels';
+import type { Provider } from './mediamodels';
 import type { ModelKind } from './mediamodels';
 import { makeProfile } from './strategy';
 import type { VideoProfile } from './strategy';
@@ -153,30 +154,36 @@ async function runFal(model: string, input: Record<string, unknown>, { onProgres
 }
 
 // ===== 火山方舟 =====
-async function arkFetch(path: string, init: RequestInit & { signal?: AbortSignal } = {}): Promise<any> {
+// 方舟同构接口：火山方舟走 /ark，BytePlus ModelArk 走 /byteplus，请求与返回结构相同
+type ArkLike = 'ark' | 'byteplus';
+const arkSite = (p: ArkLike) => p === 'byteplus' ? 'BytePlus' : '火山方舟';
+const arkLikeOf = (p: string | undefined): ArkLike => p === 'byteplus' ? 'byteplus' : 'ark';
+async function arkFetch(path: string, init: RequestInit & { signal?: AbortSignal } = {}, provider: ArkLike = 'ark'): Promise<any> {
   const ep = mediaEndpoint(); if (!ep) throw new Error(mediaReadyReason() || '网关未配置');
-  const res = await fetch(`${ep.base}/ark${path}`, { ...init, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ep.token, ...(init.headers || {}) } });
+  const site = arkSite(provider);
+  const res = await fetch(`${ep.base}/${provider}${path}`, { ...init, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ep.token, ...(init.headers || {}) } });
   const data = await res.json().catch(() => null);
   if (!res.ok || data?.error) {
     const err = data?.error || {};
-    const out: any = new Error(err.code === 'ModelNotOpen' ? '这个模型还没在火山方舟控制台开通，去「开通管理」里开通后即可使用' : err.code === 'AccountOverdueError' ? '火山方舟账户余额不足，请先充值' : '火山方舟返回错误：' + (err.message || `HTTP ${res.status}`));
+    const out: any = new Error(err.code === 'ModelNotOpen' ? `这个模型还没在${site}控制台开通，去「开通管理」里开通后即可使用` : err.code === 'AccountOverdueError' ? `${site}账户余额不足，请先充值` : `${site}返回错误：` + (err.message || `HTTP ${res.status}`));
     out.code = err.code || ('HTTP_' + res.status); throw out;
   }
   return data;
 }
 // 方舟视频：创建任务 → 轮询 → 拿 video_url；中途停止会删掉任务
-async function runArkVideo(model: string, content: unknown[], { onProgress, signal }: GenOptions, timeoutMs: number, meta?: TaskMeta): Promise<string> {
-  const created = await arkFetch('/contents/generations/tasks', { method: 'POST', body: JSON.stringify({ model, content }), signal });
+async function runArkVideo(model: string, content: unknown[], { onProgress, signal }: GenOptions, timeoutMs: number, meta?: TaskMeta, provider: ArkLike = 'ark'): Promise<string> {
+  const af = (path: string, init?: RequestInit & { signal?: AbortSignal }) => arkFetch(path, init, provider);
+  const created = await af('/contents/generations/tasks', { method: 'POST', body: JSON.stringify({ model, content }), signal });
   const id = created?.id; if (!id) throw new Error('火山方舟没有返回任务 id');
   const taskId = meta ? uid('t') : null;
-  if (meta && taskId) registerTask({ id: taskId, kind: meta.kind, provider: 'ark', name: meta.name, group: meta.group, prompt: meta.prompt, model: meta.model, createdAt: Date.now(), arkTaskId: String(id), ...(meta.ref || {}), state: 'running' });
+  if (meta && taskId) registerTask({ id: taskId, kind: meta.kind, provider, name: meta.name, group: meta.group, prompt: meta.prompt, model: meta.model, createdAt: Date.now(), arkTaskId: String(id), ...(meta.ref || {}), state: 'running' });
   const started = Date.now();
   try {
     for (;;) {
       if (signal?.aborted) throw new DOMException('已停止', 'AbortError');
       if (Date.now() - started > timeoutMs) throw new Error('生成超时，任务可能仍在队列里，请稍后重试');
       await sleep(2000);
-      const task = await arkFetch(`/contents/generations/tasks/${encodeURIComponent(id)}`, { signal });
+      const task = await af(`/contents/generations/tasks/${encodeURIComponent(id)}`, { signal });
       const status = String(task?.status || '');
       if (status === 'succeeded') { const url = task?.content?.video_url; if (!url) throw new Error('生成结果里没有视频地址'); finishTask(taskId); return url; }
       if (status === 'failed' || status === 'cancelled') throw new Error('生成失败：' + (task?.error?.message || status));
@@ -184,7 +191,7 @@ async function runArkVideo(model: string, content: unknown[], { onProgress, sign
       onProgress?.(status === 'queued' ? `排队中 · ${secs}s` : `生成中 · ${secs}s`);
     }
   } catch (e) {
-    arkFetch(`/contents/generations/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    af(`/contents/generations/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
     finishTask(taskId);
     throw e;
   }
@@ -212,7 +219,7 @@ async function resumeOne(t: GenTask) {
     } else {
       for (;;) {
         if (Date.now() > deadline) throw new Error('等待超过 30 分钟，放弃');
-        const task = await arkFetch(`/contents/generations/tasks/${encodeURIComponent(t.arkTaskId || '')}`);
+        const task = await arkFetch(`/contents/generations/tasks/${encodeURIComponent(t.arkTaskId || '')}`, undefined, arkLikeOf(t.provider));
         const status = String(task?.status || '');
         if (status === 'succeeded') { url = task?.content?.video_url; if (!url) throw new Error('结果里没有视频地址'); break; }
         if (status === 'failed' || status === 'cancelled') throw new Error('生成失败：' + (task?.error?.message || status));
@@ -237,7 +244,7 @@ export function resumeTasks() {
 export async function cancelTask(id: string) {
   const t = useTasks.getState().tasks.find(x => x.id === id); if (!t) return;
   const ep = mediaEndpoint();
-  try { if (t.provider === 'fal' && t.cancelUrl && ep) await fetch(t.cancelUrl, { method: 'PUT', headers: authHeaders(ep) }); else if (t.provider === 'ark' && t.arkTaskId) await arkFetch(`/contents/generations/tasks/${encodeURIComponent(t.arkTaskId)}`, { method: 'DELETE' }); } catch { /* ignore */ }
+  try { if (t.provider === 'fal' && t.cancelUrl && ep) await fetch(t.cancelUrl, { method: 'PUT', headers: authHeaders(ep) }); else if (t.arkTaskId) await arkFetch(`/contents/generations/tasks/${encodeURIComponent(t.arkTaskId)}`, { method: 'DELETE' }, arkLikeOf(t.provider)); } catch { /* ignore */ }
   useTasks.getState().remove(id);
   patchStep({ chatId: t.chatId, messageAt: t.messageAt, stepIndex: t.stepIndex }, 'failed', '已取消');
 }
@@ -288,11 +295,11 @@ async function generateImageWith(model: string, prompt: string, req: ImageReques
   const ratio = (req.ratio || cfg?.imageRatio || MEDIA_DEFAULTS.imageRatio) as RatioKey;
   opts.onProgress?.('提交生成任务…');
   let url: string, contentType: string | undefined;
-  if (preset.provider === 'ark') {
+  if (isArkLike(preset.provider)) {
     const started = Date.now();   // 方舟出图是一次同步调用，自己报个计时，别让状态一直停在「提交」
     const ticking = setInterval(() => opts.onProgress?.(`生成中 · ${Math.round((Date.now() - started) / 1000)}s`), 1000);
     try {
-      const data = await arkFetch('/images/generations', { method: 'POST', body: JSON.stringify({ model, prompt, size: arkImageSize(ratio, cfg?.imageResolution || MEDIA_DEFAULTS.imageResolution), response_format: 'url', watermark: false }), signal: opts.signal });
+      const data = await arkFetch('/images/generations', { method: 'POST', body: JSON.stringify({ model, prompt, size: arkImageSize(ratio, cfg?.imageResolution || MEDIA_DEFAULTS.imageResolution), response_format: 'url', watermark: false }), signal: opts.signal }, arkLikeOf(preset.provider));
       url = data?.data?.[0]?.url; if (!url) throw new Error('生成结果里没有图片地址');
     } finally { clearInterval(ticking); }
   } else {
@@ -331,10 +338,10 @@ async function generateVideoWith(model: string, prompt: string, req: VideoReques
   const lastDataUrl = fromImage && req.toMediaId && preset.keyframes === 'both' ? await imageDataUrlOf(req.toMediaId) : '';   // 尾帧只发给收首尾帧的模型
   opts.onProgress?.('提交生成任务…');
   let url: string, contentType: string | undefined;
-  if (preset.provider === 'ark') {
+  if (isArkLike(preset.provider)) {
     const text = arkPromptArgs(preset, prompt, { ratio: fromImage ? undefined : ratio, duration, resolution });
     const content = arkVideoContent(text, imageDataUrl, lastDataUrl);
-    url = await runArkVideo(model, content, opts, 12 * 60e3, { kind: 'video', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task });
+    url = await runArkVideo(model, content, opts, 12 * 60e3, { kind: 'video', name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', prompt, model: preset.name, ref: opts.task }, arkLikeOf(preset.provider));
   } else {
     const input = buildInput(preset, prompt, { ratio: fromImage ? undefined : ratio, duration });
     if (imageDataUrl) input.image_url = imageDataUrl; if (lastDataUrl) input.tail_image_url = lastDataUrl;

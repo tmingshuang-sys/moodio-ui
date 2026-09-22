@@ -2,12 +2,13 @@
  * Moodio 模型网关（Cloudflare Worker）
  * - 浏览器只知道网关地址和共享口令，真实的模型 API key 只存在 Worker 的密钥里
  * - 文本：POST /v1/chat/completions（OpenAI 兼容，支持 stream、thinking、reasoning_effort 等参数原样转发）
- * - 图片 / 视频：/fal/* 透传到 fal.ai 队列接口，/ark/* 透传到火山方舟（Seedance / Seedream），/media?url= 代下载生成结果
+ * - 图片 / 视频：/fal/* 透传到 fal.ai 队列接口，/ark/* 透传到火山方舟（Seedance / Seedream），/byteplus/* 透传到 BytePlus ModelArk（海外版方舟，Seedance 2.5），/media?url= 代下载生成结果
  * - 环境变量：
  *     DEEPSEEK_API_KEY  （secret）文本模型上游 API key（deepseek-* 等默认走它）
  *     KIMI_API_KEY      （secret）Moonshot 的 key；model 以 kimi / moonshot 开头的请求走 https://api.moonshot.cn/v1（Kimi K3 支持图片输入）
  *     FAL_KEY           （secret）fal.ai 的 key，形如 id:secret；不配置时 /fal/* 返回 503
  *     ARK_API_KEY       （secret）火山方舟的 key；不配置时 /ark/* 返回 503
+ *     BYTEPLUS_API_KEY  （secret）BytePlus ModelArk 的 key；不配置时 /byteplus/* 返回 503
  *     ACCESS_TOKEN      （secret）共享口令，页面设置里填在 API Key 位置
  *     UPSTREAM_BASE     （var）文本上游地址，默认 https://api.deepseek.com/v1
  *     ALLOWED_ORIGINS   （var）允许的页面来源，逗号分隔；留空表示允许所有
@@ -16,8 +17,9 @@ const DEFAULT_UPSTREAM = 'https://api.deepseek.com/v1';
 const KIMI_BASE = 'https://api.moonshot.cn/v1';
 const FAL_QUEUE = 'https://queue.fal.run';
 const ARK_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
+const BYTEPLUS_BASE = 'https://ark.ap-southeast.bytepluses.com/api/v3';   // BytePlus ModelArk：海外版方舟，接口同构，key 与型号 id 不同
 // /media 只允许代下载这两家自己的结果地址
-const MEDIA_HOSTS = /(^|\.)(fal\.media|fal\.run|fal\.ai|volces\.com|byteimg\.com|volccdn\.com)$/;
+const MEDIA_HOSTS = /(^|\.)(fal\.media|fal\.run|fal\.ai|volces\.com|byteimg\.com|volccdn\.com|bytepluses\.com|byteplus\.com)$/;
 
 function corsHeaders(request, env) {
   const origin = request.headers.get('Origin') || '';
@@ -78,7 +80,7 @@ export default {
 
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      return json({ ok: true, service: 'moodio-gateway', fal: !!env.FAL_KEY, ark: !!env.ARK_API_KEY, kimi: !!env.KIMI_API_KEY }, 200, cors);
+      return json({ ok: true, service: 'moodio-gateway', fal: !!env.FAL_KEY, ark: !!env.ARK_API_KEY, byteplus: !!env.BYTEPLUS_API_KEY, kimi: !!env.KIMI_API_KEY }, 200, cors);
     }
 
     // 共享口令：页面在 API Key 位置填的就是它（先校验口令，再检查网关自身配置）
@@ -99,10 +101,15 @@ export default {
       if (!env.ARK_API_KEY) return json({ error: { message: '网关还没有配置 ARK_API_KEY，无法用火山方舟的模型' } }, 503, cors);
       return upstreamProxy(request, url, cors, { prefix: '/ark', base: ARK_BASE, auth: 'Bearer ' + env.ARK_API_KEY, name: '火山方舟' });
     }
+    if (url.pathname === '/byteplus' || url.pathname.startsWith('/byteplus/')) {
+      if (!proxied) return json({ error: { message: '只支持 GET / POST / PUT / DELETE' } }, 405, cors);
+      if (!env.BYTEPLUS_API_KEY) return json({ error: { message: '网关还没有配置 BYTEPLUS_API_KEY，无法用 BytePlus 的模型' } }, 503, cors);
+      return upstreamProxy(request, url, cors, { prefix: '/byteplus', base: BYTEPLUS_BASE, auth: 'Bearer ' + env.BYTEPLUS_API_KEY, name: 'BytePlus' });
+    }
     if (request.method === 'GET' && url.pathname === '/media') return mediaProxy(request, env, url, cors);
 
     if (request.method !== 'POST' || url.pathname !== '/v1/chat/completions') {
-      return json({ error: { message: '支持 POST /v1/chat/completions、/fal/*、/ark/*、GET /media' } }, 404, cors);
+      return json({ error: { message: '支持 POST /v1/chat/completions、/fal/*、/ark/*、/byteplus/*、GET /media' } }, 404, cors);
     }
     let body;
     try { body = await request.json(); } catch (_) { return json({ error: { message: '请求体不是合法 JSON' } }, 400, cors); }

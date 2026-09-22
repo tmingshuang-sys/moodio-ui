@@ -36,7 +36,7 @@ export function strategyLabel(p: VideoProfile): string { return p.longTake ? '�
 
 // 注入系统提示的策略说明：分镜、片段方案、生成三个阶段都带
 export function strategyText(p: VideoProfile, skillId?: string): string {
-  const m = p.model; const where = m.provider === 'ark' ? '方舟' : 'fal'; const mv = skillId === 'mv';
+  const m = p.model; const where = m.provider === 'byteplus' ? 'BytePlus' : m.provider === 'ark' ? '方舟' : 'fal'; const mv = skillId === 'mv';
   const mvNote = mv ? '\n⑤ MV：片段按歌曲分析的段落表切、不跨段落边界（长片段时可以把相邻两段合成一段，但不超过上限）；段与段在边界硬切、不做末帧接续（不用 from_video_id），每段全量绑定定妆照 @图片1；有人声的段落至少一个正面咬字镜头。' : '';
   if (p.longTake) {
     const hi = Math.min(p.maxClip, 30);

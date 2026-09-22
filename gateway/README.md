@@ -19,6 +19,7 @@ npx wrangler login                      # 浏览器授权一次
 npx wrangler secret put DEEPSEEK_API_KEY   # 粘贴 DeepSeek 的 key
 npx wrangler secret put FAL_KEY            # fal.ai 的 key，形如 id:secret（不配置则 /fal/* 返回 503）
 npx wrangler secret put ARK_API_KEY        # 火山方舟的 key（不配置则 /ark/* 返回 503）
+npx wrangler secret put BYTEPLUS_API_KEY   # BytePlus ModelArk 的 key（海外版方舟，Seedance 2.5；不配置则 /byteplus/* 返回 503）
 npx wrangler secret put ACCESS_TOKEN       # 自己定一个访问口令，发给使用者
 npx wrangler deploy
 ```

@@ -107,7 +107,7 @@ describe('smart model matching', () => {
     expect(MEDIA_DEFAULTS.imageModel).toBe(m.AUTO); expect(MEDIA_DEFAULTS.videoModel).toBe(m.AUTO); expect(MEDIA_DEFAULTS.videoImageModel).toBe(m.AUTO);
     expect(currentImageModel(null)).toBe('auto'); expect(currentVideoModel({})).toBe('auto');
     expect(m.modelChain('image', 'auto')[0]).toBe('doubao-seedream-5-0-260128');      // 图片默认 Seedream 5.0
-    expect(m.modelChain('video', undefined)[0]).toBe('doubao-seedance-2-5-260628');   // 视频默认 Seedance 2.5
+    expect(m.modelChain('video', undefined)[0]).toBe('dreamina-seedance-2-5-260628');   // 视频默认 Seedance 2.5
     expect(m.modelChain('video', 'fal-ai/veo3')).toEqual(['fal-ai/veo3']);            // 选了具体模型就只用它
     for (const kind of ['image', 'video', 'videoImage'] as const) {
       const list = kind === 'image' ? m.IMAGE_MODELS : kind === 'video' ? m.VIDEO_MODELS : m.VIDEO_IMAGE_MODELS;
@@ -181,11 +181,13 @@ describe('speech input', () => {
 describe('video profile', () => {
   it('follows the effective model: auto → Seedance 2.5, the last model that actually ran when auto fell back, or the manual pick', async () => {
     let m = await load();
-    expect(m.videoProfile()).toMatchObject({ longTake: true, maxClip: 30, keyframes: 'both' }); expect(m.videoProfile().model.name).toBe('Seedance 2.5');
+    expect(m.videoProfile()).toMatchObject({ longTake: true, maxClip: 30, keyframes: 'both' }); expect(m.videoProfile().model.name).toBe('Seedance 2.5（BytePlus）'); expect(m.videoProfile().model.provider).toBe('byteplus');
     memory.set('moodio-last-video-model', 'doubao-seedance-1-0-pro-250528'); vi.resetModules(); m = await load();
     expect(m.effectiveVideoId()).toBe('doubao-seedance-1-0-pro-250528'); expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 10 });
     memory.set('moodio-last-video-model', 'not-in-chain'); vi.resetModules(); m = await load();
-    expect(m.effectiveVideoId()).toBe('doubao-seedance-2-5-260628');
+    expect(m.effectiveVideoId()).toBe('dreamina-seedance-2-5-260628');
+    const mm = await import('./mediamodels'); expect(mm.isArkLike('byteplus')).toBe(true); expect(mm.isArkLike('fal')).toBe(false);
+    expect(mm.presetFor(mm.VIDEO_MODELS, 'dreamina-seedance-2-0-260128', 'video')).toMatchObject({ provider: 'byteplus', durationRange: [4, 15], maxClip: 15 });
     memory.set('moodio-model-prefs-v2', '1'); setCfg({ videoModel: 'fal-ai/kling-video/v1/standard/text-to-video' }); vi.resetModules(); m = await load();
     expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 10 }); expect(m.videoProfile().model.name).toBe('可灵 1.0 标准（fal）');
   });

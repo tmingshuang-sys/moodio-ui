@@ -10,11 +10,12 @@ import { skillFor, STAGE_ORDER } from '../skills';
 import type { Ledger } from '../ledger';
 import { currentVideoModel, currentVoiceModel, videoProfile, modelDisplayName } from '../mediagen';
 import { strategyText, strategyLabel, planClipSeconds } from '../strategy';
+import { isArkLike } from '../mediamodels';
 
 // 当前视频模型决定提示词语言与生成策略：方舟系用中文，fal 系用英文；分镜 / 片段方案 / 生成三个阶段附上完整的策略说明
 export function videoModelLine(stage?: string, skillId?: string): string {
   const id = currentVideoModel(); const p = videoProfile(); const preset = p.model;
-  const head = `【当前视频模型】${modelDisplayName('video', id)}（实际先用 ${preset.name}，${preset.provider === 'ark' ? '方舟系，提示词用中文' : 'fal 系，提示词用英文'}；单段最长 ${p.maxClip} 秒，生成策略「${strategyLabel(p)}」；${preset.audioRef ? '支持音频参考，有音色样本时可写参考音频' : '不支持音频参考：片段提示词不写参考音频，对白只进成片字幕，旁白用 generate_speech 合成后在成片里放置'}）
+  const head = `【当前视频模型】${modelDisplayName('video', id)}（实际先用 ${preset.name}，${isArkLike(preset.provider) ? '方舟系，提示词用中文' : 'fal 系，提示词用英文'}；单段最长 ${p.maxClip} 秒，生成策略「${strategyLabel(p)}」；${preset.audioRef ? '支持音频参考，有音色样本时可写参考音频' : '不支持音频参考：片段提示词不写参考音频，对白只进成片字幕，旁白用 generate_speech 合成后在成片里放置'}）
 【声音模型】${modelDisplayName('voice', currentVoiceModel())}（fal 上的 MiniMax：generate_voice 按音色行设计样本，generate_speech 合成旁白 / 台词）`;
   return stage && ['storyboard', 'prompts', 'video'].includes(stage) ? `${head}
 ${strategyText(p, skillId)}` : head;

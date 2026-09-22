@@ -11,6 +11,7 @@ import { lintClips, parseSeconds, voiceDescriptions, CLIP_DOC_RE } from './lint'
 import { docRole } from './markdown';
 import { videoProfile } from './mediagen';
 import { planClipSeconds, strategyLabel } from './strategy';
+import { isArkLike } from './mediamodels';
 import { projects, NEW_PROJECT_TITLE } from './projects';
 import { BRIEF_FORMATS } from './guides';
 
@@ -65,7 +66,7 @@ export function unansweredQuestions(skill: Skill, bank: QuestionDef[], ledger: L
 export function expectedClips(skill: Skill, brief: Brief): number { return Math.max(1, Math.ceil(totalSeconds(brief) / planClipSeconds(skill, videoProfile()))); }
 export function estimateMinutes(clips: number, brief: Brief): number {
   const p = videoProfile(); const secs = planClipSeconds(skillFor(brief.format), p);
-  const perClip = p.model.provider === 'ark' ? Math.max(3, Math.round(secs * 0.3)) : 6;   // 方舟大致按秒数算；fal 的可灵 5 秒约 5 分钟
+  const perClip = isArkLike(p.model.provider) ? Math.max(3, Math.round(secs * 0.3)) : 6;   // 方舟大致按秒数算；fal 的可灵 5 秒约 5 分钟
   return Math.round(clips * perClip + totalSeconds(brief) / 60 + 1);
 }
 
