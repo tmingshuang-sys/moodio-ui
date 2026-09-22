@@ -150,6 +150,28 @@ function Artifacts({ items, onOpen }: { items: Artifact[]; onOpen: (id: string) 
   );
 }
 
+// 参考图质检卡：视觉模型逐张给出通过 / 需重生成、描述与问题
+function ImageReviewCard({ m, onOpen }: { m: Message; onOpen: (id: string) => void }) {
+  const items = m.imageReview!; const bad = items.filter(x => x.verdict === '需重生成').length;
+  return (
+    <details className="review image-review" open={bad > 0}>
+      <summary>参考图质检 · {items.length} 张 · {bad ? `${bad} 张需重生成` : '全部通过'}</summary>
+      <ul className="img-review-list">
+        {items.map(it => (
+          <li key={it.id} className={it.verdict === '需重生成' ? 'is-bad' : ''}>
+            <button type="button" className="img-review-thumb" onClick={() => onOpen(it.id)}><Thumb id={it.id} kind="image" /></button>
+            <div className="img-review-body">
+              <p><strong>{it.name}</strong><em className={`img-verdict${it.verdict === '需重生成' ? ' bad' : ''}`}>{it.verdict}</em></p>
+              {it.description && <p className="img-review-desc">{it.description}</p>}
+              {it.issues.length > 0 && <ol>{it.issues.map((x, i) => <li key={i}>{x}</li>)}</ol>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function ReviewCard({ m }: { m: Message }) {
   return (
     <>
@@ -205,6 +227,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
             {m.log && m.log.length > 0 && <details className="exec-log"><summary>执行记录 · {m.log.length} 步</summary><ol>{m.log.map((l, j) => <li key={j}>{l}</li>)}</ol></details>}
             {m.questions && m.questions.length > 0 && <QuestionCard key={m.at} m={m} live={liveQ} />}
             {m.review && m.review.items?.length > 0 && <ReviewCard m={m} />}
+            {m.imageReview && m.imageReview.length > 0 && <ImageReviewCard m={m} onOpen={openInPane} />}
             {m.actions && m.actions.length > 0 && <div className="msg-actions">{m.actions.map(a => <button key={a.id} type="button" className={a.id.startsWith('plan-confirm') ? 'primary' : ''} onClick={() => onAction(a.id, m)}>{a.label}</button>)}</div>}
             {showFollowUps && (
               <div className="next-steps">

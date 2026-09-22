@@ -72,6 +72,7 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 - {"tool":"replace_section","args":{"id":"文稿id","heading":"要替换的标题原文","content":"新的整段内容（可含新标题）"}} 按标题整段替换（改写某一场、某个人物、某个镜头的提示词）
 - {"tool":"rename_doc","args":{"id":"文稿id","name":"新文件名.md"}}；{"tool":"delete_doc","args":{"id":"文稿id"}}（进回收站，可撤销）
 - {"tool":"read_doc","args":{"id":"文稿id"}} 读取整份文稿（不需要确认，结果会交回给你再规划）；{"tool":"open_doc","args":{"id":"文稿id"}} 在工作区打开；{"tool":"export_doc","args":{"id":"文稿id"}} 下载
+- {"tool":"inspect_image","args":{"id":"图片id","question":"想确认什么"}} 用视觉模型看一张图（不需要确认，描述会交回给你再规划；只有配置了支持看图的模型才可用）。参考图生成完系统会自动用视觉模型逐张质检并把结果展示给用户，你不必再安排检查
 - {"tool":"open_media","args":{"id":"媒体id"}} 查看图片 / 视频；{"tool":"rename_media","args":{"id":"媒体id","name":"新名"}}；{"tool":"tag_media","args":{"id":"媒体id","group":"人物|场景|产品|其他"}}；{"tool":"delete_media","args":{"id":"媒体id"}}
 - {"tool":"generate_image","args":{"prompt":"英文画面提示词","name":"文件名（不含扩展名）","group":"人物|场景|产品|其他","ratio":"可选 16:9|9:16|1:1|4:3|3:4"}} 生成图片并存进媒体库
 - {"tool":"generate_video","args":{"prompt":"英文画面提示词","name":"文件名","group":"分区","ratio":"可选 16:9|9:16|1:1","duration":"可选秒数（不填用智能时长）","from_media_id":"可选，以这张已有图片为首帧做图生视频"}} 生成视频并存进媒体库

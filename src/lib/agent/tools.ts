@@ -12,6 +12,7 @@ import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
 import { updateLedger } from '../ledger';
 import { skillFor, stageName } from '../skills';
 import { composeVideos } from '../compose';
+import { askAboutImages } from '../vision';
 
 export interface ToolResult { summary: string; content?: string; actions?: MessageAction[]; review?: { docId: string; title: string } | null; artifact?: Artifact; }
 export interface ToolContext {
@@ -23,7 +24,7 @@ export interface ToolContext {
 }
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
-export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger']);
+export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger', 'inspect_image']);
 export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'compose_video']);   // 自动模式下不用确认
 export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
 
@@ -54,6 +55,14 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   async read_doc(args) { const d = requireDoc(args.id); return { summary: `已读取「${d.name}」（${wordCount(d.content)} 字）`, content: d.content.slice(0, 16000), actions: [openDocAction(d.id, d.name)] }; },
   async open_doc(args) { const d = requireDoc(args.id); useFiles.getState().openInPane(d.id); return `已打开「${d.name}」`; },
   async open_media(args) { const m = requireMedia(args.id); useFiles.getState().openInPane(m.id); return `已打开「${m.name}」`; },
+  // 看图（不需要确认）：用视觉模型描述或检查一张图片，结果交回模型再规划
+  async inspect_image(args, ctx) {
+    const m = requireMedia(args.id); if (m.kind !== 'image') throw new Error(`「${m.name}」不是图片`);
+    const question = String(args.question || '').trim() || '描述这张图的主体、动作、环境、光线与风格，指出任何明显的畸形或错误。只输出 JSON：{"description":"描述","issues":["问题"]}';
+    let content = '';
+    await ctx.step(`查看「${m.name}」`, async () => { const r = await askAboutImages([m.id], question, undefined, ctx.signal); content = typeof r === 'string' ? r : JSON.stringify(r, null, 1); });
+    return { summary: `已查看「${m.name}」`, content: content.slice(0, 4000), actions: [{ id: 'open-media:' + m.id, label: '查看' }] };
+  },
   async export_doc(args) { const d = requireDoc(args.id); downloadText(d.name, d.content, d.kind === 'json' ? 'application/json' : 'text/markdown'); return `已下载「${d.name}」`; },
   // ---- 文稿 ----
   async write_doc(args, ctx) {
@@ -97,7 +106,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
       r = await generateImage({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name } };
+    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name, prompt: String(args.prompt || '') } };
   },
   async generate_video(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
@@ -106,7 +115,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
       r = await generateVideo({ prompt: String(args.prompt || ''), name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio: VIDEO_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined, duration: args.duration as string | number | undefined, fromMediaId: args.from_media_id ? String(args.from_media_id) : undefined }, { onProgress: ctx.live, signal: ctx.signal });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name } };
+    return { summary: `已用 ${r.model.name} 生成视频「${r.item.name}」并存入媒体库${fallbackNote(r)}`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'video', name: r.item.name, prompt: String(args.prompt || '') } };
   },
   // 把若干段视频按顺序合成一条成片（浏览器本地合成，不计费，耗时约等于总时长）
   async compose_video(args, ctx) {
@@ -125,7 +134,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
 };
 
 // ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
-const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', compose_video: 'video', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', compose_video: 'video', inspect_image: 'media', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
 export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
 
 export function describeAction(a: Action): string {
@@ -141,6 +150,7 @@ export function describeAction(a: Action): string {
     case 'open_doc': return `打开「${docName(g.id)}」`;
     case 'export_doc': return `下载「${docName(g.id)}」`;
     case 'open_media': return `查看「${mediaName(g.id)}」`;
+    case 'inspect_image': return `用视觉模型看「${mediaName(g.id)}」${g.question ? '：' + String(g.question).slice(0, 30) : ''}`;
     case 'rename_media': return `把「${mediaName(g.id)}」重命名为「${g.name || ''}」`;
     case 'tag_media': return `把「${mediaName(g.id)}」归入「${g.group || '其他'}」分区`;
     case 'delete_media': return `删除「${mediaName(g.id)}」（进回收站，可撤销）`;

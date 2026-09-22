@@ -520,3 +520,15 @@ details.plan[open] > .plan-head { border-bottom: 1px solid var(--line); }
 .msg-wrap.user { display: flex; flex-direction: column; align-items: flex-end; max-width: 100%; }
 .msg-time { display: block; margin-top: 4px; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 .msg.assistant .msg-time { margin-top: 8px; }
+
+/* ===== 参考图质检卡（视觉模型逐张判断）===== */
+.img-review-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.img-review-list li { display: flex; gap: 12px; align-items: flex-start; }
+.img-review-thumb { flex: none; width: 96px; height: 72px; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); display: grid; place-items: center; }
+.img-review-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.img-review-body { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); }
+.img-review-body p { margin: 0 0 3px; }
+.img-review-body ol { margin: 2px 0 0; padding-left: 18px; }
+.img-verdict { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #e6efe8; color: #2f6b45; font-style: normal; font-size: 11px; }
+.img-verdict.bad { background: #f3e4e4; color: #9a3d3d; }
+.img-review-list li.is-bad .img-review-thumb { border-color: #d9b4b4; }

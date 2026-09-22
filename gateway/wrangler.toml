@@ -9,4 +9,5 @@ ALLOWED_ORIGINS = "https://moodio-ui.moodio-ui.workers.dev,http://127.0.0.1:8765
 
 # 密钥不写在这里，用命令设置：
 #   npx wrangler secret put DEEPSEEK_API_KEY
+#   npx wrangler secret put KIMI_API_KEY      # Moonshot（Kimi K3，支持看图）
 #   npx wrangler secret put ACCESS_TOKEN

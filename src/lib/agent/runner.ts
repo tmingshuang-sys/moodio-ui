@@ -11,6 +11,8 @@ import { writingGuideText, lintScriptMarkdown } from '../guides';
 import { docRole, splitLines } from '../markdown';
 import { toast } from '../../components/Toast';
 import { readLedger, ensureLedger, updateLedger } from '../ledger';
+import { reviewImages, visionReady } from '../vision';
+import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
 
 const optionLabel = (o: unknown) => typeof o === 'string' ? o : String((o as any)?.label || '');
@@ -78,7 +80,7 @@ export async function runActions(actions: Action[], request: string, chatId: str
     try {
       const r = await fn(a.args || {}, ctx);
       if (typeof r === 'string') { results.push(r); mark(i, 'done', r); }
-      else if (r) { const rr = r as ToolResult; results.push(rr.summary); mark(i, 'done', rr.summary); if (rr.review) reviewTargets.push(rr.review); if (rr.artifact && !artifacts.some(x => x.id === rr.artifact!.id)) artifacts.push(rr.artifact); if (rr.content !== undefined) lastToolContents.push({ title: findDoc(String(a.args?.id || ''))?.name || String(a.args?.id || ''), content: rr.content }); (rr.actions || []).forEach(b => { if (!buttons.some(x => x.id === b.id)) buttons.push(b); }); }
+      else if (r) { const rr = r as ToolResult; results.push(rr.summary); mark(i, 'done', rr.summary); if (rr.review) reviewTargets.push(rr.review); if (rr.artifact && !artifacts.some(x => x.id === rr.artifact!.id)) artifacts.push(rr.artifact); if (rr.content !== undefined) lastToolContents.push({ title: findDoc(String(a.args?.id || ''))?.name || findMedia(String(a.args?.id || ''))?.name || String(a.args?.id || ''), content: rr.content }); (rr.actions || []).forEach(b => { if (!buttons.some(x => x.id === b.id)) buttons.push(b); }); }
       else mark(i, 'done');
     } catch (e: any) {
       const stopped = e?.message === '已停止' || e?.name === 'AbortError';
@@ -194,6 +196,9 @@ export async function executePlan(key: string, messageAt: number) {
     await sleep(250);
     const run = await runActions(p.plan, p.text, c.id, steps); results = run.results; out.actions = run.buttons; out.artifacts = run.artifacts;
     if (run.reviewTargets.length && modelCfg()?.apiKey && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在自审刚写的内容…'); commit(); try { out.review = await selfReview(run.reviewTargets.slice(0, 2)); } catch (e) { console.warn('自审失败', e); } }
+    // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
+    const images = run.artifacts.filter(a => a.kind === 'image');
+    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal); } catch (e) { console.warn('参考图质检失败', e); } }
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });
@@ -203,7 +208,9 @@ export async function executePlan(key: string, messageAt: number) {
   const extra: FollowUp[] = []; const arts = out.artifacts || [];
   if (steps.some(s => s.status === 'failed')) extra.push({ label: '再试一次', prompt: '上一次执行有步骤出错，请只重新执行出错的那几步，已完成的不要重复。' });
   const images = arts.filter(a => a.kind === 'image').length, videos = arts.filter(a => a.kind === 'video' && !/\.webm$/i.test(a.name)).length;
-  if (images) extra.push({ label: '参考图通过，继续下一步', prompt: '刚生成的参考图都可以用。把它们记进台账的实体清单（状态已确认），然后推进到下一阶段，先给方案。' }, { label: '重新生成某张参考图', prompt: '有一张参考图不满意，我会说明是哪张、要怎么改，然后只重新生成那一张。' });
+  const bad = (out.imageReview || []).filter(r => r.verdict === '需重生成');
+  if (bad.length) extra.push({ label: `重新生成 ${bad.length} 张不合格的参考图`, prompt: `视觉质检认为这些参考图需要重新生成：${bad.map(b => `「${b.name}」（${b.issues.join('；') || b.description}）`).join('、')}。请针对这些问题改写提示词，只重新生成这几张，先给方案。` });
+  if (images) extra.push({ label: bad.length ? '其余参考图通过，继续下一步' : '参考图通过，继续下一步', prompt: '刚生成的参考图都可以用。把它们记进台账的实体清单（状态已确认），然后推进到下一阶段，先给方案。' }, { label: '重新生成某张参考图', prompt: '有一张参考图不满意，我会说明是哪张、要怎么改，然后只重新生成那一张。' });
   if (videos >= 2) extra.push({ label: '按顺序合成成片', prompt: `把刚生成的 ${videos} 段视频按分镜顺序用 compose_video 合成一条成片，先给方案。` });
   out.followUps = extra;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, p.text + '\n' + results.join('\n'), c.id); cc.messages.push(out); cc.at = Date.now(); });

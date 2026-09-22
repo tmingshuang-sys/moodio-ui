@@ -49,7 +49,8 @@ export interface FollowUp { label: string; prompt: string; }
 // 追问：single 单选 / multi 多选 / text 填空；选项可带一行说明；key 用来把答案记进台账
 export interface QuestionOption { label: string; hint?: string; }
 export interface Question { text: string; type?: 'single' | 'multi' | 'text'; options: QuestionOption[]; multi: boolean; placeholder?: string; key?: string; }
-export interface Artifact { id: string; kind: 'doc' | 'image' | 'video'; name: string; }   // 执行结果里的产物卡片
+export interface Artifact { id: string; kind: 'doc' | 'image' | 'video'; name: string; prompt?: string; }   // 执行结果里的产物卡片；生成类带上提示词供质检
+export interface ImageCheck { id: string; name: string; verdict: '通过' | '需重生成'; description: string; issues: string[]; }   // 视觉模型对参考图的质检结果
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 export interface PlanStep { tool: string; kind: string; title: string; preview: string; destructive: boolean; status: StepStatus; result: string; logs: string[]; }
 export type PlanState = 'pending' | 'confirmed' | 'cancelled' | 'running' | 'reviewing' | 'done' | 'stopped' | 'error';
@@ -73,6 +74,7 @@ export interface Message {
   textAnswers?: Record<number, string>;   // 填空题与「自己填写」的答案
   questionsUsed?: boolean;
   artifacts?: Artifact[];
+  imageReview?: ImageCheck[];
   plan?: Plan;
   log?: string[];
   review?: Review | null;
@@ -94,6 +96,7 @@ export interface ModelConfig {
   thinking?: string;
   writerModel?: string;
   writerThinking?: string;
+  visionModel?: string;          // 看图用的模型（如 kimi-k3）；留空时若主模型本身支持图片输入就用主模型
   // 图片 / 视频生成：走 Moodio 网关的 /fal 通道（见 lib/mediagen.ts），留空则沿用上面的网关地址与口令
   mediaBaseUrl?: string;
   mediaToken?: string;

@@ -18,7 +18,22 @@ const CREATIVE_RE = /(写|续写|改写|润色|扩写|重写|台词|对白|一�
 export function isCreativeRequest(text: string): boolean { const t = String(text || ''); return CREATIVE_RE.test(t) && !/^(删除|重命名|导出|切换|打开|列出|读取|恢复|合并)/.test(t.trim()); }
 export function writerCfg(cfg: ModelConfig): ModelConfig { const model = String(cfg.writerModel || '').trim(); if (!model) return cfg; return { ...cfg, model, thinking: cfg.writerThinking || cfg.thinking }; }
 
-export interface CallOptions { signal?: AbortSignal; onText?: (text: string) => void; onReasoning?: (text: string) => void; }
+export interface CallOptions { signal?: AbortSignal; onText?: (text: string) => void; onReasoning?: (text: string) => void; images?: string[]; }   // images：data URL，交给支持图片输入的模型
+
+// 看图用哪个模型：设置里填了视觉模型就用它；没填时主模型本身支持图片输入（Kimi K3 / Claude / GPT-4o 等）就直接用主模型
+const VISION_RE = /kimi|moonshot|vision|\bvl\b|gpt-4o|gpt-5|claude|gemini|glm-4v/i;
+export function visionCfg(cfg: ModelConfig | null | undefined): ModelConfig | null {
+  if (!cfg?.apiKey) return null;
+  const m = String(cfg.visionModel || '').trim();
+  if (m) return { ...cfg, model: m, thinking: '' };
+  return VISION_RE.test(String(cfg.model || '')) ? { ...cfg, thinking: '' } : null;
+}
+// OpenAI 兼容格式的用户消息：有图片时用 content 数组（文本 + image_url）
+export function openAIUserContent(t: string, images?: string[]): string | { type: string; text?: string; image_url?: { url: string } }[] {
+  if (!images?.length) return t;
+  return [{ type: 'text', text: t }, ...images.map(url => ({ type: 'image_url', image_url: { url } }))];
+}
+const dataUrlParts = (url: string) => { const m = /^data:([^;,]+);base64,(.*)$/s.exec(url); return m ? { mime: m[1], data: m[2] } : null; };
 
 async function readModelError(res: Response): Promise<Error> { let msg = ''; try { const j: any = await res.json(); msg = j.error?.message || j.error?.type || ''; } catch { /* ignore */ } return new Error('模型服务返回 ' + res.status + (msg ? '：' + msg : '')); }
 
@@ -66,10 +81,11 @@ async function readClaudeStream(res: Response, { signal, onText, onReasoning }: 
   } finally { signal?.removeEventListener('abort', onAbort); try { reader.releaseLock(); } catch { /* ignore */ } }
 }
 
-export async function callClaude(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning }: CallOptions = {}): Promise<string> {
+export async function callClaude(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning, images }: CallOptions = {}): Promise<string> {
   const base = (cfg.baseUrl || PROVIDER_DEFAULTS.claude.baseUrl).replace(/\/+$/, '').replace(/\/v1$/, '');
   const model = cfg.model || PROVIDER_DEFAULTS.claude.model, streaming = typeof onText === 'function';
-  const body: any = { model, max_tokens: 16000, system: sys, fallbacks: 'default', output_config: { effort: 'medium' }, messages: [{ role: 'user', content: t }] };
+  const imageBlocks = (images || []).map(dataUrlParts).filter(Boolean).map(p => ({ type: 'image', source: { type: 'base64', media_type: p!.mime, data: p!.data } }));
+  const body: any = { model, max_tokens: 16000, system: sys, fallbacks: 'default', output_config: { effort: 'medium' }, messages: [{ role: 'user', content: imageBlocks.length ? [...imageBlocks, { type: 'text', text: t }] : t }] };
   if (/(?:-4-[678]|-5)(?:-|$)|fable|mythos/i.test(model)) body.thinking = { type: 'adaptive', display: 'summarized' };   // 4.6 及之后支持 adaptive thinking
   if (streaming) body.stream = true;
   const res = await fetch(base + '/v1/messages', { method: 'POST', signal, headers: {
@@ -157,9 +173,9 @@ async function readOpenAIStream(res: Response, { signal, onText, onReasoning }: 
   } finally { signal?.removeEventListener('abort', onAbort); cancelReader(); try { reader.releaseLock(); } catch { /* ignore */ } }
 }
 
-export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning }: CallOptions = {}): Promise<string> {
+export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { signal, onText, onReasoning, images }: CallOptions = {}): Promise<string> {
   const streaming = typeof onText === 'function';
-  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: t }], response_format: { type: 'json_object' } };
+  const body: any = { model: cfg.model || PROVIDER_DEFAULTS.openai.model, temperature: 0.7, messages: [{ role: 'system', content: sys }, { role: 'user', content: openAIUserContent(t, images) }], response_format: { type: 'json_object' } };
   const think = String(cfg.thinking || '');
   if (think === 'off') body.thinking = { type: 'disabled' };
   else if (['low', 'high', 'max'].includes(think)) { body.thinking = { type: 'enabled' }; body.reasoning_effort = think; delete body.temperature; }
