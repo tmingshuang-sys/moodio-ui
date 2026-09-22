@@ -1,6 +1,6 @@
 // ===== 左侧导航：logo（回主页）/ 项目、创作、资源、创作历史（今天 / 昨天 / 更早）、底部用户与设置 =====
 // 「创作」= 新建一个空白创作（项目）并切换过去；创作历史列出所有项目里有内容的对话，点一条切回那个项目（不刷新页面）
-import { Sparkles, FolderOpen, PanelLeft, MoreHorizontal, ChevronDown, FileText, Settings, Languages, Plus, Check } from 'lucide-react';
+import { Sparkles, FolderOpen, PanelLeft, MoreHorizontal, FileText, Settings, Languages } from 'lucide-react';
 import { useChats, useFiles, useAgent, useNav } from '../lib/store';
 import { projects } from '../lib/projects';
 import { startCreation, switchProject, deleteCreation, otherProjectsHistory, chatCount, renameHistoryChat, deleteHistoryChat } from '../lib/session';
@@ -39,15 +39,6 @@ export default function Sidebar() {
   const groups: Record<string, Entry[]> = { 今天: [], 昨天: [], 更早: [] };
   entries.forEach(e => groups[dayGroup(e.at)].push(e));
 
-  const openProjectMenu = (el: Element) => {
-    const list = projects.list();
-    openMenuAt(el, [
-      ...list.map(p => ({ label: p.title, icon: p.id === cur.id ? <Check size={14} /> : undefined, active: p.id === cur.id, onClick: () => { switchProject(p.id); } })),
-      { label: t('新建项目'), icon: <Plus size={14} />, onClick: async () => { const name = await promptDialog({ title: t('新建项目'), label: '项目名称', placeholder: '例如：一分钟广告' }); if (name) startCreation(name, { reuseBlank: false }); } },
-      { label: t('重命名项目'), onClick: async () => { const name = await promptDialog({ title: t('重命名项目'), label: '项目名称', value: cur.title }); if (name) { projects.rename(cur.id, name); bump(x => x + 1); } } },
-      { label: t('删除项目'), danger: true, onClick: async () => { if (await confirmDialog({ title: t('删除项目'), body: `删除「${cur.title}」及其全部文件和对话，此操作不可恢复。`, okLabel: '删除', danger: true })) deleteCreation(cur.id); } },
-    ], { width: 220, title: t('项目') });
-  };
   // 历史条目的菜单：一个项目只有这一条对话时，「删除」就是删掉整个创作（对话 + 工作区文件）
   const openChatMenu = (el: Element, e: Entry) => {
     const whole = chatCount(e.projectId) <= 1;
@@ -76,11 +67,6 @@ export default function Sidebar() {
         </button>
         <button type="button" className="icon-btn" onClick={() => setUi({ sidebarCollapsed: !collapsed })} aria-label={collapsed ? '展开侧栏' : '收起侧栏'} title={collapsed ? '展开侧栏' : '收起侧栏'}><PanelLeft size={18} /></button>
       </div>
-      {!collapsed && (
-        <button type="button" className="sb-project" onClick={e => openProjectMenu(e.currentTarget)}>
-          <span className="sb-project-name project-title">{projects.active().title}</span><ChevronDown size={14} />
-        </button>
-      )}
       <nav className="sb-nav" aria-label="板块">
         <button type="button" className={`sb-item${page === 'chat' && !chats.find(c => c.id === active)?.messages.length ? ' active' : ''}`} onClick={() => { go('chat'); startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
         {/* 资源 = 素材库页面：所有创作里生成 / 上传的图片与视频 */}

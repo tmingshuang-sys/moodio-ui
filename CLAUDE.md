@@ -85,7 +85,7 @@ npm run build          # vite build → dist/
 | 模型选择面板 | `ModelPrefs.tsx`（输入框工具栏里的按钮，视频 / 图片 / 推理模型三个标签页）；媒体模型目录 `mediamodels.ts`，推理模型目录 `model.ts` 的 `CHAT_MODELS` |
 | 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
 | 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`、拖拽上传；上传逻辑 `upload.ts` |
-| 侧栏 | `Sidebar.tsx`：logo 点了回主页（同「创作」：切到对话页并开新创作，当前创作空白时只聚焦输入框），项目菜单在 logo 下方的项目名上（切换 / 新建 / 重命名 / 删除）、「创作」`startCreation()`、「资源」`useNav.go('library')`、创作历史（跨项目，按今天 / 昨天 / 更早分组）、底部设置菜单（模型设置 / 语言）；创作会话逻辑在 `session.ts`（`startCreation` / `switchProject` / `deleteCreation` / `otherProjectsHistory`） |
+| 侧栏 | `Sidebar.tsx`：logo 点了回主页（同「创作」：切到对话页并开新创作，当前创作空白时只聚焦输入框）；logo 下方的项目名切换按钮已按要求去掉，切换创作走创作历史、重命名 / 删除走历史条目菜单、新建走「创作」、「创作」`startCreation()`、「资源」`useNav.go('library')`、创作历史（跨项目，按今天 / 昨天 / 更早分组）、底部设置菜单（模型设置 / 语言）；创作会话逻辑在 `session.ts`（`startCreation` / `switchProject` / `deleteCreation` / `otherProjectsHistory`） |
 | 素材库 | `Library.tsx`（页面、卡片、大图预览）+ `library.ts`（`allMedia` / `renameLibraryMedia` / `deleteLibraryMedia` / `restoreLibraryMedia` / `openInCreation`） |
 | 弹窗 | `Dialogs.tsx`：`confirmDialog()` / `promptDialog()` / `openModelSettings()` / `openBrief()` |
 | 模型 | `model.ts`：`modelCfg()` / `saveModelCfg()` / `PROVIDER_DEFAULTS` / `probeModel()` / `parsePlanJSON()` / `partialPlanMessage()` |
