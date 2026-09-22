@@ -3816,7 +3816,7 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .shot-delete-error { color: #b83a3a; }
     .shot-delete-error:empty { display: none; }
 
-    /* ===== 首页（点击顶栏 logo 或「返回项目列表」进入）：参考正式版首页——问候语 + 居中输入框 + 项目卡片。
+    /* ===== 首页（点击顶栏 logo 或「返回项目列表」进入）：参考正式版首页——问候语 + 居中输入框。
      * 进入首页时 src/11 把 #agent-panel 搬进 #home-agent-slot：没有对话内容时（闲置）只露出输入框；一旦开始对话（body.home-chatting）
      * 面板铺满顶栏以下整个页面，消息与输入框收成居中一栏。!important 只用来盖过拖动 / 缩放留下的行内样式。 ===== */
     .logo[data-go-home] { cursor: pointer; }
@@ -3829,21 +3829,6 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     #home-agent-slot { width: min(720px, 100%); }
     .home-history-link { margin-top: -16px; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; color: var(--ink-3); cursor: pointer; }
     .home-history-link:hover { color: var(--ink); background: rgba(31, 38, 35, .05); }
-    .home-projects { display: flex; gap: 16px; width: min(720px, 100%); overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: none; }
-    .home-projects::-webkit-scrollbar { display: none; }
-    .home-project { flex: none; width: 152px; padding: 0; border: 0; background: transparent; text-align: left; color: var(--ink); font: 13px/1.4 var(--font-ui); cursor: pointer; }
-    .home-project:focus-visible { outline: 2px solid #694178; outline-offset: 3px; border-radius: 6px; }
-    .home-project-thumb { position: relative; display: grid; place-items: center; height: 88px; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(135deg, #f1f1ef 0%, #e6e6e3 100%); color: var(--ink-3); overflow: hidden; transition: border-color 120ms ease, box-shadow 160ms ease; }
-    .home-project:not(.home-project-new) .home-project-thumb::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, transparent 0 9px, rgba(255, 255, 255, .5) 9px 10px); }   /* 参考图里的浅纹理占位 */
-    .home-project:not(.home-project-new) .home-project-thumb .icon { position: absolute; right: 8px; bottom: 8px; z-index: 1; width: 16px; height: 16px; }
-    .home-project:hover .home-project-thumb { border-color: var(--line-strong); box-shadow: 0 6px 18px rgba(31, 38, 35, .1); }
-    .home-project.current .home-project-thumb { border-color: #b5a5c3; }
-    .home-project-current-tag { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 2px 7px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 10px; line-height: 1.4; }
-    .home-project strong { display: block; margin-top: 8px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .home-project small { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .home-project-new { width: 84px; }
-    .home-project-new .home-project-thumb { display: flex; flex-direction: column; justify-content: center; gap: 4px; border: 1px dashed var(--line-strong); background: transparent; font-size: 12px; color: var(--ink-2); }
-    .home-project-new .home-project-thumb .icon { width: 18px; height: 18px; }
     .home-footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: auto; padding-top: 40px; }
     .home-footer button { padding: 0; border: 0; background: transparent; font-size: 12px; color: var(--ink-3); cursor: pointer; }
     .home-footer button:hover { color: var(--ink); }
