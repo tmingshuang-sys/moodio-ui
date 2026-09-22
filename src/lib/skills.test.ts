@@ -6,6 +6,7 @@ let skills: typeof import('./skills');
 let ledger: typeof import('./ledger');
 let store: typeof import('./store');
 let prompt: typeof import('./agent/prompt');
+let lint: typeof import('./lint');
 
 beforeAll(async () => {
   (globalThis as any).localStorage = { getItem: (k: string) => memory.get(k) ?? null, setItem: (k: string, v: string) => memory.set(k, v), removeItem: (k: string) => memory.delete(k) };
@@ -13,7 +14,7 @@ beforeAll(async () => {
   (globalThis as any).window = Object.assign(globalThis, { setTimeout, addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; } });
   (globalThis as any).CustomEvent = class { constructor(public type: string, public init?: any) {} };
   (globalThis as any).location = { reload() {} };
-  skills = await import('./skills'); ledger = await import('./ledger'); store = await import('./store'); prompt = await import('./agent/prompt');
+  skills = await import('./skills'); ledger = await import('./ledger'); store = await import('./store'); prompt = await import('./agent/prompt'); lint = await import('./lint');
 });
 
 describe('skill packs', () => {
@@ -31,6 +32,13 @@ describe('skill packs', () => {
     expect(skills.skillFor('ad').name).toBe('营销视频大师'); expect(skills.skillFor('mv').modelDocs).toContain('歌曲分析.md');
     expect(skills.skillStages(skills.skillFor('ad'))[1].name).toBe('商品建模');
     expect(skills.skillStages(skills.skillFor('film'))[1].name).toBe('人物与世界建模');
+    // 样例：广告与故事片各有建模 + 片段样例，样例本身要过我们自己的冻结格式（时段相接、参考音频、无 BGM 尾注）
+    for (const id of ['ad', 'film', 'series']) { const s = skills.skillFor(id); expect(s.samples?.model).toBeTruthy(); expect(s.samples?.clip).toMatch(/full-film range/); expect(s.samples?.clip).toContain('不生成 BGM'); }
+    expect(skills.skillFor('film').samples!.clip).toContain('音色参考@音频1');
+    const frozen = lint.frozenDescriptions(skills.FILM_MODEL_SAMPLE); expect(frozen.map(f => f.name)).toEqual(['老周', '女孩']);
+    const film = lint.lintClipDocs([{ name: '视频生成Prompt-02.md', content: skills.FILM_CLIP_SAMPLE }], [], null, { frozen }); expect(film.errors).toEqual([]);
+    const ad = lint.lintClipDocs([{ name: '视频生成Prompt-02.md', content: skills.AD_CLIP_SAMPLE }], [], null); expect(ad.errors).toEqual([]);
+    expect(skills.skillFor('film').contracts.some(c => c.startsWith('对白契约'))).toBe(true);
   });
 });
 
@@ -61,7 +69,11 @@ describe('ledger', () => {
     expect(block).toContain('营销视频大师'); expect(block).toContain('商品建模（当前）');
     expect(block).toContain('"key":"shape"'); expect(block).not.toContain('"key":"brand"');   // 已回答的品牌不再问，形状还要问
     expect(block).toContain('产品图契约');
+    expect(prompt.skillBlock()).toContain('建模文稿样例');   // 建模阶段带样例
+    ledger.updateLedger({ stage: 'prompts' });
+    expect(prompt.skillBlock()).toContain('片段提示词样例'); expect(prompt.skillBlock()).not.toContain('建模文稿样例');
     ledger.updateLedger({ stage: 'video' });
     expect(prompt.skillBlock()).not.toContain('"key":');   // 生成阶段没有问卷
+    expect(prompt.skillBlock()).not.toContain('样例');
   });
 });

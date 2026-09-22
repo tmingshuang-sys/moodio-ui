@@ -18,6 +18,7 @@ export interface ModelPreset {
   durationRange?: [number, number];// 自定义时长的范围（方舟）
   resolution?: boolean;            // 是否可设分辨率（方舟视频 480p/720p/1080p，方舟图片 2K/4K）
   verified?: boolean;              // 本仓库实际跑通过
+  audioRef?: boolean;              // 能把音色样本当参考音频传给模型（mediagen 目前只传图片参考，接通后再在预设上打开）
 }
 
 export const IMAGE_RATIOS: RatioKey[] = ['16:9', '9:16', '1:1', '4:3', '3:4'];

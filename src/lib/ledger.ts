@@ -5,7 +5,7 @@ import { skillFor, skillStages, STAGE_ORDER } from './skills';
 import type { StageId } from './skills';
 
 export const LEDGER_NAME = '台账.json';
-export interface LedgerEntity { name: string; kind: string; ref?: string; status?: string; }      // ref = 参考图媒体 id
+export interface LedgerEntity { name: string; kind: string; ref?: string; voice?: string; status?: string; }      // ref = 参考图媒体 id；voice = 音色样本（音频媒体 id）
 export interface LedgerClip { no: number; seconds: number; shots?: string; docId?: string; mediaId?: string; status?: string; }
 export interface Ledger { skill: string; stage: StageId; done: StageId[]; answers: Record<string, string>; entities: LedgerEntity[]; clips: LedgerClip[]; notes: string; confirmed: string[]; flags: Record<string, boolean>; updatedAt: number; }   // confirmed：用户点过的检查点（script / assets / prompts / deliver）；flags：skipLint 等开关
 
@@ -21,7 +21,7 @@ function normalize(raw: any): Ledger {
     skill: String(raw?.skill || 'other'), stage: isStage(raw?.stage) ? raw.stage : 'brief',
     done: (Array.isArray(raw?.done) ? raw.done : []).filter(isStage),
     answers: raw?.answers && typeof raw.answers === 'object' ? raw.answers : {},
-    entities: Array.isArray(raw?.entities) ? raw.entities.filter((e: any) => e && e.name).map((e: any) => ({ name: String(e.name), kind: String(e.kind || ''), ref: e.ref ? String(e.ref) : undefined, status: e.status ? String(e.status) : undefined })) : [],
+    entities: Array.isArray(raw?.entities) ? raw.entities.filter((e: any) => e && e.name).map((e: any) => ({ name: String(e.name), kind: String(e.kind || ''), ref: e.ref ? String(e.ref) : undefined, voice: e.voice ? String(e.voice) : undefined, status: e.status ? String(e.status) : undefined })) : [],
     clips: Array.isArray(raw?.clips) ? raw.clips.filter((c: any) => c && Number.isFinite(Number(c.no))).map((c: any) => ({ no: Number(c.no), seconds: Number(c.seconds) || 0, shots: c.shots ? String(c.shots) : undefined, docId: c.docId ? String(c.docId) : undefined, mediaId: c.mediaId ? String(c.mediaId) : undefined, status: c.status ? String(c.status) : undefined })) : [],
     notes: String(raw?.notes || ''), confirmed: (Array.isArray(raw?.confirmed) ? raw.confirmed : []).map(String), flags: raw?.flags && typeof raw.flags === 'object' ? Object.fromEntries(Object.entries(raw.flags).map(([k, v]) => [k, !!v])) : {}, updatedAt: Number(raw?.updatedAt) || Date.now(),
   };
@@ -68,7 +68,7 @@ export function ledgerText(ledger: Ledger): string {
   const { stages, current } = stageOf(ledger);
   const chain = stages.map(s => `${s.name}${ledger.done.includes(s.id) && s.id !== ledger.stage ? ' ✓' : s.id === ledger.stage ? '（当前）' : ''}`).join(' → ');
   const answers = Object.entries(ledger.answers).slice(0, 30).map(([k, v]) => `${k}=${String(v).slice(0, 60)}`).join('；');
-  const entities = ledger.entities.map(e => `${e.name}（${e.kind}${e.ref ? '，参考图 ' + e.ref : '，无参考图'}${e.status ? '，' + e.status : ''}）`).join('；');
+  const entities = ledger.entities.map(e => `${e.name}（${e.kind}${e.ref ? '，参考图 ' + e.ref : '，无参考图'}${e.voice ? '，音色 ' + e.voice : ''}${e.status ? '，' + e.status : ''}）`).join('；');
   const clips = ledger.clips.map(c => `第 ${c.no} 段 ${c.seconds}s${c.shots ? '（' + c.shots + '）' : ''}${c.docId ? ' 提示词 ' + c.docId : ''}${c.mediaId ? ' 视频 ' + c.mediaId : ''}${c.status ? ' ' + c.status : ''}`).join('；');
   return `阶段链：${chain}\n当前阶段「${current.name}」目标：${current.goal}\n本阶段产物：${current.outputs}；进入下一阶段的条件：${current.gate}\n已记录的答案：${answers || '（无）'}\n实体清单：${entities || '（未建立）'}\n片段清单：${clips || '（未建立）'}${ledger.notes ? '\n备注：' + ledger.notes : ''}`;
 }
