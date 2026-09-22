@@ -155,6 +155,19 @@ export function askLocally(questions: QuestionDef[]) {
   qs.forEach((q, i) => { if (q.type !== 'text' && q.recommended?.length) answers[i] = q.recommended.slice(); });
   useChats.getState().push(chat.id, { role: 'assistant', text: '先确认几件事，不想选就用推荐值：', at: Date.now(), questions: qs, answers, followUpContext: { chatId: chat.id } });
 }
+// 模型自己发的追问：按 key 或题面在题库里找推荐项预选，让用户也能一键过
+export function recommendedAnswers(questions: Question[]): Record<number, number[]> {
+  const { brief } = useFiles.getState(); if (!has(brief?.format)) return {};
+  const bank = [...skillFor(brief!.format).general, ...skillFor(brief!.format).modeling];
+  const out: Record<number, number[]> = {};
+  questions.forEach((q, i) => {
+    if (q.type === 'text' || !q.options?.length) return;
+    const def = bank.find(d => (q.key && d.key === q.key) || d.text === q.text); if (!def?.recommended?.length) return;
+    const idx = def.recommended.map(r => { const label = def.options[r]?.label; return q.options.findIndex(o => (typeof o === 'string' ? o : o.label) === label); }).filter(x => x >= 0);
+    if (idx.length) { out[i] = idx; q.recommended = idx; }
+  });
+  return out;
+}
 // 问卷答案写进纲领对应字段（时长 / 画幅 / 受众 / 调性），这样导演不用等模型 save_brief 就能判断纲领齐不齐
 export function applyAnswersToBrief(record: Record<string, string>) {
   const { brief } = useFiles.getState(); if (!has(brief?.format)) return;

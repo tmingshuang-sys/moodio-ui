@@ -13,7 +13,7 @@ import { toast } from '../../components/Toast';
 import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
-import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick } from '../director';
+import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, recommendedAnswers } from '../director';
 import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
 
@@ -146,7 +146,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const r = await AGENT_TOOLS.update_ledger(a.args || {}, { request: text, chatId: c.id, typeInto, step, live: setLive }); if (a.args?.stage) notes.push(`✓ ${typeof r === 'string' ? r : r.summary}`); } catch (e: any) { notes.push(`✗ ${e?.message || e}`); } }
     plan = plan.filter(a => a.tool !== 'update_ledger');
     const ask = plan.find(a => a.tool === 'ask_user');
-    if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; }
+    if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; try { const rec = recommendedAnswers(out.questions); if (Object.keys(rec).length) out.answers = rec; } catch { /* ignore */ } }
     if (notes.length) message = (message ? message + '\n' : '') + notes.join('\n');
     // 读取 / 打开直接执行；读到的内容交回模型再规划，最多四轮
     const autoLog: string[] = []; let readFeed = '';
@@ -162,7 +162,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
       } else plan = [];
     }
     if (plan.some(a => a.tool === 'read_doc')) { plan = []; message = (message ? message + '\n' : '') + '还需要读取更多文稿，尚未生成可执行计划。请指定要处理的文稿后继续。'; }
-    const nextAsk = plan.find(a => a.tool === 'ask_user'); if (nextAsk) { out.questions = normalizeQuestions(nextAsk.args?.questions); plan = []; }
+    const nextAsk = plan.find(a => a.tool === 'ask_user'); if (nextAsk) { out.questions = normalizeQuestions(nextAsk.args?.questions); plan = []; try { const rec = recommendedAnswers(out.questions); if (Object.keys(rec).length) out.answers = rec; } catch { /* ignore */ } }
     if (plan.length) {
       const key = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const steps = planSteps(plan);
@@ -285,7 +285,14 @@ export function answerQuestions(messageAt: number, decide: boolean) {
     if (value) { answered++; lines.push(`${q.text}：${value}`); if (q.key) record[q.key] = value; } else lines.push(`${q.text}：（未回答，由你决定）`);
   });
   const text = decide ? '这些问题由你来定，按专业判断处理，之后不必再问。' : answered ? '我已确认以上信息：\n' + lines.join('\n') : ''; if (!text) return;
-  if (!decide && Object.keys(record).length) { try { const fmt = useFiles.getState().brief?.format; if (readLedger() || fmt) { if (!readLedger()) ensureLedger(fmt); updateLedger({ answers: record }); applyAnswersToBrief(record); } } catch { /* ignore */ } }
+  try {
+    const fmt = useFiles.getState().brief?.format;
+    if (readLedger() || fmt) {
+      if (!readLedger()) ensureLedger(fmt);
+      if (decide) { const all: Record<string, string> = {}; m.questions.forEach(q => { if (q.key) all[q.key] = '由 Agent 决定'; }); if (Object.keys(all).length) updateLedger({ answers: all }); }   // 记下「由 Agent 决定」，导演不再重复问
+      else if (Object.keys(record).length) { updateLedger({ answers: record }); applyAnswersToBrief(record); }
+    }
+  } catch { /* ignore */ }
   chats().mutate(all => { for (const cc of all) for (const mm of cc.messages) if (mm.at === messageAt) mm.questionsUsed = true; });
   void send(text, { display: decide ? undefined : '我已确认以上信息' });
 }
