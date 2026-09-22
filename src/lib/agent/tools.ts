@@ -207,7 +207,7 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     let item!: import('../types').MediaItem;
     await ctx.step(`合成 ${clips.length} 段视频为成片${subtitles.length ? `（${subtitles.length} 条字幕）` : ''}${voices.length ? `（${voices.length} 条配音）` : ''}${musicId ? '（配乐）' : ''}`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal, musicId: musicId || undefined, musicVolume: args.music_volume !== undefined ? Number(args.music_volume) : undefined, subtitles, voices, clipVolume: args.clip_volume !== undefined ? Number(args.clip_volume) : undefined, format: args.format === 'webm' ? 'webm' : 'mp4' }); });
     useFiles.getState().openInPane(item.id);
-    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${voices.length ? `，${voices.length} 条配音` : ''}${musicId ? '，已配乐' : ''}${voiceNote}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
+    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${voices.length ? `，${voices.length} 条配音` : ''}${musicId ? '，已配乐' : ''}${voiceNote}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }, { id: 'jianying:' + item.id, label: '去剪映编辑' }], artifact: { id: item.id, kind: 'video', name: item.name } };
   },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },

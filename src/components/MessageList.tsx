@@ -11,6 +11,7 @@ import { skipLintGate } from '../lib/director';
 import { mediaUrl } from '../lib/storage';
 import { clock } from '../lib/time';
 import { toast } from './Toast';
+import { runJianyingExport } from './ResourcePane';
 import { useT } from '../lib/i18n';
 
 const KIND_ICON: Record<string, ReactNode> = { write: <PenLine size={14} />, doc: <FileText size={14} />, media: <Image size={14} />, delete: <Trash2 size={14} />, project: <FolderKanban size={14} />, export: <Download size={14} />, brief: <Sparkles size={14} />, image: <Wand2 size={14} />, video: <Clapperboard size={14} />, audio: <Music size={14} />, other: <Dot size={14} /> };
@@ -204,6 +205,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
     if (id.startsWith('plan-cancel:')) { cancelPlan(id.slice(12), m.at); return; }
     if (id.startsWith('open-doc:')) { openInPane(id.slice(9)); return; }
     if (id.startsWith('open-media:')) { openInPane(id.slice(11)); return; }
+    if (id.startsWith('jianying:')) { void runJianyingExport(id.slice(9)); return; }
     if (id.startsWith('restore-trash:')) { restoreTrash(id.slice(14), m.at); return; }
     if (id.startsWith('review-fix:')) { reviewFix(m.at, parseInt(id.slice(11), 10)); return; }
     toast('这是旧版对话里的操作，请直接在右侧工作区打开文件');

@@ -2,7 +2,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye } from 'lucide-react';
+import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye, Clapperboard } from 'lucide-react';
+import { exportToJianying } from '../lib/jianying';
+// 去剪映编辑：写草稿目录（或下载 zip），过程用 toast 报进度
+export async function runJianyingExport(mediaId?: string) {
+  try {
+    const r = await exportToJianying(mediaId, t => toast(t));
+    toast(r.mode === 'direct' ? `已写入剪映草稿「${r.folder}」（${r.clips} 段），打开剪映即可在草稿列表里看到` : `浏览器不支持直接写入，已下载「${r.folder}.zip」：解压到 Movies/JianyingPro/User Data/Projects/com.lveditor.draft 再打开剪映`);
+  } catch (e: any) { if (e?.name !== 'AbortError') toast(`去剪映编辑失败：${e?.message || e}`); }
+}
 import type { Doc, MediaItem } from '../lib/types';
 import { useAgent, useFiles } from '../lib/store';
 import { previewLines, baseName, wordCount, plainText } from '../lib/markdown';
@@ -123,6 +131,7 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
         <div className="view-tools">
           <label className="group-select">{t('分区')}<select value={groups.includes(item.group) ? item.group : '其他'} onChange={e => useFiles.getState().updateMedia(item.id, { group: e.target.value })}>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
+          {item.kind === 'video' && <button type="button" className="chip-btn" title={t('把片段按顺序写成剪映草稿并打开剪映')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={15} /><span>{t('去剪映编辑')}</span></button>}
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={async () => { const blob = await getBlob(item.id); if (blob) downloadBlob(item.name, blob); }}><Download size={17} /></button>
           <button type="button" className="icon-btn" aria-label="更多" onClick={e => openMenuAt(e.currentTarget, [
             { label: t('删除'), danger: true, onClick: async () => { if (await confirmDialog({ title: '删除文件', body: `删除「${item.name}」？7 天内可撤销。`, okLabel: '删除', danger: true })) { const entry = useFiles.getState().removeMedia(item.id); onBack(); toast(`已删除「${item.name}」`, entry ? { label: '撤销', onClick: () => useFiles.getState().restoreTrash(entry.trashId) } : undefined); } } },
