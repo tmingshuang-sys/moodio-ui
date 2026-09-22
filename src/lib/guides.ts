@@ -9,6 +9,17 @@ export function styleBaseline(visualStyle?: string): string {
   if (/手绘|2D|插画|漫画|水彩/i.test(v)) return '2D 手绘插画，统一线条与上色方式（2D hand-drawn illustration, consistent line and coloring）';
   return `${v}（全部参考图保持同一画风 / keep every reference in this exact style）`;
 }
+// 把画风基线真正压进提示词：写实真人时开头先说「这是照片」（模型最看重开头），并把 character sheet / concept art / render 这类会把人物拉成卡通设定图的词换成 photograph；末尾再附完整基线
+export const isPhotoreal = (visualStyle?: string) => { const v = String(visualStyle || '').trim(); return !v || /写实|真人|实拍|photo/i.test(v); };
+export function applyStyleBaseline(prompt: string, visualStyle?: string): string {
+  let p = String(prompt || '').trim(); if (p.includes('画风基线')) return p;
+  const cjk = /[\u3400-\u9fff]/.test(p);
+  if (isPhotoreal(visualStyle)) {
+    p = p.replace(/character\s+(reference\s+)?sheet/gi, 'full-body photograph').replace(/reference\s+sheet/gi, 'photograph').replace(/concept\s+art/gi, 'photograph').replace(/\b3d\s+render(ed|ing)?\b/gi, 'photograph').replace(/(角色|人物)?设定图/g, '真人照片');
+    p = (cjk ? '写实真人照片，全画幅相机 85mm 镜头拍摄，真实皮肤纹理与毛孔，' : 'Photorealistic RAW photograph shot on a full-frame camera with an 85mm lens, natural skin texture and pores, ') + p;
+  }
+  return `${p}\n画风基线：${styleBaseline(visualStyle)}`;
+}
 export const BRIEF_FIELDS: [string, string][] = [['format', '类型'], ['duration', '时长'], ['platform', '平台'], ['ratio', '画幅'], ['audience', '受众'], ['tone', '调性'], ['references', '参考作品'], ['visualStyle', '视觉风格'], ['taboos', '禁忌'], ['notes', '备注']];
 export const BRIEF_KEY_FIELDS = ['format', 'duration', 'audience', 'tone'];
 

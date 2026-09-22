@@ -32,7 +32,11 @@ describe('skill packs', () => {
     expect(skills.skillFor('nope').id).toBe('other');
     // 画风题在每个类型的通用问卷里，答案回写纲领 visualStyle；画风基线默认写实真人
     for (const id of ['ad', 'film', 'series', 'short', 'mv', 'other']) { const q = skills.skillFor(id).general.find(x => x.key === 'look'); expect(q && skills.briefKeyOf(q)).toBe('visualStyle'); expect(q!.recommended).toEqual([0]); }
-    expect(guides.styleBaseline(undefined)).toContain('photorealistic'); expect(guides.styleBaseline('3D 动画')).toContain('3D animated'); expect(guides.styleBaseline('赛博朋克油画')).toContain('赛博朋克油画');
+    expect(guides.styleBaseline(undefined)).toContain('photorealistic');
+    const en = guides.applyStyleBaseline('Character reference sheet of a 5-year-old boy, warm smile', undefined);
+    expect(en.startsWith('Photorealistic RAW photograph')).toBe(true); expect(en).toContain('full-body photograph of a 5-year-old boy'); expect(en).not.toMatch(/reference sheet/i); expect(en).toContain('画风基线：');
+    expect(guides.applyStyleBaseline('五岁男孩的角色设定图，站在客厅', '写实真人').startsWith('写实真人照片')).toBe(true);
+    expect(guides.applyStyleBaseline('a boy', '3D 动画')).not.toMatch(/^Photorealistic/); expect(guides.applyStyleBaseline('已有\n画风基线：x', undefined)).toBe('已有\n画风基线：x'); expect(guides.styleBaseline('3D 动画')).toContain('3D animated'); expect(guides.styleBaseline('赛博朋克油画')).toContain('赛博朋克油画');
     expect(skills.skillFor('ad').name).toBe('营销视频大师'); expect(skills.skillFor('mv').modelDocs).toContain('歌曲分析.md');
     expect(skills.skillStages(skills.skillFor('ad'))[1].name).toBe('商品建模');
     expect(skills.skillStages(skills.skillFor('film'))[1].name).toBe('人物与世界建模');
