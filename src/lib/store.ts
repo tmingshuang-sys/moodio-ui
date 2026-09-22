@@ -149,7 +149,9 @@ export const useChats = create<ChatsState>((set, get) => ({
     set(s => ({ chats: s.chats.map(c => c.id === chatId ? { ...c, messages: [...c.messages, message], at: Date.now(), title: c.title === '新对话' && message.role === 'user' ? (message.text.replace(/\s+/g, ' ').slice(0, 24) || '新对话') : c.title } : c) }));
     persistChats(get);
   },
-  mutate(fn) { const chats = get().chats; fn(chats); set({ chats: chats.slice() }); persistChats(get); },
+  // 原地改完后给每个对话换一个新的对象引用（消息对象本身不换，执行器还攥着 pending / out 的引用）：
+  // 组件按对话对象订阅（ChatPane 选的是 chat 本身），只换外层数组不会触发重渲染，之前「取消计划」就是这样卡在待确认态的
+  mutate(fn) { const chats = get().chats; fn(chats); set({ chats: chats.map(c => ({ ...c, messages: c.messages.slice() })) }); persistChats(get); },
 }));
 
 // ===== Agent 运行态（不持久化）=====

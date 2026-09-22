@@ -33,6 +33,21 @@ describe('plan parsing', () => {
   });
 });
 
+describe('chat store', () => {
+  it('mutate gives the changed chat a new identity so subscribers re-render, while message objects stay the same', () => {
+    const chats = store.useChats.getState();
+    const before = chats.chat();
+    const msg = { role: 'assistant' as const, text: 'x', at: 1, plan: { key: 'k', steps: [], state: 'pending' as const } };
+    chats.mutate(all => { all.find(c => c.id === before.id)!.messages.push(msg); });
+    const after = store.useChats.getState().chat();
+    expect(after).not.toBe(before);                       // 对话对象换了引用
+    expect(after.messages.at(-1)).toBe(msg);              // 消息对象没换，执行器持有的引用仍然有效
+    chats.mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === 1 && m.plan?.key === 'k') m.plan.state = 'cancelled'; });
+    expect(store.useChats.getState().chat()).not.toBe(after);
+    expect(store.useChats.getState().chat().messages.at(-1)!.plan!.state).toBe('cancelled');
+  });
+});
+
 describe('plan steps and tools', () => {
   it('describes steps with previews and destructive marks', () => {
     const steps = tools.planSteps([{ tool: 'write_doc', args: { name: '故事脚本', content: '# 剧本\n\n## INT. 车内 - 夜\n\n雨。' } }, { tool: 'delete_doc', args: { id: 'nope' } }]);

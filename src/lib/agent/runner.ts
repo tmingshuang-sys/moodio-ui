@@ -122,7 +122,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     let plan: Action[] | null = null, message = '';
     lastToolContents.length = 0;
     try { const remote = await remotePlan(t, c, hooks); if (remote) { plan = remote.actions; message = remote.message; out.followUps = remote.followUps; } }
-    catch (e: any) { plan = []; message = e?.name === 'AbortError' ? '已停止，本次没有修改任何文件。' : e?.code === 'MODEL_PLAN_FORMAT' ? e.message : `模型请求失败：${e?.message || e}。未执行任何文件操作。`; }
+    catch (e: any) { plan = []; message = e?.name === 'AbortError' ? '已停止，本次没有修改任何文件。' : e?.code === 'MODEL_PLAN_FORMAT' ? e.message : `模型请求失败：${String(e?.message || e).replace(/[。.]\s*$/, '')}。未执行任何文件操作。`; }
     if (streamedThinking) out.thinking = streamedThinking;
     if (!plan) { plan = []; message = fromSuggestion ? '请先在模型设置中连接真实模型，再继续这个问题。未修改任何文件。' : ''; }
     // 纲领信息一旦出现就立即记录
