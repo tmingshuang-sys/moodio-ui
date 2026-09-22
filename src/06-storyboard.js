@@ -507,10 +507,15 @@
     function openBoard(){captureVisibleEdits();state.projectPage='scripts';state.workspaceMode='document';state.currentDoc='storyboard';state.currentFileId=boardFile.id;state.view='focus';state.selectedPageSlot='left';state.createMenuVisible=false;render();}
     function selectProjectPage(page){captureVisibleEdits();state.projectPage=page;hideCaretToolbar();hideAssetCard();closeAssetMenu();render();}
     render=()=>{
+      const home=state.projectPage==='home';   // 首页：点顶栏 logo 进入，页面本身就是放大的 Agent 对话框（入口在 src/18-home.js，面板行为在 src/11 的 agentHomeMode）
       $$('.top-nav button').forEach(b=>b.classList.toggle('active',b.dataset.flow==='page-'+state.projectPage));
-      $('#project-surface').classList.toggle('hidden',state.projectPage==='scripts');
+      document.body.classList.toggle('home-page',home);   // 先切 body 类（浮动入口随之隐藏），再让面板进入 / 退出首页模式
+      $('#home-surface')?.classList.toggle('hidden',!home);
+      $('#project-surface').classList.toggle('hidden',state.projectPage==='scripts'||home);
       $('.workspace').style.visibility=state.projectPage==='scripts'?'visible':'hidden';
       $('#agent-fab').style.removeProperty('visibility');   // 入口显隐由面板状态统一控制
+      if(typeof agentHomeMode==='function')agentHomeMode(home);
+      if(home){persistWorkspace();return;}
       if(state.projectPage==='create'){renderCreatePage();persistWorkspace();return;}
       if(state.projectPage==='assets'){renderAssetsPage();persistWorkspace();return;}
       $('#project-surface').innerHTML='';

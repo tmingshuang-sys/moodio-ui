@@ -1,3 +1,4 @@
+    var agentHomeMode=null;   // 首页模式开关：由 src/06 的 render 调用，在下面的 agentWindow 里赋值（面板固定居中放大、不收起）
     (function agentWindow(){
       const KEY=moodioProjects.key('moodio-agent-chats');   // 按当前项目隔离
       let store; try{ store=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){ store=null; }
@@ -5,6 +6,7 @@
       if(!store.active||!store.chats.some(c=>c.id===store.active)) store.active=store.chats[0].id;
       const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(store));}catch(e){}};
       const panel=$('#agent-panel'); if(!panel) return;
+      let homeMode=false, panelHiddenBeforeHome=false;   // 首页模式：面板就是页面本身，见下方 agentHomeMode
       // 面板从隐藏变为显示时滚到最新消息（隐藏状态下 scrollHeight 为 0，渲染时的滚动不生效）
       function agentScrollToLatest(){ requestAnimationFrame(()=>{ const body=$('#agent-body'), msgs=$('#agent-messages'); if(msgs) msgs.scrollTop=msgs.scrollHeight; if(body) body.scrollTop=body.scrollHeight; }); }
       new MutationObserver(()=>{ if(!panel.classList.contains('hidden')) { refreshAgentFormatNotice(); agentScrollToLatest(); } }).observe(panel,{attributes:true,attributeFilter:['class']});
@@ -152,6 +154,7 @@
         msgs.scrollTop=msgs.scrollHeight; $('#agent-body').scrollTop=$('#agent-body').scrollHeight;
         $$('.workflow-log[open] ol',msgs).forEach(log=>{log.scrollTop=log.scrollHeight;});
         $('#agent-pin').setAttribute('aria-pressed',String(!!store.pinned)); panel.classList.toggle('pinned',!!store.pinned);
+        homeSync();
       }
       // ===== Agent 的“手”：可在页面里真实执行的动作 =====
       const AGENT_SIZES=['全景','中景','近景','特写','过肩','跟拍'];
@@ -234,6 +237,7 @@
         const live=$('#agent-live'); if(!live) return;
         if(on){
           if(live.classList.contains('as-bubble')) return;
+          if(homeMode) return;   // 首页：面板不收起，状态胶囊留在顶部；中途离开首页时由 agentHomeMode 再按常规收起
           execPanelWasOpen=!panel.classList.contains('hidden');
           if(execPanelWasOpen) panel.classList.add('hidden');
           live.classList.add('as-bubble'); positionLiveBubble();
@@ -253,6 +257,24 @@
         live.style.setProperty('--tail-x',Math.max(18,Math.min(cx-left,w-18))+'px');
       }
       function agentEnd(){ agentGlow(false); $('#agent-cursor')?.classList.add('hidden'); $('#agent-live')?.classList.add('hidden'); document.querySelectorAll('.agent-focus,.agent-typing').forEach(e=>e.classList.remove('agent-focus','agent-typing')); }
+      // ===== 首页模式：面板固定在首页正中放大显示（样式见 styles.css 末尾「首页」段），不可拖动 / 缩放 / 关闭；离开首页恢复原来的浮窗显隐 =====
+      function homeSync(){ document.body.classList.toggle('home-chatting',homeMode&&(chat().messages.length>0||$('#agent-back').getAttribute('aria-pressed')==='true')); }   // 有对话内容或看历史列表时问候区收紧
+      agentHomeMode=function(on){
+        on=!!on; if(on===homeMode) return; homeMode=on;
+        const live=$('#agent-live');
+        if(on){
+          panelHiddenBeforeHome=panel.classList.contains('hidden');
+          if(live?.classList.contains('as-bubble')){ live.classList.remove('as-bubble'); live.style.left=''; live.style.top=''; delete live.dataset.side; execPanelWasOpen=false; }   // 执行中进入首页：气泡改回顶部胶囊，面板直接显示
+          $('#agent-quick-pop')?.classList.add('hidden');
+          panel.classList.remove('hidden');
+          renderAgent();
+          setTimeout(()=>{ if(homeMode) $('#agent-input')?.focus({preventScroll:true}); },30);
+        } else {
+          if($('#agent-glow')?.classList.contains('on')) agentExecMode(true);   // 执行中离开首页（Agent 切到工作区）：按常规收起面板、状态改为吉祥物旁气泡，结束后恢复
+          else if(panelHiddenBeforeHome&&!chat().messages.length) panel.classList.add('hidden');   // 进首页前是收起的且还没聊过：离开后照旧收起；聊过了就留着浮窗，方便接着说（回复里的「打开剧本」等按钮也走这里）
+        }
+        homeSync();
+      };
       async function agentGoPage(page){
         if(state.projectPage===page) return;
         await agentClick($(`.top-nav button[data-flow="page-${page}"]`),`切换到「${PAGE_NAME[page]}」页`);
@@ -1449,7 +1471,7 @@
       // 调整窗口大小：拖动四边 / 四角（尺寸记住）
       if(store.size){ panel.style.width=store.size.w+'px'; panel.style.height=store.size.h+'px'; }
       document.addEventListener('pointerdown',event=>{
-        const h=event.target.closest?.('#agent-panel [data-agent-resize]'); if(!h||event.button!==0) return;
+        const h=event.target.closest?.('#agent-panel [data-agent-resize]'); if(!h||homeMode||event.button!==0) return;
         event.preventDefault(); event.stopImmediatePropagation();
         const dir=h.dataset.agentResize; const r=panel.getBoundingClientRect();
         panel.style.left=r.left+'px'; panel.style.top=r.top+'px'; panel.style.right='auto'; panel.style.bottom='auto'; panel.style.width=r.width+'px'; panel.style.height=r.height+'px';
@@ -1465,7 +1487,7 @@
         document.addEventListener('pointermove',move); document.addEventListener('pointerup',up);
       },true);
       // 拖动窗口
-      document.addEventListener('pointerdown',event=>{ const head=event.target.closest?.('#agent-panel [data-agent-drag]'); if(!head||event.target.closest('button')||event.button!==0) return; const r=panel.getBoundingClientRect(); const sx=event.clientX-r.left, sy=event.clientY-r.top; panel.style.right='auto'; panel.style.bottom='auto'; const move=e=>{ panel.style.left=Math.max(0,Math.min(e.clientX-sx,window.innerWidth-r.width))+'px'; panel.style.top=Math.max(0,Math.min(e.clientY-sy,window.innerHeight-80))+'px'; }; const up=()=>{ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); }; document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); event.preventDefault(); });
+      document.addEventListener('pointerdown',event=>{ const head=event.target.closest?.('#agent-panel [data-agent-drag]'); if(!head||homeMode||event.target.closest('button')||event.button!==0) return; const r=panel.getBoundingClientRect(); const sx=event.clientX-r.left, sy=event.clientY-r.top; panel.style.right='auto'; panel.style.bottom='auto'; const move=e=>{ panel.style.left=Math.max(0,Math.min(e.clientX-sx,window.innerWidth-r.width))+'px'; panel.style.top=Math.max(0,Math.min(e.clientY-sy,window.innerHeight-80))+'px'; }; const up=()=>{ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); }; document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); event.preventDefault(); });
       const fabBefore=$('#agent-fab'); fabBefore?.addEventListener('click',()=>{ if(!panel.classList.contains('hidden')) setTimeout(()=>{if(!panel.classList.contains('hidden'))$('#agent-input')?.focus();},30); });
       renderAgent();
     })();

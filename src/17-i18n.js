@@ -63,6 +63,14 @@
       '无法撤销删除': 'Unable to undo deletion',
       '保存失败，分镜尚未恢复。请重试撤销。': 'Could not save. The shot has not been restored. Please try undo again.'
     });
+    Object.assign(MOODIO_I18N_EN, {
+      // 首页（顶栏 logo 进入）
+      '回到首页': 'Home', '首页': 'Home', '试试这些': 'Try these',
+      '你好，我是 Moodio Agent': 'Hi, I\'m Moodio Agent',
+      '告诉我你想做什么：写一场戏、拆分镜、整理资产，或者直接提问。': 'Tell me what you want to do: write a scene, break down shots, organise assets, or just ask.',
+      '总结剧本进度': 'Summarise the script', '新建故事梗概': 'New synopsis',
+      '输入框中有未发送内容，请先发送或清空。': 'The input box has unsent text. Send or clear it first.',
+    });
     var MOODIO_I18N_PATTERNS = [
       [/^删除 (SHOT \d+)？$/, 'Delete $1?'], [/^删除 (SHOT \d+)$/, 'Delete $1'],
       [/^(\d+) 处待检查$/, '$1 issues to check'], [/^第 (\d+) 段$/, 'Paragraph $1'],
