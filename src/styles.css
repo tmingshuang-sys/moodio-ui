@@ -676,8 +676,9 @@ button.lg-chip-btn:hover { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .home-leaving, .chat-body.is-entering .messages { animation: none; } }
 
 /* 导演停靠区：贴在输入框上方——步骤清单卡（当前步骤带下一步动作与状态）、进度胶囊（Step k / 8）、主按钮；参考竞品的任务清单样式 */
-.dock { flex: none; width: 100%; max-width: 928px; margin: 0 auto; padding: 0 24px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.dock-card { width: 100%; max-width: 760px; padding: 10px 14px 12px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 8px 28px rgba(31, 38, 35, .08); animation: dock-in 220ms ease both; }
+.dock { position: relative; flex: none; width: 100%; max-width: 928px; margin: 0 auto; padding: 0 24px 8px; display: flex; flex-direction: column; align-items: center; }
+/* 步骤卡浮在对话内容上方（绝对定位，不占布局），展开时不推动消息列表 */
+.dock-card { position: absolute; left: 24px; right: 24px; bottom: calc(100% + 8px); z-index: 6; width: auto; max-width: 760px; margin: 0 auto; padding: 10px 14px 12px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 12px 36px rgba(31, 38, 35, .14); animation: dock-in 220ms ease both; }
 @keyframes dock-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .dock-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .dock-skill { padding: 0; border: 0; background: none; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
