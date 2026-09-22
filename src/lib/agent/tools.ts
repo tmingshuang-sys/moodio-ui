@@ -9,7 +9,7 @@ import { generateImage, generateVideo, designVoice, generateSpeech, mediaReadyRe
 import { captureFrame } from '../frames';
 import type { GenResult } from '../mediagen';
 import type { RatioKey } from '../mediamodels';
-import { IMAGE_RATIOS, VIDEO_RATIOS } from '../mediamodels';
+import { IMAGE_RATIOS, VIDEO_RATIOS, presetByName } from '../mediamodels';
 import { updateLedger, readLedger } from '../ledger';
 import { skillFor, stageName } from '../skills';
 import { composeVideos } from '../compose';
@@ -199,12 +199,15 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const clips = ids.map(id => { const m = requireMedia(id); if (m.kind !== 'video') throw new Error(`「${m.name}」不是视频`); return m; });
     const musicId = args.music_id ? String(args.music_id).trim() : ''; if (musicId) { const mu = requireMedia(musicId); if (mu.kind !== 'audio') throw new Error(`「${mu.name}」不是音频，不能当配乐`); }
     const subtitles = Array.isArray(args.subtitles) ? args.subtitles : [];
-    const voices = (Array.isArray(args.voices) ? args.voices : []).map((v: any) => ({ id: String(v?.media_id || v?.id || '').trim(), start: Math.max(0, Number(v?.start) || 0), volume: v?.volume !== undefined ? Number(v.volume) : undefined })).filter((v: { id: string }) => v.id);
+    let voices = (Array.isArray(args.voices) ? args.voices : []).map((v: any) => ({ id: String(v?.media_id || v?.id || '').trim(), start: Math.max(0, Number(v?.start) || 0), volume: v?.volume !== undefined ? Number(v.volume) : undefined })).filter((v: { id: string }) => v.id);
     for (const v of voices) { const a = requireMedia(v.id); if (a.kind !== 'audio') throw new Error(`「${a.name}」不是音频，不能当配音`); }
+    // 片段自带人声（Seedance 2.x、Veo 3）时不再叠配音轨，否则同一句台词会出现两遍
+    const nativeClips = clips.filter(c => !!presetByName(c.model)?.nativeAudio); let voiceNote = '';
+    if (voices.length && nativeClips.length && Number(args.clip_volume ?? 1) > 0) { voiceNote = `（${nativeClips.length} 段片段自带人声，已忽略 ${voices.length} 条配音轨，避免台词叠两遍）`; voices = []; }
     let item!: import('../types').MediaItem;
     await ctx.step(`合成 ${clips.length} 段视频为成片${subtitles.length ? `（${subtitles.length} 条字幕）` : ''}${voices.length ? `（${voices.length} 条配音）` : ''}${musicId ? '（配乐）' : ''}`, async () => { item = await composeVideos(clips.map(c => c.id), { name: String(args.name || '成片'), onProgress: ctx.live, signal: ctx.signal, musicId: musicId || undefined, musicVolume: args.music_volume !== undefined ? Number(args.music_volume) : undefined, subtitles, voices, clipVolume: args.clip_volume !== undefined ? Number(args.clip_volume) : undefined, format: args.format === 'webm' ? 'webm' : 'mp4' }); });
     useFiles.getState().openInPane(item.id);
-    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${voices.length ? `，${voices.length} 条配音` : ''}${musicId ? '，已配乐' : ''}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
+    return { summary: `已把 ${clips.length} 段视频按顺序合成为「${item.name}」${subtitles.length ? `，含 ${subtitles.length} 条字幕` : ''}${voices.length ? `，${voices.length} 条配音` : ''}${musicId ? '，已配乐' : ''}${voiceNote}`, actions: [{ id: 'open-media:' + item.id, label: '查看成片' }], artifact: { id: item.id, kind: 'video', name: item.name } };
   },
   // ---- 项目 ----
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },

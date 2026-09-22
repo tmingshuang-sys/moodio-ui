@@ -87,6 +87,11 @@ describe('director', () => {
     ledger.updateLedger({ stage: 'video', flags: { skipVoice: false }, clips: [{ no: 1, mediaId: 'v1' }] });
     const script = files().docs.find(d => d.name === '故事脚本.md')!;
     files().updateDoc(script.id, { content: script.content + '| 02 | 4 | 街头 | 中景 | 暖 | **小航**（旁白）：每次出门都想带音乐 | 街声 | 跟拍 |\n' });
+    // 片段由自带人声的模型生成：不合成旁白，直接合成成片且不传 voices
+    files().addMedia({ id: 'v1', name: '片段1.mp4', kind: 'video', mime: 'video/mp4', size: 1, group: '其他', createdAt: Date.now(), by: 'agent', model: 'Seedance 2.5（BytePlus）' });
+    expect(director.nextStep().label).toBe('合成成片'); expect(director.nextStep().prompt).toContain('不要传 voices');
+    // 换成无声模型生成的片段：先合成旁白
+    files().updateMedia('v1', { model: '可灵 1.0 标准（fal）' });
     expect(director.nextStep()).toMatchObject({ kind: 'agent', label: '合成旁白配音', billable: true });
     files().addMedia({ id: 'dub1', name: '旁白-01.mp3', kind: 'audio', mime: 'audio/mpeg', size: 1, group: '配音', createdAt: Date.now(), by: 'agent', duration: 4 });
     const step = director.nextStep(); expect(step.label).toBe('合成成片'); expect(step.prompt).toContain('dub1 旁白-01.mp3');

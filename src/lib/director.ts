@@ -2,7 +2,7 @@
 // nextStep() 是纯函数：读纲领 / 台账 / 工作区 / 校验，给出唯一的下一步（开始 / 本地问卷 / 交给 Agent / 检查点确认 / 完成）。
 // tick() 负责在阶段完成且检查点已确认时推进台账；一键模式下 autopilotTick() 自动把 Agent 步骤发出去，只在四个检查点停。
 import type { Brief, Question } from './types';
-import { useFiles, useChats, useAgent, findDocByName } from './store';
+import { useFiles, useChats, useAgent, findDocByName, findMedia } from './store';
 import { readLedger, ensureLedger, updateLedger } from './ledger';
 import type { Ledger } from './ledger';
 import { skillFor, skillStages, briefKeyOf, STAGE_ORDER } from './skills';
@@ -11,7 +11,7 @@ import { lintClips, parseSeconds, voiceDescriptions, CLIP_DOC_RE } from './lint'
 import { docRole } from './markdown';
 import { videoProfile } from './mediagen';
 import { planClipSeconds, strategyLabel } from './strategy';
-import { isArkLike } from './mediamodels';
+import { isArkLike, presetByName } from './mediamodels';
 import { projects, NEW_PROJECT_TITLE } from './projects';
 import { BRIEF_FORMATS } from './guides';
 
@@ -55,6 +55,11 @@ export function voiceCandidates(ledger: Ledger | null): { name: string; desc: st
 // 脚本里有旁白（排除分镜表表头的「对白·旁白」列名）
 const hasNarration = () => { const s = scriptDoc(); return !!s && s.content.split('\n').some(l => !/对白[·/]旁白/.test(l) && /\*\*旁白\*\*|^>?\s*旁白\s*[（(：:]|[|（(]\s*旁白\s*[）)：:]/.test(l)); };
 const narrationAudio = () => useFiles.getState().media.filter(m => m.kind === 'audio' && m.group === '配音');
+// 已生成的片段是不是自带人声（按媒体项记的模型名反查预设）；没生成过就按当前模型的能力
+const clipsNativeAudio = (ledger: Ledger | null): boolean | null => {
+  const names = (ledger?.clips || []).map(c => (c.mediaId && findMedia(c.mediaId)?.model) || '').filter(Boolean);
+  return names.length ? names.some(n => !!presetByName(n)?.nativeAudio) : null;
+};
 // MV 的歌曲：媒体库里除音色样本、配音之外的音频（用户上传的）
 export const songAudio = () => useFiles.getState().media.find(m => m.kind === 'audio' && m.group !== '音色' && m.group !== '配音') || null;
 
@@ -133,11 +138,12 @@ export function nextStep(): NextStep {
         return { ...base, kind: 'agent', label: `生成第 ${no} 段视频（${made}/${n}）`, detail: `约 ${estimateMinutes(n - made, b)} 分钟`, billable: true, prompt };
       }
       if (!composedFilm()) {
-        const dubs = narrationAudio(); const wantNarration = skill.id !== 'mv' && hasNarration() && !ledger?.flags?.skipVoice && !dubs.length;
+        const native = clipsNativeAudio(ledger) ?? videoProfile().nativeAudio;   // 片段自带人声就不合成配音，否则台词叠两遍
+        const dubs = native ? [] : narrationAudio(); const wantNarration = skill.id !== 'mv' && !native && hasNarration() && !ledger?.flags?.skipVoice && !dubs.length;
         const song = skill.id === 'mv' ? songAudio() : null;
         const mvNote = `这是 MV：${song ? `music_id 用歌曲「${song.id} ${song.name}」、music_volume 1` : '媒体库里没有歌曲音频，先不配乐'}，clip_volume 0 把片段自带的声音静掉，字幕逐行用「歌曲分析.md」的歌词时间轴（start / end 按时间轴换算成秒，只写歌词）`;
         if (wantNarration) return { ...base, kind: 'agent', label: '合成旁白配音', detail: '按片段分段，成片时按时间轴放置', billable: true, prompt: '所有片段已生成。脚本里有旁白：先用 generate_speech 把旁白按片段分段合成（entity 写「旁白」，一段一条，name 写「旁白-01」这样的序号，text 只写旁白原文）；视频模型不支持音频参考时，需要清晰听到的台词也可以一并合成（entity 写角色名）。合成完下一步再合成成片。' };
-        return { ...base, kind: 'agent', label: '合成成片', detail: `约 ${Math.ceil(totalSeconds(b) / 60)} 分钟`, prompt: `所有片段已生成，用 compose_video 按片段顺序合成 MP4 成片：${skill.id === 'mv' ? mvNote : '字幕从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字，只写台词本身）'}${dubs.length ? `；媒体库里的配音（${dubs.map(d => `${d.id} ${d.name}`).join('、')}）用 voices 按成片时间轴放到对应片段的起点` : ''}${skill.id === 'mv' ? '' : '；媒体清单里有上传的音频就作配乐'}；合成完用 update_ledger 把阶段推进到 deliver。` };
+        return { ...base, kind: 'agent', label: '合成成片', detail: `约 ${Math.ceil(totalSeconds(b) / 60)} 分钟`, prompt: `所有片段已生成，用 compose_video 按片段顺序合成 MP4 成片：${skill.id === 'mv' ? mvNote : native ? '片段自带对白与旁白（视频模型自己生成的），不要传 voices、clip_volume 保持 1；字幕仍从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字，只写台词本身）' : '字幕从脚本的台词 / 口播生成（按各段时长累计起止秒数，每条不超过 20 字，只写台词本身）'}${dubs.length ? `；媒体库里的配音（${dubs.map(d => `${d.id} ${d.name}`).join('、')}）用 voices 按成片时间轴放到对应片段的起点` : ''}${skill.id === 'mv' ? '' : '；媒体清单里有上传的音频就作配乐'}；合成完用 update_ledger 把阶段推进到 deliver。` };
       }
       return { ...base, kind: 'agent', label: '交付', detail: '', prompt: '成片已合成，用 update_ledger 把阶段推进到 deliver，然后写交付说明：结构、每段承担的内容、核心信息如何落地，最后请我审阅。' };
     }

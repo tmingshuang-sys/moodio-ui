@@ -9,7 +9,7 @@ const vi = (id: string) => findPreset(VIDEO_IMAGE_MODELS, id)!;
 describe('generation strategy', () => {
   it('prefers long clips on Seedance 2.x', () => {
     const long = makeProfile(v('dreamina-seedance-2-5-260628'), vi('dreamina-seedance-2-5-260628'));
-    expect(long).toMatchObject({ longTake: true, maxClip: 30, minClip: 4, keyframes: 'both' });
+    expect(long).toMatchObject({ longTake: true, maxClip: 30, minClip: 4, keyframes: 'both', nativeAudio: true }); expect(strategyText(long)).toContain('自己生成对白');
     expect(planClipSeconds({ clipSeconds: 15 }, long)).toBe(20); expect(planClipSeconds({ clipSeconds: 10 }, long)).toBe(20);
     expect(strategyLabel(long)).toBe('长片段优先');
     expect(strategyText(long)).toContain('长镜头'); expect(strategyText(long)).toContain('15–30 秒'); expect(strategyText(long)).toContain('承接');
@@ -17,7 +17,7 @@ describe('generation strategy', () => {
   });
   it('falls back to shot-by-shot chaining with keyframes elsewhere', () => {
     const kling = makeProfile(v('fal-ai/kling-video/v1/standard/text-to-video'), vi('fal-ai/kling-video/v1/standard/image-to-video'));
-    expect(kling).toMatchObject({ longTake: false, maxClip: 10, minClip: 5, keyframes: 'first' });
+    expect(kling).toMatchObject({ longTake: false, maxClip: 10, minClip: 5, keyframes: 'first', nativeAudio: false }); expect(strategyText(kling)).toContain('无声');
     expect(planClipSeconds({ clipSeconds: 15 }, kling)).toBe(10); expect(strategyLabel(kling)).toBe('分镜接续');
     expect(strategyText(kling)).toContain('from_video_id'); expect(strategyText(kling)).toContain('5 / 10 秒'); expect(strategyText(kling)).not.toContain('to_media_id');
     expect(strategyText(kling, 'mv')).not.toContain('首尾帧接续：'); expect(strategyText(kling, 'mv')).toContain('定妆照'); expect(strategyText(kling, 'mv')).toContain('不用 from_video_id');

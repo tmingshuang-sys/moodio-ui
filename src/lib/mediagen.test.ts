@@ -188,6 +188,7 @@ describe('video profile', () => {
     expect(m.effectiveVideoId()).toBe('dreamina-seedance-2-5-260628');
     const mm = await import('./mediamodels'); expect(mm.isArkLike('byteplus')).toBe(true); expect(mm.isArkLike('fal')).toBe(false);
     expect(mm.presetFor(mm.VIDEO_MODELS, 'dreamina-seedance-2-0-260128', 'video')).toMatchObject({ provider: 'byteplus', durationRange: [4, 15], maxClip: 15 });
+    expect(mm.presetByName('Seedance 2.5（BytePlus）')?.nativeAudio).toBe(true); expect(mm.presetByName('可灵 1.0 标准（fal）')?.nativeAudio).toBeFalsy(); expect(mm.presetByName('本地合成')).toBeNull();
     memory.set('moodio-model-prefs-v2', '1'); setCfg({ videoModel: 'fal-ai/kling-video/v1/standard/text-to-video' }); vi.resetModules(); m = await load();
     expect(m.videoProfile()).toMatchObject({ longTake: false, maxClip: 10 }); expect(m.videoProfile().model.name).toBe('可灵 1.0 标准（fal）');
   });

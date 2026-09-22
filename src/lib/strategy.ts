@@ -10,6 +10,7 @@ export interface VideoProfile {
   maxClip: number;           // 规划时的单段上限（秒）
   minClip: number;           // 单段下限（秒）
   keyframes: 'none' | 'first' | 'both';   // 图生视频能收首帧图 / 首尾帧图
+  nativeAudio: boolean;      // 模型自己出对白 / 旁白 / 音效：成片不再合成配音
 }
 export const LONG_TARGET = 20;   // 长片段优先时的默认单段秒数：够长以少切段，又不到模型上限，留出质量余量
 
@@ -26,7 +27,7 @@ export function clipFloor(p: ModelPreset): number {
 }
 export function makeProfile(model: ModelPreset, imageModel: ModelPreset): VideoProfile {
   const maxClip = clipLimit(model);
-  return { model, imageModel, longTake: !!model.longTake && maxClip >= 15, maxClip, minClip: clipFloor(model), keyframes: imageModel.keyframes || 'none' };
+  return { model, imageModel, longTake: !!model.longTake && maxClip >= 15, maxClip, minClip: clipFloor(model), keyframes: imageModel.keyframes || 'none', nativeAudio: !!model.nativeAudio };
 }
 // 规划用的单段秒数：长片段优先取 20 秒左右（不超过上限），否则取类型默认值与上限的较小者
 export function planClipSeconds(skill: { clipSeconds: number }, p: VideoProfile): number {
@@ -37,7 +38,10 @@ export function strategyLabel(p: VideoProfile): string { return p.longTake ? '�
 // 注入系统提示的策略说明：分镜、片段方案、生成三个阶段都带
 export function strategyText(p: VideoProfile, skillId?: string): string {
   const m = p.model; const where = m.provider === 'byteplus' ? 'BytePlus' : m.provider === 'ark' ? '方舟' : 'fal'; const mv = skillId === 'mv';
-  const mvNote = mv ? '\n⑤ MV：片段按歌曲分析的段落表切、不跨段落边界（长片段时可以把相邻两段合成一段，但不超过上限）；段与段在边界硬切、不做末帧接续（不用 from_video_id），每段全量绑定定妆照 @图片1；有人声的段落至少一个正面咬字镜头。' : '';
+  const audioNote = p.nativeAudio
+    ? '\n声音：当前视频模型自己生成对白、旁白与环境音——片段提示词声音行里的 {对白} / {旁白：…} 会被模型直接说出来；成片阶段只加字幕与配乐，不再合成配音（否则台词会叠两遍）。'
+    : '\n声音：当前视频模型无声——对白只进成片字幕，旁白用 generate_speech 合成后在成片里按时间轴放置。';
+  const mvNote = (mv ? '\n⑤ MV：片段按歌曲分析的段落表切、不跨段落边界（长片段时可以把相邻两段合成一段，但不超过上限）；段与段在边界硬切、不做末帧接续（不用 from_video_id），每段全量绑定定妆照 @图片1；有人声的段落至少一个正面咬字镜头。' : '') + audioNote;
   if (p.longTake) {
     const hi = Math.min(p.maxClip, 30);
     return `【生成策略 · 长片段优先】当前视频模型 ${m.name}（${where}）单段最长 ${p.maxClip} 秒，图生视频${p.keyframes === 'both' ? '收首帧图与尾帧图' : p.keyframes === 'first' ? '收首帧图' : '不收参考帧'}。规划原则：

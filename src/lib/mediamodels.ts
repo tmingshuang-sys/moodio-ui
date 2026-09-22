@@ -23,6 +23,7 @@ export interface ModelPreset {
   maxClip?: number;                // 规划片段时的单段上限（秒）；不填按 durations / durationRange 推（strategy.ts 的 clipLimit）
   longTake?: boolean;              // 长视频能力：单段 15 秒以上且一致性好（Seedance 2.x），片段方案以长片段优先
   keyframes?: 'first' | 'both';    // 图生视频收首帧图 / 首尾帧图（方舟 Seedance 首尾帧都收，fal 可灵只收首帧）
+  nativeAudio?: boolean;           // 模型自己生成对白 / 旁白 / 音效（Seedance 2.x、Veo 3）：成片阶段不再合成配音，否则台词会叠两遍
 }
 
 export const IMAGE_RATIOS: RatioKey[] = ['16:9', '9:16', '1:1', '4:3', '3:4'];
@@ -75,19 +76,19 @@ export const IMAGE_MODELS: ModelPreset[] = [
 ];
 
 export const VIDEO_MODELS: ModelPreset[] = [
-  { id: 'dreamina-seedance-2-5-260628', name: 'Seedance 2.5（BytePlus）', hint: 'BytePlus 海外版方舟，全模态，单段 4–30 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 30], resolution: true, longTake: true, maxClip: 30, verified: true },
-  { id: 'dreamina-seedance-2-0-260128', name: 'Seedance 2.0（BytePlus）', hint: 'BytePlus，单段 4–15 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15 },
-  { id: 'dreamina-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（BytePlus）', hint: 'BytePlus，极速推理，单段 4–15 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15 },
+  { id: 'dreamina-seedance-2-5-260628', name: 'Seedance 2.5（BytePlus）', hint: 'BytePlus 海外版方舟，全模态，单段 4–30 秒，自带人声', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 30], resolution: true, longTake: true, maxClip: 30, nativeAudio: true, verified: true },
+  { id: 'dreamina-seedance-2-0-260128', name: 'Seedance 2.0（BytePlus）', hint: 'BytePlus，单段 4–15 秒，自带人声', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15, nativeAudio: true },
+  { id: 'dreamina-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（BytePlus）', hint: 'BytePlus，极速推理，单段 4–15 秒，自带人声', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15, nativeAudio: true },
   { id: 'seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro（BytePlus）', hint: 'BytePlus，上一代稳定版，单段 2–12 秒', provider: 'byteplus', ratio: 'arg', duration: true, durationRange: [2, 12], maxClip: 12, resolution: true },
   { id: 'fal-ai/kling-video/v1/standard/text-to-video', name: '可灵 1.0 标准（fal）', hint: '稳定，5 秒约 5 分钟', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], maxClip: 10, verified: true },
   { id: 'fal-ai/kling-video/v2/master/text-to-video', name: '可灵 2.0 大师（fal）', hint: '质量好，较贵', provider: 'fal', ratio: 'aspect_ratio', duration: true, durations: [5, 10], maxClip: 10 },
-  { id: 'fal-ai/veo3', name: 'Google Veo 3（fal）', hint: '自带音效，最贵', provider: 'fal', ratio: 'aspect_ratio', maxClip: 8 },
+  { id: 'fal-ai/veo3', name: 'Google Veo 3（fal）', hint: '自带音效与人声，最贵', provider: 'fal', ratio: 'aspect_ratio', maxClip: 8, nativeAudio: true },
   { id: 'fal-ai/minimax/video-01', name: 'MiniMax 海螺（fal）', hint: '镜头语言好，参数固定', provider: 'fal', maxClip: 6 },
 ];
 
 export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
-  { id: 'dreamina-seedance-2-5-260628', name: 'Seedance 2.5（BytePlus）', hint: 'BytePlus，同一模型带首尾帧图', provider: 'byteplus', duration: true, durationRange: [4, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both' },
-  { id: 'dreamina-seedance-2-0-260128', name: 'Seedance 2.0（BytePlus）', hint: 'BytePlus，同一模型带首尾帧图', provider: 'byteplus', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15, keyframes: 'both' },
+  { id: 'dreamina-seedance-2-5-260628', name: 'Seedance 2.5（BytePlus）', hint: 'BytePlus，同一模型带首尾帧图', provider: 'byteplus', duration: true, durationRange: [4, 30], resolution: true, longTake: true, maxClip: 30, keyframes: 'both', nativeAudio: true },
+  { id: 'dreamina-seedance-2-0-260128', name: 'Seedance 2.0（BytePlus）', hint: 'BytePlus，同一模型带首尾帧图', provider: 'byteplus', duration: true, durationRange: [4, 15], resolution: true, longTake: true, maxClip: 15, keyframes: 'both', nativeAudio: true },
   { id: 'seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro（BytePlus）', hint: 'BytePlus，上一代稳定版，单段 2–12 秒', provider: 'byteplus', duration: true, durationRange: [2, 12], maxClip: 12, resolution: true, keyframes: 'both' },
   { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10], maxClip: 10, keyframes: 'first' },
 ];
@@ -134,6 +135,11 @@ export async function runWithFallback<T>(chain: string[], fn: (id: string, index
   throw new Error('没有可用的模型');
 }
 
+// 按显示名反查预设（媒体项只记了模型名）：成片时据此判断片段是否自带人声
+export function presetByName(name: string | undefined): ModelPreset | null {
+  const n = String(name || '').trim(); if (!n) return null;
+  return [...VIDEO_MODELS, ...VIDEO_IMAGE_MODELS].find(m => m.name === n) || null;
+}
 export function findPreset(list: ModelPreset[], id: string | undefined): ModelPreset | null {
   return list.find(m => m.id === String(id || '')) || null;
 }
