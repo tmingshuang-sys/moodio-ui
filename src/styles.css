@@ -3905,3 +3905,5 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     .agent-empty[hidden] { display: none; }
     /* 首页（含项目总览 / 素材库）顶栏只留 logo 与右侧操作：项目名 / 剧集切换、返回按钮和「剧本 / 资产 / 创作」导航要进入具体项目才显示（窄屏规则里 .top-nav 带 !important，这里同样加） */
     body.home-page .project-identity .bare-button, body.home-page .project-identity .episode-switch, body.home-page .top-nav { display: none !important; }
+    /* 首页顶栏：中间导航隐藏后，右侧操作会被网格自动排进中间那一列，固定到最后一列靠右 */
+    body.home-page .top-actions { grid-column: -2 / -1; }
