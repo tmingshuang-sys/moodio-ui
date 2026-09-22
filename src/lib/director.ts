@@ -130,7 +130,13 @@ function tickOnce(): boolean {
     case 'script': return scriptDoc() && ledger.confirmed.includes('script') ? advance('assets') : false;
     case 'assets': { const req = requiredEntities(ledger); return ledger.entities.length > 0 && req.every(e => e.ref) && ledger.confirmed.includes('assets') ? advance('storyboard') : false; }
     case 'storyboard': return storyboardDoc() || ((skill.id === 'ad' || skill.id === 'short') && shotTableInScript()) ? advance('prompts') : false;
-    case 'prompts': return clipDocs().length > 0 && (ledger.flags.skipLint || !lintClips().errors.length) && ledger.confirmed.includes('prompts') ? advance('video') : false;
+    case 'prompts': {
+      if (!clipDocs().length) return false;
+      const r = lintClips();
+      // 模型没把片段清单写进台账时，按片段文稿自动补齐（序号、秒数、文稿 id），生成阶段靠它记录每段的视频
+      if (!ledger.clips.length && r.clips.length) updateLedger({ clips: r.clips.map(c => ({ no: c.no, seconds: c.seconds, docId: useFiles.getState().docs.find(d => d.name === c.name)?.id, status: '待生成' })) });
+      return (ledger.flags.skipLint || !r.errors.length) && ledger.confirmed.includes('prompts') ? advance('video') : false;
+    }
     case 'video': return composedFilm() ? advance('deliver') : false;
     default: return false;
   }
