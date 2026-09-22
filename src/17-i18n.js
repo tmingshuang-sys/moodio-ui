@@ -2,7 +2,7 @@
      * 词典 MOODIO_I18N_EN 是精确匹配；带数字 / 名称的文案用 MOODIO_I18N_PATTERNS 正则。新增系统文案时在这里补一条即可。 ===== */
     var MOODIO_I18N_EN = {
       // 顶栏 / 导航
-      '剧本': 'Script', '资产': 'Assets', '创作': 'Create', '分享': 'Share', '评论': 'Comments', '通知': 'Notifications', '协作者': 'Collaborators',
+      '剧本': 'Script', '资产': 'Assets', '创作': 'Create', '剪辑': 'Edit', '剪辑：当前设计稿仅演示剧本工作区': 'Edit: prototype only', '分享': 'Share', '评论': 'Comments', '通知': 'Notifications', '协作者': 'Collaborators',
       '分享：当前设计稿仅演示剧本工作区': 'Share: prototype only', '评论：当前设计稿仅演示剧本工作区': 'Comments: prototype only', '通知：当前设计稿仅演示剧本工作区': 'Notifications: prototype only',
       '返回项目列表': 'Back to projects', '返回项目列表：当前设计稿仅演示剧本工作区': 'Back to projects: prototype only', '选择或新建剧集': 'Switch or create episode',
       '项目': 'Projects', '剧集': 'Episodes', '新建项目': 'New project', '新建剧集': 'New episode', '重命名剧集': 'Rename episode', '重命名项目': 'Rename project', '删除项目': 'Delete project', '项目名称': 'Project name', '创建并切换': 'Create and switch', '测试项目': 'Test project', '新项目': 'New project',

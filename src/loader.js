@@ -7,9 +7,16 @@
  */
 (async () => {
   const base = new URL('.', document.currentScript.src);
-  const files = await (await fetch(new URL('manifest.json', base), { cache: 'no-cache' })).json();
+  // 本地 http.server 并发取十几个文件时偶发断连（Failed to fetch），网络错误自动重试几次，HTTP 错误码不重试
+  const fetchRetry = async (url, tries = 4) => {
+    for (let i = 1; ; i++) {
+      try { return await fetch(url, { cache: 'no-cache' }); }
+      catch (error) { if (i >= tries) throw error; await new Promise(r => setTimeout(r, 150 * i)); }
+    }
+  };
+  const files = await (await fetchRetry(new URL('manifest.json', base))).json();
   const parts = await Promise.all(files.map(async f => {
-    const res = await fetch(new URL(f, base), { cache: 'no-cache' });
+    const res = await fetchRetry(new URL(f, base));
     if (!res.ok) throw new Error(`无法加载 ${f}（HTTP ${res.status}）`);
     return `/* ===== src/${f} ===== */\n` + await res.text();
   }));

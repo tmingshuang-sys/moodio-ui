@@ -469,7 +469,8 @@
     const paperTray=$('.paper-stack');$('.writing-sidebar').insertBefore(paperTray,$('.sidebar-foot'));
     $('.stack-title-row').insertAdjacentHTML('beforeend',`<button class="tray-toggle" data-flow="toggle-writing" aria-label="收纳或上拉展开 My Writing" aria-expanded="${state.writingOpen}">${flowIcon('up')}</button>`);
     document.body.insertAdjacentHTML('beforeend','<section id="project-surface" class="hidden" aria-label="项目工作区"></section><dialog id="flow-dialog" class="flow-dialog"></dialog><input type="file" id="flow-media-input" accept="image/*,video/*,audio/*" hidden><input type="file" id="flow-asset-input" accept="image/*" hidden>');
-    $$('.top-nav button').forEach((button,i)=>{button.dataset.flow=['page-scripts','page-assets','page-create'][i];button.removeAttribute('aria-disabled');});
+    $$('.top-nav button').forEach((button,i)=>{const flow=['page-scripts','page-assets','page-create'][i];if(!flow)return;button.dataset.flow=flow;button.removeAttribute('aria-disabled');});   // 「剪辑」（data-nav-placeholder）是占位步骤，不绑定板块
+    $('.top-nav [data-nav-placeholder]')?.addEventListener('click',()=>showToast('当前设计稿仅演示剧本工作区，此入口待接入'));
     renderWritingPanel=()=>{
       originalRenderWriting();
       $('.script-workspaces')?.insertAdjacentHTML('beforeend',`<button class="script-workspace-button ${state.currentDoc==='storyboard'?'active':''}" data-flow="open-board">${flowIcon('grid')}<span><strong>分镜列表</strong><small>${state.shots.length} 个镜头 · ${state.chunks.length} 个 生成单元</small></span></button>`);

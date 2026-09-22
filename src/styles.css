@@ -3907,3 +3907,13 @@ body.manuscript-dragging #writing-fan-backdrop {opacity:0;visibility:hidden;poin
     body.home-page .project-identity .bare-button, body.home-page .project-identity .episode-switch, body.home-page .top-nav { display: none !important; }
     /* 首页顶栏：中间导航隐藏后，右侧操作会被网格自动排进中间那一列，固定到最后一列靠右 */
     body.home-page .top-actions { grid-column: -2 / -1; }
+    /* 顶栏板块导航改成流程步骤（参考正式版）：当前步骤品牌渐变底白字，步骤之间用「›」分隔；第四步「剪辑」是占位 */
+    .top-nav { gap: 0; padding: 4px; border: 0; border-radius: 8px; background: #efeeec; }
+    .top-nav button { position: relative; min-width: 0; height: 32px; padding: 0 14px; border-radius: 6px; gap: 8px; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+    .top-nav button:hover { background: rgba(31, 38, 35, .06); color: var(--ink); }
+    .top-nav button.active, .top-nav button.active:hover { background: var(--brand); color: #fff; box-shadow: 0 1px 3px rgba(31, 38, 35, .18); font-weight: 500; }
+    .top-nav button.active .icon { stroke: #fff; }
+    .top-nav button .icon { width: 17px; height: 17px; }
+    .top-nav button + button { margin-left: 26px; }
+    .top-nav button + button::before { content: ''; position: absolute; left: -17px; top: 50%; width: 7px; height: 7px; border-right: 1.6px solid #9c9b98; border-bottom: 1.6px solid #9c9b98; transform: translateY(-50%) rotate(-45deg); pointer-events: none; }
+    @media (max-width: 600px) { .top-nav button { padding: 0 8px; } .top-nav button + button { margin-left: 16px; } .top-nav button + button::before { left: -12px; } }
