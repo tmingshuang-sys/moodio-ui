@@ -136,10 +136,12 @@ export function confirmCheckpoint(cp: Checkpoint) {
   const { brief } = useFiles.getState(); if (!has(brief?.format)) return;
   const ledger = readLedger() || ensureLedger(brief!.format).ledger;
   updateLedger({ confirmed: [cp], entities: cp === 'assets' ? ledger.entities.filter(e => e.ref).map(e => ({ name: e.name, status: '已确认' })) : undefined });
-  tick(); emit();
+  tick(); emit(); resume();
 }
-export function skipAssets() { updateLedger({ confirmed: ['assets'], notes: (readLedger()?.notes || '') + ' [跳过参考图]' }); tick(); emit(); }
-export function skipLintGate() { updateLedger({ flags: { skipLint: true }, notes: (readLedger()?.notes || '') + ' [跳过片段校验]' }); tick(); emit(); }
+export function skipAssets() { updateLedger({ confirmed: ['assets'], notes: (readLedger()?.notes || '') + ' [跳过参考图]' }); tick(); emit(); resume(); }
+export function skipLintGate() { updateLedger({ flags: { skipLint: true }, notes: (readLedger()?.notes || '') + ' [跳过片段校验]' }); tick(); emit(); resume(); }
+// 用户在检查点点了确认 / 跳过之后，一键模式要马上接着走，不用等下一轮 Agent 回复
+const resume = () => { setTimeout(() => { try { autopilotTick(); } catch (e) { console.warn('autopilot', e); } }, 300); };
 
 // 选类型：写纲领、建台账，然后本地渲染第一轮问卷（不经过模型）
 export function chooseFormat(format: string) {

@@ -225,6 +225,12 @@ export async function executePlan(key: string, messageAt: number) {
   if (videos >= 2) extra.push({ label: '按顺序合成成片', prompt: `把刚生成的 ${videos} 段视频按分镜顺序用 compose_video 合成一条成片，先给方案。` });
   out.followUps = extra;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, p.text + '\n' + results.join('\n'), c.id); cc.messages.push(out); cc.at = Date.now(); });
+  // 一键模式：剧本自审「需修改」就自动按建议修一轮（每份文稿只修一次），修完再停在检查点
+  const badReview = out.review?.items.findIndex(it => it.verdict === '需修改' && it.issues.length) ?? -1;
+  if (badReview >= 0 && isAutopilot() && !aborted()) {
+    const docId = out.review!.items[badReview].docId; const flag = 'autofix:' + docId;
+    if (!readLedger()?.flags?.[flag]) { updateLedger({ flags: { [flag]: true } }); setTimeout(() => reviewFix(out.at, badReview), 400); return; }
+  }
   afterTurn();
 }
 
