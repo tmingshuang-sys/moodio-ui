@@ -3,21 +3,23 @@
 import { create } from 'zustand';
 import type { Brief, Chat, Doc, DocKind, MediaItem, Message, Origin, TrashEntry, UiPrefs } from './types';
 import { uid } from './types';
-import { projects } from './projects';
+import { projects, NEW_PROJECT_TITLE, isFreshProject, clearFreshMark } from './projects';
 import { readJSON, writeJSON, putBlob, dataUrlToBlob, cacheUrl } from './storage';
 import { ensureExt, kindFromName, uniqueName, sanitizeName } from './markdown';
 import { migrateLegacyWorkspace } from './migrate';
 import { sampleDocs } from './sample';
 
-const FILES_KEY = projects.key('moodio-files-v1');
-const CHATS_KEY = projects.key('moodio-agent-chats');
+// 键按当前项目动态取：切换创作（项目）时 reload() 整体换数据，不刷新页面
+const filesKey = () => projects.key('moodio-files-v1');
+const chatsKey = () => projects.key('moodio-agent-chats');
 const DEFAULT_UI: UiPrefs = { paneOpen: true, paneWidth: 0, view: 'grid', openId: null, sidebarCollapsed: false };
 
 interface FilesSnapshot { docs: Doc[]; media: MediaItem[]; trash: TrashEntry[]; brief: Brief; ui: UiPrefs; }
 
 let filesNeedSave = false;   // 迁移或示例生成的首份数据要立刻落盘，否则每次刷新都会重新迁移、id 变化
 function loadFiles(): FilesSnapshot {
-  const saved = readJSON<FilesSnapshot | null>(FILES_KEY, null);
+  filesNeedSave = false;
+  const saved = readJSON<FilesSnapshot | null>(filesKey(), null);
   if (saved && Array.isArray(saved.docs)) return { docs: saved.docs, media: saved.media || [], trash: saved.trash || [], brief: saved.brief || {}, ui: { ...DEFAULT_UI, ...(saved.ui || {}) } };
   filesNeedSave = true;
   // 第一次用新版打开这个项目：先把旧版原型的剧本 / 文档 / 资产迁移成文件；没有旧数据的全新项目给一组示例文稿
@@ -27,9 +29,9 @@ function loadFiles(): FilesSnapshot {
     queueMicrotask(async () => { for (const m of pending) { const blob = dataUrlToBlob(m.dataUrl); if (!blob) continue; try { await putBlob(m.meta.id, blob); cacheUrl(m.meta.id, blob); } catch { /* ignore */ } } });
     return { docs: legacy.docs, media: legacy.media.map(m => m.meta), trash: [], brief: legacy.brief || {}, ui: { ...DEFAULT_UI } };
   }
-  const fresh = localStorage.getItem('moodio-project-fresh::' + projects.active().id) === '1';
-  try { localStorage.removeItem('moodio-project-fresh::' + projects.active().id); } catch { /* ignore */ }
-  return { docs: fresh ? [] : sampleDocs(), media: [], trash: [], brief: {}, ui: { ...DEFAULT_UI } };
+  // 新建的空白项目：没有示例文稿，工作区默认收起、只留对话框；有产物时 openInPane() 会自动打开
+  const fresh = isFreshProject(projects.active().id); clearFreshMark(projects.active().id);
+  return { docs: fresh ? [] : sampleDocs(), media: [], trash: [], brief: {}, ui: { ...DEFAULT_UI, paneOpen: !fresh } };
 }
 
 interface FilesState extends FilesSnapshot {
@@ -44,12 +46,17 @@ interface FilesState extends FilesSnapshot {
   setBrief(patch: Brief): void;
   setUi(patch: Partial<UiPrefs>): void;
   openInPane(id: string | null): void;
+  reload(): void;   // 按当前项目重新读一遍（切换 / 新建创作时用）
 }
 
-let saveTimer = 0;
+let saveTimer = 0, filesDirty = false;
+function writeFilesNow(get: () => FilesState) {
+  clearTimeout(saveTimer); if (!filesDirty) return; filesDirty = false;
+  const s = get(); writeJSON(filesKey(), { docs: s.docs, media: s.media, trash: s.trash, brief: s.brief, ui: s.ui }); projects.touch();
+}
 function persistFiles(get: () => FilesState) {
-  clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => { const s = get(); writeJSON(FILES_KEY, { docs: s.docs, media: s.media, trash: s.trash, brief: s.brief, ui: s.ui }); projects.touch(); }, 120);
+  filesDirty = true; clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => writeFilesNow(get), 120);
 }
 const pruneTrash = (trash: TrashEntry[]) => trash.filter(e => Date.now() - e.deletedAt < 7 * 864e5).slice(0, 60);
 
@@ -96,6 +103,7 @@ export const useFiles = create<FilesState>((set, get) => ({
   setBrief(patch) { set(s => ({ brief: { ...s.brief, ...patch, updatedAt: Date.now() } })); persistFiles(get); },
   setUi(patch) { set(s => ({ ui: { ...s.ui, ...patch } })); persistFiles(get); },
   openInPane(id) { set(s => ({ ui: { ...s.ui, openId: id, paneOpen: true } })); persistFiles(get); },
+  reload() { filesDirty = false; clearTimeout(saveTimer); set(loadFiles()); if (filesNeedSave) persistFiles(get); },
 }));
 
 if (filesNeedSave) persistFiles(useFiles.getState);
@@ -107,7 +115,7 @@ export const findDocByName = (name: string) => { const n = String(name || '').tr
 // ===== 对话 =====
 interface ChatsSnapshot { chats: Chat[]; active: string; }
 function loadChats(): ChatsSnapshot {
-  const saved = readJSON<any>(CHATS_KEY, null);
+  const saved = readJSON<any>(chatsKey(), null);
   if (saved && Array.isArray(saved.chats) && saved.chats.length) {
     const chats: Chat[] = saved.chats.map((c: any) => ({ id: String(c.id), title: String(c.title || '新对话'), messages: Array.isArray(c.messages) ? c.messages : [], at: Number(c.at) || Date.now() }));
     const active = chats.some(c => c.id === saved.active) ? saved.active : chats[0].id;
@@ -124,12 +132,19 @@ interface ChatsState extends ChatsSnapshot {
   deleteChat(id: string): void;
   push(chatId: string, message: Message): void;
   mutate(fn: (chats: Chat[]) => void): void;   // 原地修改后提交（流式更新用）
+  reload(activeId?: string): void;            // 按当前项目重新读一遍，可指定激活哪个对话
 }
-let chatsTimer = 0;
+let chatsTimer = 0, chatsDirty = false;
+function writeChatsNow(get: () => ChatsState) {
+  clearTimeout(chatsTimer); if (!chatsDirty) return; chatsDirty = false;
+  const s = get(); writeJSON(chatsKey(), { chats: s.chats.slice(0, 60), active: s.active });
+}
 function persistChats(get: () => ChatsState) {
-  clearTimeout(chatsTimer);
-  chatsTimer = window.setTimeout(() => { const s = get(); writeJSON(CHATS_KEY, { chats: s.chats.slice(0, 60), active: s.active }); }, 120);
+  chatsDirty = true; clearTimeout(chatsTimer);
+  chatsTimer = window.setTimeout(() => writeChatsNow(get), 120);
 }
+// 切换项目前把两边挂起的保存立刻写进「当前」项目的键，免得定时器在切换之后把旧数据写到新项目里
+export function flushStores() { writeFilesNow(useFiles.getState); writeChatsNow(useChats.getState); }
 export const useChats = create<ChatsState>((set, get) => ({
   ...loadChats(),
   chat() { const s = get(); return s.chats.find(c => c.id === s.active) || s.chats[0]; },
@@ -146,12 +161,26 @@ export const useChats = create<ChatsState>((set, get) => ({
     persistChats(get);
   },
   push(chatId, message) {
-    set(s => ({ chats: s.chats.map(c => c.id === chatId ? { ...c, messages: [...c.messages, message], at: Date.now(), title: c.title === '新对话' && message.role === 'user' ? (message.text.replace(/\s+/g, ' ').slice(0, 24) || '新对话') : c.title } : c) }));
+    const named = { title: '' };
+    set(s => ({ chats: s.chats.map(c => {
+      if (c.id !== chatId) return c;
+      const title = c.title === '新对话' && message.role === 'user' ? (message.text.replace(/\s+/g, ' ').slice(0, 24) || '新对话') : c.title;
+      if (title !== c.title) named.title = title;
+      return { ...c, messages: [...c.messages, message], at: Date.now(), title };
+    }) }));
+    // 点「创作」建出的项目还叫「新创作」：第一句话发出后项目名跟着对话标题走
+    if (named.title && projects.active().title === NEW_PROJECT_TITLE) projects.rename(projects.active().id, named.title);
     persistChats(get);
   },
   // 原地改完后给每个对话换一个新的对象引用（消息对象本身不换，执行器还攥着 pending / out 的引用）：
   // 组件按对话对象订阅（ChatPane 选的是 chat 本身），只换外层数组不会触发重渲染，之前「取消计划」就是这样卡在待确认态的
   mutate(fn) { const chats = get().chats; fn(chats); set({ chats: chats.map(c => ({ ...c, messages: c.messages.slice() })) }); persistChats(get); },
+  reload(activeId) {
+    chatsDirty = false; clearTimeout(chatsTimer);
+    const snap = loadChats();
+    if (activeId && snap.chats.some(c => c.id === activeId)) snap.active = activeId;
+    set(snap); persistChats(get);
+  },
 }));
 
 // ===== Agent 运行态（不持久化）=====

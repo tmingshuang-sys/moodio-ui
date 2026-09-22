@@ -19,6 +19,7 @@ const EN: Record<string, string> = {
   '你可能还想': 'You may also want to', '历史建议': 'Earlier suggestions', '已选择下一步': 'Next step chosen', '上下文已变化，请重新提问': 'Context changed, ask again',
   '思考过程': 'Thinking', '正在生成…': 'Generating…', 'Agent 正在思考…': 'Agent is thinking…', 'Agent 正在读取…': 'Agent is reading…', '正在自审刚写的内容…': 'Self-reviewing…',
   '项目': 'Project', '新建项目': 'New project', '切换项目': 'Switch project', '重命名项目': 'Rename project', '删除项目': 'Delete project',
+  '新创作': 'New creation', '删除创作': 'Delete creation', '删除对话': 'Delete chat', '还没有创作。点「创作」开始。': 'Nothing yet. Click "Create" to start.',
   '很高兴见到你': 'Good to see you', '想做什么？': 'What shall we make?',
   '共': 'Total', '个': '',
 };

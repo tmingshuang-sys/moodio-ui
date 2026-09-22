@@ -35,7 +35,7 @@ npm run build          # vite build → dist/
 
 ## 修改约定
 
-- **状态**：只通过 zustand 仓库改数据（`useFiles` / `useChats` / `useAgent`），仓库自己负责持久化（文件 `moodio-files-v1::<项目id>`，对话 `moodio-agent-chats::<项目id>`，媒体 blob IndexedDB `moodio-media`）。组件里用 hook 选择需要的字段；逻辑层用 `useX.getState()`。流式更新对话用 `useChats.getState().mutate(fn)` 原地改后提交；`mutate` 会给每个对话换新的对象引用（消息对象不换），因为 `ChatPane` 按对话对象订阅，只换外层数组不会重渲染。新加按对象订阅的组件时记住这一点，不要在 store 里只做 `slice()`。
+- **状态**：只通过 zustand 仓库改数据（`useFiles` / `useChats` / `useAgent`），仓库自己负责持久化（文件 `moodio-files-v1::<项目id>`，对话 `moodio-agent-chats::<项目id>`，媒体 blob IndexedDB `moodio-media`；键在保存时按当前项目动态取，`reload()` 可整体换成另一个项目的数据）。组件里用 hook 选择需要的字段；逻辑层用 `useX.getState()`。流式更新对话用 `useChats.getState().mutate(fn)` 原地改后提交；`mutate` 会给每个对话换新的对象引用（消息对象不换），因为 `ChatPane` 按对话对象订阅，只换外层数组不会重渲染。新加按对象订阅的组件时记住这一点，不要在 store 里只做 `slice()`。
 - **Agent 执行前必须确认**：`reply()`（runner.ts）只产出计划，用户点「确认执行」后 `executePlan()` 才调用 `AGENT_TOOLS`。例外：`NO_CONFIRM_TOOLS`（read_doc / open_doc / open_media / export_doc / save_brief）直接执行，read_doc 的结果交回模型再规划一轮（最多四轮）。`DESTRUCTIVE_TOOLS`（delete_doc / delete_media）在计划卡里标「删除」，确认按钮显示删除计数；删除进回收站 7 天，结果里带「撤销删除」。新增工具时同时更新：`AGENT_TOOLS`、`describeAction()`、`previewAction()`、`PLAN_KIND`、`buildSystemPrompt()` 里的工具说明，必要时 `NO_CONFIRM_TOOLS` / `DESTRUCTIVE_TOOLS`。
 - **写入文稿的显式化**：写作类工具（write_doc / append_doc / replace_section）不直接改内容，而是调 `ctx.typeInto(docId, from, to)`：在右侧工作区打开该文稿、逐行显示变化的部分（`useAgent.writing`），完成后再提交；期间工作区盖流光（`AgentLive`）、状态胶囊显示「写入第 k/n 行」、左侧计划卡逐步更新。
 - **文稿约定**（模型与工具都遵守，见 prompt.ts）：剧本每场一个 `## INT./EXT. 地点 - 时间`，对白 `**人物**` 独占一行；分镜表是固定列的 Markdown 表格；提示词一镜一份 `视频生成Prompt-01.md`；人物在 `人物小传.md` 每人一个二级标题。改已有文稿优先 `replace_section` / `append_doc`，整份重写才 `write_doc` + `overwrite`。`docRole(name)` 按文件名判断类别，剧本类写完会用写作模型自审（`selfReview`），结果渲染成自审卡。
@@ -48,7 +48,8 @@ npm run build          # vite build → dist/
 - **模型调用**只经过 `model.ts` 的 `callModel()`（内部按 provider 走 `callClaude` / `callOpenAI`），支持 `{signal,onText,onReasoning}`。密钥只存 localStorage `moodio-agent-model`，任何 API key 不得进入仓库或对话。创意类请求（`isCreativeRequest`）用写作模型 `writerCfg()`。
 - **样式**：都在 `src/styles.css`，按区块分段；颜色用 `:root` 里的变量，新规则追加到对应区块或文件末尾并加中文注释。**配色是黑白灰**：主色 `--accent` 就是墨色，选中态用 `--accent-soft` 浅灰底 + 墨色字，不要引入紫色或蓝色做强调；彩色只留状态语义（成功绿 `#2f6b45`、警告 `--warn`、危险 `--danger`）。品牌渐变 `--brand` 只给 logo 等品牌位，不要用在按钮、徽标、进度条上。弹窗规范：宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右。
 - **界面语言**：系统文案用 `useT()` / `t()`（i18n.ts 的 `EN` 词典），用户内容与模型正文不翻译。新增系统文案时在词典里补一条。
-- **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；由「新建项目」建的项目（`moodio-project-fresh::<id>` 标记）为空白。
+- **创作 = 项目**（`session.ts`）：侧栏「创作」按钮调 `startCreation()`：新建一个空白项目并**热切换**过去（`flushStores()` 先把挂起的保存写进旧项目，再 `projects.create(...,{reload:false})` + 两个仓库 `reload()`，不刷新页面），新项目没有示例文稿、工作区默认收起（`ui.paneOpen=false`，有产物时 `openInPane()` 自动打开）、标题先叫「新创作」，第一句话发出后 `push()` 把项目名改成对话标题。当前创作还是空白时再点「创作」只聚焦输入框。「创作历史」= 当前项目的对话（内存）+ 其他项目里有内容的对话（`otherProjectsHistory()` 读 localStorage，只在项目变动时重算），点一条 `switchProject(项目id, 对话id)`；条目菜单里「重命名」同步项目名，「删除」在项目只有这一条对话时是删整个创作（`deleteCreation()`：连文件一起删，删当前项目就切到最近改动的另一个，只剩一个时清空成新创作），否则只删对话。Agent 执行中（`useAgent.busy`）拒绝切换。Agent 工具 `create_project` / `switch_project` 仍走整页刷新（它们在计划执行中途调用，热切换会让执行器丢失消息引用）。
+- **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；`projects.create()` 建的项目都带 `moodio-project-fresh::<id>` 标记，首次加载为空白且工作区收起。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude <当前模型名> <noreply@anthropic.com>`。
 - **不要提交** `dist/`、`node_modules/`、`.wrangler/`；不要编辑 `~/Downloads` 里的旧副本。
 
@@ -63,7 +64,7 @@ npm run build          # vite build → dist/
 | 模型选择面板 | `ModelPrefs.tsx`（输入框工具栏里的按钮，视频 / 图片两个标签页 + 画面比例 + 时长）；模型目录 `mediamodels.ts` |
 | 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
 | 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`、拖拽上传；上传逻辑 `upload.ts` |
-| 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、创作历史按今天 / 昨天 / 更早分组、底部设置菜单（模型设置 / 语言） |
+| 侧栏 | `Sidebar.tsx`：项目菜单（切换 / 新建 / 重命名 / 删除）、创作历史（跨项目，按今天 / 昨天 / 更早分组）、底部设置菜单（模型设置 / 语言）；创作会话逻辑在 `session.ts`（`startCreation` / `switchProject` / `deleteCreation` / `otherProjectsHistory`） |
 | 弹窗 | `Dialogs.tsx`：`confirmDialog()` / `promptDialog()` / `openModelSettings()` / `openBrief()` |
 | 模型 | `model.ts`：`modelCfg()` / `saveModelCfg()` / `PROVIDER_DEFAULTS` / `probeModel()` / `parsePlanJSON()` / `partialPlanMessage()` |
 

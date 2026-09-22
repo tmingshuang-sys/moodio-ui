@@ -1,41 +1,66 @@
 // ===== 左侧导航：logo / 项目、创作、资源、创作纲领、创作历史（今天 / 昨天 / 更早）、底部用户与设置 =====
+// 「创作」= 新建一个空白创作（项目）并切换过去；创作历史列出所有项目里有内容的对话，点一条切回那个项目（不刷新页面）
 import { Sparkles, FolderOpen, Compass, PanelLeft, MoreHorizontal, ChevronDown, FileText, Settings, Languages, Plus, Check } from 'lucide-react';
 import { useChats, useFiles, useAgent } from '../lib/store';
 import { projects } from '../lib/projects';
+import { startCreation, switchProject, deleteCreation, otherProjectsHistory, chatCount, renameHistoryChat, deleteHistoryChat } from '../lib/session';
+import type { HistoryEntry } from '../lib/session';
 import { dayGroup } from '../lib/time';
 import { useT, useLang } from '../lib/i18n';
 import { openMenuAt } from './Menu';
 import { confirmDialog, promptDialog, openBrief, openModelSettings } from './Dialogs';
 import { toast } from './Toast';
 import { modelCfg, modelLabel } from '../lib/model';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function Sidebar() {
   const t = useT(); const lang = useLang(s => s.lang); const toggleLang = useLang(s => s.toggle);
   const chats = useChats(s => s.chats); const active = useChats(s => s.active);
-  const newChat = useChats(s => s.newChat); const setActive = useChats(s => s.setActive); const renameChat = useChats(s => s.renameChat); const deleteChat = useChats(s => s.deleteChat);
+  const setActive = useChats(s => s.setActive);
   const ui = useFiles(s => s.ui); const setUi = useFiles(s => s.setUi);
   const busy = useAgent(s => s.busy);
-  const [, bump] = useState(0);
+  const [version, bump] = useState(0);
   useEffect(() => projects.subscribe(() => bump(x => x + 1)), []);
-  useEffect(() => { const fn = () => bump(x => x + 1); window.addEventListener('moodio:model-changed', fn); return () => window.removeEventListener('moodio:model-changed', fn); }, []);
+  useEffect(() => {
+    const fn = () => bump(x => x + 1);
+    window.addEventListener('moodio:model-changed', fn); window.addEventListener('moodio:project-changed', fn);
+    return () => { window.removeEventListener('moodio:model-changed', fn); window.removeEventListener('moodio:project-changed', fn); };
+  }, []);
 
-  const groups: Record<string, typeof chats> = { 今天: [], 昨天: [], 更早: [] };
-  chats.slice().sort((a, b) => b.at - a.at).forEach(c => { if (c.messages.length || c.id === active) groups[dayGroup(c.at)].push(c); });
+  // 创作历史 = 当前项目的对话（内存，随流式更新）+ 其他项目的对话（读一次 localStorage，只在项目变动时重算）
+  const cur = projects.active();
+  const others = useMemo(() => otherProjectsHistory(), [cur.id, version]);   // eslint-disable-line react-hooks/exhaustive-deps
+  type Entry = HistoryEntry & { current: boolean };
+  const entries: Entry[] = [
+    ...chats.filter(c => c.messages.length || c.id === active).map(c => ({ projectId: cur.id, projectTitle: cur.title, chatId: c.id, title: c.title, at: c.at, current: true })),
+    ...others.map(e => ({ ...e, current: false })),
+  ].sort((a, b) => b.at - a.at);
+  const groups: Record<string, Entry[]> = { 今天: [], 昨天: [], 更早: [] };
+  entries.forEach(e => groups[dayGroup(e.at)].push(e));
 
   const openProjectMenu = (el: Element) => {
-    const list = projects.list(); const cur = projects.active();
+    const list = projects.list();
     openMenuAt(el, [
-      ...list.map(p => ({ label: p.title, icon: p.id === cur.id ? <Check size={14} /> : undefined, active: p.id === cur.id, onClick: () => { if (p.id !== cur.id) { toast('正在切换项目…'); projects.switchTo(p.id); } } })),
-      { label: t('新建项目'), icon: <Plus size={14} />, onClick: async () => { const name = await promptDialog({ title: t('新建项目'), label: '项目名称', placeholder: '例如：一分钟广告' }); if (name) { toast('正在创建项目…'); projects.create(name); } } },
+      ...list.map(p => ({ label: p.title, icon: p.id === cur.id ? <Check size={14} /> : undefined, active: p.id === cur.id, onClick: () => { switchProject(p.id); } })),
+      { label: t('新建项目'), icon: <Plus size={14} />, onClick: async () => { const name = await promptDialog({ title: t('新建项目'), label: '项目名称', placeholder: '例如：一分钟广告' }); if (name) startCreation(name, { reuseBlank: false }); } },
       { label: t('重命名项目'), onClick: async () => { const name = await promptDialog({ title: t('重命名项目'), label: '项目名称', value: cur.title }); if (name) { projects.rename(cur.id, name); bump(x => x + 1); } } },
-      { label: t('删除项目'), danger: true, disabled: list.length <= 1, onClick: async () => { if (await confirmDialog({ title: t('删除项目'), body: `删除「${cur.title}」及其全部文件和对话，此操作不可恢复。`, okLabel: '删除', danger: true })) projects.remove(cur.id); } },
+      { label: t('删除项目'), danger: true, onClick: async () => { if (await confirmDialog({ title: t('删除项目'), body: `删除「${cur.title}」及其全部文件和对话，此操作不可恢复。`, okLabel: '删除', danger: true })) deleteCreation(cur.id); } },
     ], { width: 220, title: t('项目') });
   };
-  const openChatMenu = (el: Element, id: string, title: string) => openMenuAt(el, [
-    { label: t('重命名'), onClick: async () => { const name = await promptDialog({ title: t('重命名'), value: title }); if (name) renameChat(id, name); } },
-    { label: t('删除'), danger: true, onClick: async () => { if (await confirmDialog({ title: '删除对话', body: `删除「${title}」？工作区里的文件不受影响。`, okLabel: '删除', danger: true })) deleteChat(id); } },
-  ], { width: 160, align: 'right' });
+  // 历史条目的菜单：一个项目只有这一条对话时，「删除」就是删掉整个创作（对话 + 工作区文件）
+  const openChatMenu = (el: Element, e: Entry) => {
+    const whole = chatCount(e.projectId) <= 1;
+    openMenuAt(el, [
+      { label: t('重命名'), onClick: async () => { const name = await promptDialog({ title: t('重命名'), value: e.title }); if (name) renameHistoryChat(e.projectId, e.chatId, name); } },
+      { label: whole ? t('删除创作') : t('删除对话'), danger: true, onClick: async () => {
+        const ok = await confirmDialog(whole
+          ? { title: t('删除创作'), body: `删除「${e.title}」这次创作？它的对话和工作区里的文件会一起删除，不可恢复。`, okLabel: '删除', danger: true }
+          : { title: t('删除对话'), body: `删除对话「${e.title}」？工作区里的文件不受影响。`, okLabel: '删除', danger: true });
+        if (!ok) return;
+        if (whole) deleteCreation(e.projectId); else deleteHistoryChat(e.projectId, e.chatId);
+      } },
+    ], { width: 160, align: 'right' });
+  };
   const openSettingsMenu = (el: Element) => openMenuAt(el, [
     { label: t('模型设置'), icon: <Settings size={14} />, hint: modelCfg()?.apiKey ? '已连接' : '未连接', onClick: openModelSettings },
     { label: `${t('语言')} · ${lang === 'zh' ? '中文' : 'English'}`, icon: <Languages size={14} />, onClick: toggleLang },
@@ -56,7 +81,7 @@ export default function Sidebar() {
         </button>
       )}
       <nav className="sb-nav" aria-label="板块">
-        <button type="button" className="sb-item" onClick={() => { if (busy) { toast('请等待当前 Agent 任务完成。'); return; } newChat(); window.dispatchEvent(new CustomEvent('moodio:focus-composer')); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
+        <button type="button" className="sb-item" onClick={() => { startCreation(); }} title={t('创作')}><Sparkles size={18} /><span>{t('创作')}</span></button>
         <button type="button" className={`sb-item${ui.paneOpen ? ' active' : ''}`} onClick={() => setUi({ paneOpen: !ui.paneOpen })} title={t('资源')}><FolderOpen size={18} /><span>{t('资源')}</span></button>
         <button type="button" className="sb-item" onClick={openBrief} title={t('创作纲领')}><Compass size={18} /><span>{t('创作纲领')}</span></button>
       </nav>
@@ -67,17 +92,24 @@ export default function Sidebar() {
             {(['今天', '昨天', '更早'] as const).map(g => groups[g].length ? (
               <div key={g} className="sb-group">
                 <div className="sb-group-title">{t(g)}</div>
-                {groups[g].map(c => (
-                  <div key={c.id} className={`sb-chat${c.id === active ? ' active' : ''}`}>
-                    <button type="button" className="sb-chat-main" onClick={() => { if (busy && c.id !== active) { toast('请先停止当前 Agent 任务，再切换对话。'); return; } setActive(c.id); }}>
-                      <span className="sb-chat-icon"><FileText size={16} /></span><span className="sb-chat-title">{c.title}</span>
-                    </button>
-                    <button type="button" className="sb-chat-more" aria-label="更多" onClick={e => openChatMenu(e.currentTarget, c.id, c.title)}><MoreHorizontal size={16} /></button>
-                  </div>
-                ))}
+                {groups[g].map(e => {
+                  const isActive = e.current && e.chatId === active;
+                  return (
+                    <div key={e.projectId + ':' + e.chatId} className={`sb-chat${isActive ? ' active' : ''}`}>
+                      <button type="button" className="sb-chat-main" title={e.current ? e.title : `${e.title} · ${e.projectTitle}`} onClick={() => {
+                        if (isActive) return;
+                        if (busy) { toast('请先停止当前 Agent 任务，再切换创作。'); return; }
+                        if (e.current) setActive(e.chatId); else switchProject(e.projectId, e.chatId);
+                      }}>
+                        <span className="sb-chat-icon"><FileText size={16} /></span><span className="sb-chat-title">{e.title}</span>
+                      </button>
+                      <button type="button" className="sb-chat-more" aria-label="更多" onClick={ev => openChatMenu(ev.currentTarget, e)}><MoreHorizontal size={16} /></button>
+                    </div>
+                  );
+                })}
               </div>
             ) : null)}
-            {!chats.some(c => c.messages.length) && <p className="sb-empty">还没有对话。点「创作」开始。</p>}
+            {!others.length && !chats.some(c => c.messages.length) && <p className="sb-empty">{t('还没有创作。点「创作」开始。')}</p>}
           </div>
         </div>
       )}
