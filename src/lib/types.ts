@@ -96,6 +96,7 @@ export interface ModelConfig {
   imageRatio?: string;
   videoRatio?: string;
   videoDuration?: string;
+  videoResolution?: string;
 }
 
 export interface ProjectMeta { id: string; title: string; createdAt: number; updatedAt: number; }

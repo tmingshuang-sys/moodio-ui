@@ -1,65 +1,79 @@
-// ===== 图片 / 视频模型目录：id 经 fal 队列接口探测确认存在（未知 id 返回 404），每个模型声明它接受哪些可选参数 =====
-// 不同模型的入参不一样：有的收 image_size（landscape_16_9 这种枚举），有的收 aspect_ratio（"16:9"），有的只收 prompt。
-// 这里显式标出来，发请求时只发模型认识的字段，避免被 422 退回。想加模型就往下面数组里加一条。
+// ===== 图片 / 视频模型目录：两家上游（fal.ai 与火山方舟），每个模型声明它接受哪些可选参数 =====
+// 不同模型入参不一样：fal 有的收 image_size（landscape_16_9 这种枚举）、有的收 aspect_ratio（"16:9"）、有的只收 prompt；
+// 方舟把画幅 / 时长 / 分辨率以 --ratio --duration --resolution 拼在提示词后面。这里显式标出来，只发模型认识的字段。
+// 想加模型：方舟用 GET /ark/models 能列出账号下全部型号；fal 的 id 从 fal.ai 上抄，注意队列接口只在顶层命名空间不存在时才返回 404，
+// 也就是说「提交返回 200」不能证明具体变体存在，要看任务状态或实际跑一次才算数。
+export type Provider = 'fal' | 'ark';
 export type RatioKey = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
-export type RatioParam = 'image_size' | 'aspect_ratio';
+export type RatioParam = 'image_size' | 'aspect_ratio' | 'arg';   // arg = 方舟，拼进提示词
 
 export interface ModelPreset {
   id: string;
   name: string;
   hint: string;
+  provider: Provider;
   ratio?: RatioParam;     // 不填 = 这个模型不在这里设画面比例
-  duration?: boolean;     // 是否发送时长
+  duration?: boolean;     // 是否可设时长
+  resolution?: boolean;   // 是否可设分辨率（方舟视频）
   verified?: boolean;     // 本仓库实际跑通过
 }
 
 export const IMAGE_RATIOS: RatioKey[] = ['16:9', '9:16', '1:1', '4:3', '3:4'];
 export const VIDEO_RATIOS: RatioKey[] = ['16:9', '9:16', '1:1'];
 export const VIDEO_DURATIONS = ['5', '10'];
+export const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'];
 
-// 画面比例 → 各模型要的写法
+// 画面比例 → 各家要的写法
 const IMAGE_SIZE_VALUE: Record<RatioKey, string> = { '16:9': 'landscape_16_9', '9:16': 'portrait_16_9', '1:1': 'square_hd', '4:3': 'landscape_4_3', '3:4': 'portrait_4_3' };
+// 方舟文生图按像素给尺寸；Seedream 5 要求不少于 3686400 像素，这里都取到 2K 以上
+const ARK_IMAGE_SIZE: Record<RatioKey, string> = { '16:9': '2560x1440', '9:16': '1440x2560', '1:1': '2048x2048', '4:3': '2304x1728', '3:4': '1728x2304' };
 export function ratioValue(param: RatioParam, ratio: RatioKey): string { return param === 'image_size' ? IMAGE_SIZE_VALUE[ratio] : ratio; }
+export function arkImageSize(ratio: RatioKey): string { return ARK_IMAGE_SIZE[ratio] || ARK_IMAGE_SIZE['16:9']; }
 
 export const IMAGE_MODELS: ModelPreset[] = [
-  { id: 'fal-ai/flux/dev', name: 'FLUX.1 dev', hint: '通用，画质与速度均衡', ratio: 'image_size', verified: true },
-  { id: 'fal-ai/flux/schnell', name: 'FLUX.1 schnell', hint: '最快，适合大量出草图', ratio: 'image_size' },
-  { id: 'fal-ai/flux-pro/v1.1', name: 'FLUX1.1 pro', hint: '质感更好，成本更高', ratio: 'image_size' },
-  { id: 'fal-ai/flux-pro/v1.1-ultra', name: 'FLUX1.1 pro ultra', hint: '更高分辨率', ratio: 'aspect_ratio' },
-  { id: 'fal-ai/bytedance/seedream/v3/text-to-image', name: 'Seedream 3.0', hint: '字节，中文理解好', ratio: 'image_size' },
-  { id: 'fal-ai/qwen-image', name: 'Qwen Image', hint: '通义，画面里的中文字更稳', ratio: 'image_size' },
-  { id: 'fal-ai/ideogram/v3', name: 'Ideogram V3', hint: '海报、带文字的版面', ratio: 'image_size' },
-  { id: 'fal-ai/recraft-v3', name: 'Recraft V3', hint: '设计感、图标与插画', ratio: 'image_size' },
+  { id: 'fal-ai/flux/dev', name: 'FLUX.1 dev', hint: '通用，画质与速度均衡', provider: 'fal', ratio: 'image_size', verified: true },
+  { id: 'fal-ai/flux/schnell', name: 'FLUX.1 schnell', hint: '最快，适合大量出草图', provider: 'fal', ratio: 'image_size' },
+  { id: 'fal-ai/flux-pro/v1.1', name: 'FLUX1.1 pro', hint: '质感更好，成本更高', provider: 'fal', ratio: 'image_size' },
+  { id: 'fal-ai/bytedance/seedream/v3/text-to-image', name: 'Seedream 3.0（fal）', hint: '字节，中文理解好', provider: 'fal', ratio: 'image_size', verified: true },
+  { id: 'doubao-seedream-5-0-260128', name: 'Seedream 5.0', hint: '方舟，最新一代，中文与版面最好', provider: 'ark', ratio: 'arg', verified: true },
+  { id: 'doubao-seedream-5-0-pro-260628', name: 'Seedream 5.0 Pro', hint: '方舟，质量更高', provider: 'ark', ratio: 'arg' },
+  { id: 'doubao-seedream-5-0-flash-260915', name: 'Seedream 5.0 Flash', hint: '方舟，快且便宜', provider: 'ark', ratio: 'arg' },
+  { id: 'doubao-seedream-4-5-251128', name: 'Seedream 4.5', hint: '方舟，上一代稳定版', provider: 'ark', ratio: 'arg' },
+  { id: 'fal-ai/qwen-image', name: 'Qwen Image', hint: '通义，画面里的中文字更稳', provider: 'fal', ratio: 'image_size' },
+  { id: 'fal-ai/ideogram/v3', name: 'Ideogram V3', hint: '海报、带文字的版面', provider: 'fal', ratio: 'image_size' },
+  { id: 'fal-ai/recraft-v3', name: 'Recraft V3', hint: '设计感、图标与插画', provider: 'fal', ratio: 'image_size' },
 ];
 
 export const VIDEO_MODELS: ModelPreset[] = [
-  { id: 'fal-ai/kling-video/v1/standard/text-to-video', name: '可灵 1.0 标准', hint: '稳定，5 秒约 5 分钟', ratio: 'aspect_ratio', duration: true, verified: true },
-  { id: 'fal-ai/kling-video/v1.6/standard/text-to-video', name: '可灵 1.6 标准', hint: '动态与一致性更好', ratio: 'aspect_ratio', duration: true },
-  { id: 'fal-ai/kling-video/v2/master/text-to-video', name: '可灵 2.0 大师', hint: '质量最好，最贵', ratio: 'aspect_ratio', duration: true },
-  { id: 'fal-ai/bytedance/seedance/v1/lite/text-to-video', name: 'Seedance 1.0 Lite', hint: '字节，快且便宜', ratio: 'aspect_ratio', duration: true },
-  { id: 'fal-ai/minimax/video-01', name: 'MiniMax 海螺', hint: '镜头语言好，参数固定', },
-  { id: 'fal-ai/veo3', name: 'Google Veo 3', hint: '自带音效，最贵', ratio: 'aspect_ratio' },
-  { id: 'fal-ai/hunyuan-video', name: '混元视频', hint: '开源模型，参数固定' },
-  { id: 'fal-ai/wan-t2v', name: 'Wan 2.1', hint: '开源模型，参数固定' },
-  { id: 'fal-ai/luma-dream-machine', name: 'Luma Dream Machine', hint: '运动自然', ratio: 'aspect_ratio' },
+  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，最新一代，需在方舟控制台开通', provider: 'ark', ratio: 'arg', duration: true, resolution: true },
+  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，全模态', provider: 'ark', ratio: 'arg', duration: true, resolution: true },
+  { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast', hint: '方舟，极速推理', provider: 'ark', ratio: 'arg', duration: true, resolution: true },
+  { id: 'doubao-seedance-2-0-mini-260615', name: 'Seedance 2.0 Mini', hint: '方舟，体验版，最便宜', provider: 'ark', ratio: 'arg', duration: true, resolution: true },
+  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版', provider: 'ark', ratio: 'arg', duration: true, resolution: true },
+  { id: 'fal-ai/kling-video/v1/standard/text-to-video', name: '可灵 1.0 标准（fal）', hint: '稳定，5 秒约 5 分钟', provider: 'fal', ratio: 'aspect_ratio', duration: true, verified: true },
+  { id: 'fal-ai/kling-video/v2/master/text-to-video', name: '可灵 2.0 大师（fal）', hint: '质量好，较贵', provider: 'fal', ratio: 'aspect_ratio', duration: true },
+  { id: 'fal-ai/veo3', name: 'Google Veo 3（fal）', hint: '自带音效，最贵', provider: 'fal', ratio: 'aspect_ratio' },
+  { id: 'fal-ai/minimax/video-01', name: 'MiniMax 海螺（fal）', hint: '镜头语言好，参数固定', provider: 'fal' },
 ];
 
 export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
-  { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准', hint: '以首帧图生成', duration: true },
-  { id: 'fal-ai/kling-video/v1.6/standard/image-to-video', name: '可灵 1.6 标准', hint: '一致性更好', duration: true },
-  { id: 'fal-ai/bytedance/seedance/v1/lite/image-to-video', name: 'Seedance 1.0 Lite', hint: '快且便宜', duration: true },
+  { id: 'doubao-seedance-2-5-260628', name: 'Seedance 2.5', hint: '方舟，同一模型带首帧图', provider: 'ark', duration: true, resolution: true },
+  { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0', hint: '方舟，同一模型带首帧图', provider: 'ark', duration: true, resolution: true },
+  { id: 'doubao-seedance-1-0-pro-250528', name: 'Seedance 1.0 Pro', hint: '方舟，上一代稳定版', provider: 'ark', duration: true, resolution: true },
+  { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true },
 ];
 
 export function findPreset(list: ModelPreset[], id: string | undefined): ModelPreset | null {
   return list.find(m => m.id === String(id || '')) || null;
 }
-// 自定义 id 的兜底：图片按 image_size、视频按 aspect_ratio + 时长，与多数模型一致
+// 自定义 id 的兜底：带斜杠当成 fal，否则当成方舟；图片按 image_size、视频按 aspect_ratio + 时长
 export function presetFor(list: ModelPreset[], id: string | undefined, kind: 'image' | 'video' | 'videoImage'): ModelPreset {
   const hit = findPreset(list, id);
   if (hit) return hit;
-  const fallback: ModelPreset = { id: String(id || ''), name: '自定义模型', hint: '按通用参数发送' };
-  if (kind === 'image') fallback.ratio = 'image_size';
-  else if (kind === 'video') { fallback.ratio = 'aspect_ratio'; fallback.duration = true; }
-  else fallback.duration = true;
+  const raw = String(id || '');
+  const provider: Provider = raw.includes('/') ? 'fal' : 'ark';
+  const fallback: ModelPreset = { id: raw, name: '自定义模型', hint: '按通用参数发送', provider };
+  if (kind === 'image') fallback.ratio = provider === 'ark' ? 'arg' : 'image_size';
+  else { fallback.duration = true; fallback.resolution = provider === 'ark'; if (kind === 'video') fallback.ratio = provider === 'ark' ? 'arg' : 'aspect_ratio'; }
   return fallback;
 }

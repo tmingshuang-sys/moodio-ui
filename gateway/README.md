@@ -6,6 +6,7 @@ Cloudflare Worker，替页面保管所有真实 API key。对外三个接口：
 |---|---|
 | `POST /v1/chat/completions` | 文本模型，OpenAI 兼容，流式与非流式都透传 |
 | `POST /fal/<模型id>`、`GET`、`PUT /fal/<请求路径>` | 图片 / 视频，透传到 fal.ai 的队列接口（提交、查状态、取结果、取消） |
+| `/ark/*` | 图片 / 视频，透传到火山方舟（Seedance / Seedream）；`GET /ark/models` 可列出账号下的全部型号 |
 | `GET /media?url=` | 代下载 fal 的生成结果，避开浏览器跨域 |
 
 三者都要求 `Authorization: Bearer <ACCESS_TOKEN>`。
@@ -16,7 +17,8 @@ Cloudflare Worker，替页面保管所有真实 API key。对外三个接口：
 cd gateway
 npx wrangler login                      # 浏览器授权一次
 npx wrangler secret put DEEPSEEK_API_KEY   # 粘贴 DeepSeek 的 key
-npx wrangler secret put FAL_KEY            # fal.ai 的 key，形如 id:secret（不配置则图片 / 视频返回 503）
+npx wrangler secret put FAL_KEY            # fal.ai 的 key，形如 id:secret（不配置则 /fal/* 返回 503）
+npx wrangler secret put ARK_API_KEY        # 火山方舟的 key（不配置则 /ark/* 返回 503）
 npx wrangler secret put ACCESS_TOKEN       # 自己定一个访问口令，发给使用者
 npx wrangler deploy
 ```

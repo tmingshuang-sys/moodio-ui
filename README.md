@@ -21,9 +21,12 @@ npm run build      # 构建到 dist/
 同一个弹窗下半部分是「图片 / 视频生成」的网关地址与口令，默认沿用上面那套。具体用哪个模型、什么画幅、多长时间，在输入框下方的模型按钮里选。真实的 fal key 存在网关的 Worker 密钥 `FAL_KEY` 里，不在页面上：
 
 ```bash
-npx wrangler secret put FAL_KEY --config gateway/wrangler.toml
+npx wrangler secret put FAL_KEY --config gateway/wrangler.toml       # fal.ai
+npx wrangler secret put ARK_API_KEY --config gateway/wrangler.toml   # 火山方舟（Seedance / Seedream）
 npm run gateway:deploy
 ```
+
+方舟的模型要在方舟控制台的「开通管理」里单独开通，没开通时页面会提示。
 
 生成入口有两个：输入框左下角「+」里的「生成图片 / 生成视频」，以及直接让 Agent 生成（它会先给计划，确认后执行）。
 

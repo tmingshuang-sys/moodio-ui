@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { ModelPreset, RatioKey } from '../lib/mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_DURATIONS, findPreset } from '../lib/mediamodels';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, IMAGE_RATIOS, VIDEO_RATIOS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, findPreset } from '../lib/mediamodels';
 import { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, currentVideoImageModel, mediaReadyReason } from '../lib/mediagen';
 import { modelCfg, saveModelCfg } from '../lib/model';
 import type { ModelConfig } from '../lib/types';
@@ -61,6 +61,7 @@ export default function ModelPrefs() {
   const imageRatio = (cfg.imageRatio || MEDIA_DEFAULTS.imageRatio) as RatioKey;
   const videoRatio = (cfg.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
   const duration = cfg.videoDuration || MEDIA_DEFAULTS.videoDuration;
+  const resolution = cfg.videoResolution || MEDIA_DEFAULTS.videoResolution;
   const activeName = tab === 'video' ? (findPreset(VIDEO_MODELS, videoId)?.name || '自定义') : (findPreset(IMAGE_MODELS, imageId)?.name || '自定义');
   const videoPreset = findPreset(VIDEO_MODELS, videoId);
   const imagePreset = findPreset(IMAGE_MODELS, imageId);
@@ -109,6 +110,14 @@ export default function ModelPrefs() {
               )}
               {tab === 'video' && (
                 <>
+                  {(videoPreset?.resolution || videoImagePreset?.resolution) && (
+                    <>
+                      <h4>{t('视频分辨率')}</h4>
+                      <div className="mp-chips">
+                        {VIDEO_RESOLUTIONS.map(r => <button key={r} type="button" className={r === resolution ? 'active' : ''} onClick={() => patch({ videoResolution: r })}>{r.toUpperCase()}</button>)}
+                      </div>
+                    </>
+                  )}
                   <h4>{t('时长')}</h4>
                   {videoPreset?.duration || videoImagePreset?.duration ? (
                     <div className="mp-chips">

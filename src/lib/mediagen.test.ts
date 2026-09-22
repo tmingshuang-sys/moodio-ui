@@ -39,6 +39,25 @@ describe('media endpoint', () => {
   });
 });
 
+describe('per-model input', () => {
+  it('only sends fields the fal model declares', async () => {
+    const { __test } = await load();
+    const flux = { id: 'x', name: 'x', hint: '', provider: 'fal' as const, ratio: 'image_size' as const };
+    expect(__test.buildInput(flux, 'a cat', { ratio: '9:16', duration: '10' })).toEqual({ prompt: 'a cat', image_size: 'portrait_16_9' });
+    const kling = { id: 'x', name: 'x', hint: '', provider: 'fal' as const, ratio: 'aspect_ratio' as const, duration: true };
+    expect(__test.buildInput(kling, 'a cat', { ratio: '9:16', duration: '10' })).toEqual({ prompt: 'a cat', aspect_ratio: '9:16', duration: '10' });
+    const minimal = { id: 'x', name: 'x', hint: '', provider: 'fal' as const };
+    expect(__test.buildInput(minimal, 'a cat', { ratio: '9:16', duration: '10' })).toEqual({ prompt: 'a cat' });
+  });
+  it('appends ark parameters to the prompt instead of sending fields', async () => {
+    const { __test } = await load();
+    const seedance = { id: 'x', name: 'x', hint: '', provider: 'ark' as const, ratio: 'arg' as const, duration: true, resolution: true };
+    expect(__test.arkPromptArgs(seedance, 'a cat', { ratio: '9:16', duration: '10', resolution: '1080p' })).toBe('a cat --ratio 9:16 --duration 10 --resolution 1080p');
+    expect(__test.arkPromptArgs(seedance, 'a cat', { duration: '5' })).toBe('a cat --duration 5');   // 图生视频不带画幅
+    expect(__test.buildInput(seedance, 'a cat', { ratio: '9:16', duration: '10' })).toEqual({ prompt: 'a cat', duration: '10' });   // arg 不当成字段发出去
+  });
+});
+
 describe('queue helpers', () => {
   it('rewrites fal queue urls onto the gateway so the browser never needs the fal key', async () => {
     const { __test } = await load();

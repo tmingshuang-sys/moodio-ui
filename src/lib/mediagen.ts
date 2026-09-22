@@ -7,7 +7,7 @@ import { useFiles, findMedia, useAgent } from './store';
 import { putBlob, cacheUrl, getBlob, imageSize } from './storage';
 import { sanitizeName } from './markdown';
 import type { ModelPreset, RatioKey } from './mediamodels';
-import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue } from './mediamodels';
+import { IMAGE_MODELS, VIDEO_MODELS, VIDEO_IMAGE_MODELS, presetFor, ratioValue, arkImageSize } from './mediamodels';
 
 export const MEDIA_DEFAULTS = {
   baseUrl: PROVIDER_DEFAULTS.openai.baseUrl.replace(/\/v1$/, ''),
@@ -17,6 +17,7 @@ export const MEDIA_DEFAULTS = {
   imageRatio: '16:9' as RatioKey,
   videoRatio: '16:9' as RatioKey,
   videoDuration: '5',
+  videoResolution: '720p',
 };
 
 export interface MediaEndpoint { base: string; token: string; }
@@ -56,15 +57,23 @@ function pickUrl(result: any): { url: string; contentType?: string } | null {
   if (typeof result?.url === 'string') return { url: result.url };
   return null;
 }
-// 按模型声明拼可选参数：模型不认识的字段一律不发，免得被 422 退回
+// fal：按模型声明拼可选参数，模型不认识的字段一律不发，免得被 422 退回
 export function buildInput(preset: ModelPreset, prompt: string, { ratio, duration }: { ratio?: RatioKey; duration?: string }): Record<string, unknown> {
   const input: Record<string, unknown> = { prompt };
-  if (preset.ratio && ratio) input[preset.ratio] = ratioValue(preset.ratio, ratio);
+  if (preset.ratio && preset.ratio !== 'arg' && ratio) input[preset.ratio] = ratioValue(preset.ratio, ratio);
   if (preset.duration && duration) input.duration = String(duration);
   return input;
 }
+// 方舟：画幅 / 时长 / 分辨率以 --ratio --duration --resolution 拼在提示词后面
+export function arkPromptArgs(preset: ModelPreset, prompt: string, { ratio, duration, resolution }: { ratio?: RatioKey; duration?: string; resolution?: string }): string {
+  const args: string[] = [];
+  if (preset.ratio === 'arg' && ratio) args.push(`--ratio ${ratio}`);
+  if (preset.duration && duration) args.push(`--duration ${duration}`);
+  if (preset.resolution && resolution) args.push(`--resolution ${resolution}`);
+  return args.length ? `${prompt} ${args.join(' ')}` : prompt;
+}
 
-export const __test = { viaGateway, pickUrl, buildInput };   // 仅供单元测试
+export const __test = { viaGateway, pickUrl, buildInput, arkPromptArgs };   // 仅供单元测试
 
 export interface GenOptions { onProgress?: (text: string) => void; signal?: AbortSignal; }
 
@@ -101,6 +110,42 @@ async function runFal(model: string, input: Record<string, unknown>, { onProgres
   return done.json();
 }
 
+// ===== 火山方舟 =====
+async function arkFetch(path: string, init: RequestInit & { signal?: AbortSignal } = {}): Promise<any> {
+  const ep = mediaEndpoint(); if (!ep) throw new Error(mediaReadyReason() || '网关未配置');
+  const res = await fetch(`${ep.base}/ark${path}`, { ...init, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ep.token, ...(init.headers || {}) } });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.error) {
+    const err = data?.error || {};
+    if (err.code === 'ModelNotOpen') throw new Error('这个模型还没在火山方舟控制台开通，去「开通管理」里开通后即可使用');
+    if (err.code === 'AccountOverdueError') throw new Error('火山方舟账户余额不足，请先充值');
+    throw new Error('火山方舟返回错误：' + (err.message || `HTTP ${res.status}`));
+  }
+  return data;
+}
+// 方舟视频：创建任务 → 轮询 → 拿 video_url；中途停止会删掉任务
+async function runArkVideo(model: string, content: unknown[], { onProgress, signal }: GenOptions, timeoutMs: number): Promise<string> {
+  const created = await arkFetch('/contents/generations/tasks', { method: 'POST', body: JSON.stringify({ model, content }), signal });
+  const id = created?.id; if (!id) throw new Error('火山方舟没有返回任务 id');
+  const started = Date.now();
+  try {
+    for (;;) {
+      if (signal?.aborted) throw new DOMException('已停止', 'AbortError');
+      if (Date.now() - started > timeoutMs) throw new Error('生成超时，任务可能仍在队列里，请稍后重试');
+      await sleep(2000);
+      const task = await arkFetch(`/contents/generations/tasks/${encodeURIComponent(id)}`, { signal });
+      const status = String(task?.status || '');
+      if (status === 'succeeded') { const url = task?.content?.video_url; if (!url) throw new Error('生成结果里没有视频地址'); return url; }
+      if (status === 'failed' || status === 'cancelled') throw new Error('生成失败：' + (task?.error?.message || status));
+      const secs = Math.round((Date.now() - started) / 1000);
+      onProgress?.(status === 'queued' ? `排队中 · ${secs}s` : `生成中 · ${secs}s`);
+    }
+  } catch (e) {
+    arkFetch(`/contents/generations/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    throw e;
+  }
+}
+
 // 把结果地址下载进媒体库（经网关代下载，避免跨域）
 async function storeResult(url: string, { name, group, kind, contentType }: { name: string; group: string; kind: 'image' | 'video'; contentType?: string }): Promise<MediaItem> {
   const ep = mediaEndpoint(); if (!ep) throw new Error('网关未配置');
@@ -126,10 +171,21 @@ export async function generateImage(req: ImageRequest, opts: GenOptions = {}): P
   const preset = presetFor(IMAGE_MODELS, model, 'image');
   const ratio = (req.ratio || cfg?.imageRatio || MEDIA_DEFAULTS.imageRatio) as RatioKey;
   opts.onProgress?.('提交生成任务…');
-  const result = await runFal(model, buildInput(preset, prompt, { ratio }), opts, 4 * 60e3);
-  const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有图片地址');
+  let url: string, contentType: string | undefined;
+  if (preset.provider === 'ark') {
+    const started = Date.now();   // 方舟出图是一次同步调用，自己报个计时，别让状态一直停在「提交」
+    const ticking = setInterval(() => opts.onProgress?.(`生成中 · ${Math.round((Date.now() - started) / 1000)}s`), 1000);
+    try {
+      const data = await arkFetch('/images/generations', { method: 'POST', body: JSON.stringify({ model, prompt, size: arkImageSize(ratio), response_format: 'url', watermark: false }), signal: opts.signal });
+      url = data?.data?.[0]?.url; if (!url) throw new Error('生成结果里没有图片地址');
+    } finally { clearInterval(ticking); }
+  } else {
+    const result = await runFal(model, buildInput(preset, prompt, { ratio }), opts, 4 * 60e3);
+    const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有图片地址');
+    url = hit.url; contentType = hit.contentType;
+  }
   opts.onProgress?.('下载生成结果…');
-  return storeResult(hit.url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'image', contentType: hit.contentType });
+  return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'image', contentType });
 }
 
 export interface VideoRequest { prompt: string; name?: string; group?: string; ratio?: RatioKey; duration?: string | number; fromMediaId?: string; model?: string; }
@@ -141,18 +197,30 @@ export async function generateVideo(req: VideoRequest, opts: GenOptions = {}): P
   const model = req.model || (fromImage ? currentVideoImageModel(cfg) : currentVideoModel(cfg));
   const preset = presetFor(fromImage ? VIDEO_IMAGE_MODELS : VIDEO_MODELS, model, fromImage ? 'videoImage' : 'video');
   const ratio = (req.ratio || cfg?.videoRatio || MEDIA_DEFAULTS.videoRatio) as RatioKey;
-  const input = buildInput(preset, prompt, { ratio: fromImage ? undefined : ratio, duration });
+  const resolution = cfg?.videoResolution || MEDIA_DEFAULTS.videoResolution;
+  let imageDataUrl = '';
   if (fromImage) {
     const src = findMedia(req.fromMediaId!); if (!src) throw new Error(`找不到 id 为「${req.fromMediaId}」的图片`);
     if (src.kind !== 'image') throw new Error('参考素材必须是图片');
     const blob = await getBlob(src.id); if (!blob) throw new Error(`「${src.name}」的文件不在本机媒体库里`);
-    input.image_url = await new Promise<string>((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(new Error('读取参考图失败')); fr.readAsDataURL(blob); });
+    imageDataUrl = await new Promise<string>((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(new Error('读取参考图失败')); fr.readAsDataURL(blob); });
   }
   opts.onProgress?.('提交生成任务…');
-  const result = await runFal(model, input, opts, 12 * 60e3);
-  const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有视频地址');
+  let url: string, contentType: string | undefined;
+  if (preset.provider === 'ark') {
+    const text = arkPromptArgs(preset, prompt, { ratio: fromImage ? undefined : ratio, duration, resolution });
+    const content: unknown[] = [{ type: 'text', text }];
+    if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
+    url = await runArkVideo(model, content, opts, 12 * 60e3);
+  } else {
+    const input = buildInput(preset, prompt, { ratio: fromImage ? undefined : ratio, duration });
+    if (imageDataUrl) input.image_url = imageDataUrl;
+    const result = await runFal(model, input, opts, 12 * 60e3);
+    const hit = pickUrl(result); if (!hit) throw new Error('生成结果里没有视频地址');
+    url = hit.url; contentType = hit.contentType;
+  }
   opts.onProgress?.('下载生成结果…');
-  return storeResult(hit.url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'video', contentType: hit.contentType });
+  return storeResult(url, { name: sanitizeName(req.name || prompt.slice(0, 24)), group: req.group || '其他', kind: 'video', contentType });
 }
 
 // 不经 Agent 的手动生成（输入框「+」菜单）：占用同一套忙碌状态与流光，可用胶囊上的「停止」中断
