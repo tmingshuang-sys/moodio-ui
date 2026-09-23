@@ -14,6 +14,9 @@ import { toast } from './Toast';
 import { runJianyingExport } from './ResourcePane';
 import { useT } from '../lib/i18n';
 
+// 导入到剪辑软件用的成片：本地合成的那条优先，否则最新的视频
+const latestFilm = () => { const media = useFiles.getState().media; return media.find(x => x.kind === 'video' && x.model === '本地合成') || media.find(x => x.kind === 'video'); };
+
 const KIND_ICON: Record<string, ReactNode> = { write: <PenLine size={14} />, doc: <FileText size={14} />, media: <Image size={14} />, delete: <Trash2 size={14} />, project: <FolderKanban size={14} />, export: <Download size={14} />, brief: <Sparkles size={14} />, image: <Wand2 size={14} />, video: <Clapperboard size={14} />, audio: <Music size={14} />, other: <Dot size={14} /> };
 // 连续同类步骤折成一组（写入文件 · 3 份、图片生成 · 完成 2/5 项），像执行了一批命令
 const GROUP_LABEL: Record<string, string> = { write: '写入文件', image: '图片生成', video: '视频生成', audio: '语音生成', doc: '读取文件', media: '媒体操作', brief: '记录信息' };
@@ -243,7 +246,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
             {showFollowUps && (
               <div className="next-steps">
                 <p className="next-title">{m.followUpUsed ? t('已选择下一步') : !latest ? t('历史建议') : m.followUpContext?.chatId !== chat.id ? t('上下文已变化，请重新提问') : t('你可能还想')}</p>
-                <div className="next-options">{followUps.map((f, j) => <button key={j} type="button" disabled={!followAvailable} title={f.prompt} onClick={() => useFollowUp(m.at, j)}>{f.label}</button>)}</div>
+                <div className="next-options">{followUps.map((f, j) => <button key={j} type="button" disabled={f.action ? busy : !followAvailable} title={f.prompt} onClick={() => f.action === 'nle' ? void runJianyingExport(latestFilm()?.id) : useFollowUp(m.at, j)}>{f.label}</button>)}</div>
               </div>
             )}
             {!m.streaming && <time className="msg-time">{clock(m.at)}</time>}

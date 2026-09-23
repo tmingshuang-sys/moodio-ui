@@ -25,11 +25,12 @@ export function normalizeFollowUps(value: unknown): FollowUp[] {
   const seen = new Set<string>(), labels = new Set<string>(), result: FollowUp[] = [];
   for (const item of value.slice(0, 12)) {
     if (!item || typeof item.label !== 'string' || typeof item.prompt !== 'string') continue;
+    if (item.action && item.action !== 'nle') continue;
     const label = item.label.trim(), prompt = item.prompt.trim();
     if (!label || label.length > 24 || !prompt || prompt.length > 400 || /[\r\n]/.test(label)) continue;
     const key = prompt.replace(/\s+/g, '').toLowerCase();
     if (seen.has(key) || labels.has(label)) continue;
-    seen.add(key); labels.add(label); result.push({ label, prompt }); if (result.length === 3) break;
+    seen.add(key); labels.add(label); result.push(item.action === 'nle' ? { label, prompt, action: 'nle' as const } : { label, prompt }); if (result.length === 3) break;
   }
   return result;
 }
@@ -76,7 +77,8 @@ const STAGE_FALLBACKS: Record<StageId, FollowUp[]> = {
   deliver: [
     { label: '修改成片的某一段', prompt: '请修改成片的第 ' },
     { label: '写一份交付说明', prompt: '请为成片写一份交付说明：结构、每段承担的内容、核心信息如何落地，存成「交付说明.md」。' },
-    { label: '开始下一个创作', prompt: '这一版就这样，帮我总结这次创作的经验，下次同类型可以直接复用哪些设定。' }],
+    // 点了直接把成片送进剪辑软件（本地动作，不发给模型）；交付环节任何类型的创作都该有这一个
+    { label: '导入到剪辑软件', prompt: '把成片的片段按顺序导入剪辑软件，配乐与配音各占一条音轨。', action: 'nle' }],
 };
 export function stageFallbacks(stage: StageId): FollowUp[] { return STAGE_FALLBACKS[stage] || []; }
 export function attachFollowUps(message: Message, request: string, chatId: string) {
@@ -91,6 +93,9 @@ export function attachFollowUps(message: Message, request: string, chatId: strin
     if (options.length === 3) break;
     if (!options.some(x => x.label === option.label || x.prompt === option.prompt)) options.push(option);
   }
+  // 交付阶段一定要有「导入到剪辑软件」：模型给的建议再多也给它留一个位置
+  const nle = (cur === 'deliver' ? stageFallbacks('deliver') : []).find(o => o.action === 'nle');
+  if (nle && !options.some(o => o.action === 'nle')) { if (options.length >= 3) options.pop(); options.push(nle); }
   message.followUps = options;
 }
 // 一批最多 8 题；选项可以是字符串或 {label, hint}；没有选项的题自动变成填空题

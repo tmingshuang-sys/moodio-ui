@@ -51,7 +51,7 @@ export interface UiPrefs {
 }
 
 // ===== 对话 =====
-export interface FollowUp { label: string; prompt: string; }
+export interface FollowUp { label: string; prompt: string; action?: 'nle'; }   // action：点了执行本地动作而不是把 prompt 发给模型（nle = 导入到剪辑软件）
 // 追问：single 单选 / multi 多选 / text 填空；选项可带一行说明；key 用来把答案记进台账
 export interface QuestionOption { label: string; hint?: string; }
 export interface Question { text: string; type?: 'single' | 'multi' | 'text'; options: QuestionOption[]; multi: boolean; placeholder?: string; key?: string; recommended?: number[]; }   // recommended：推荐选项下标，本地问卷会预选
