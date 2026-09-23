@@ -316,13 +316,14 @@ export function parsePlanJSON(content: string): any {
 }
 
 // 宽松解析：先按严格方式，不行再修复被截断的 JSON（补上没闭合的引号 / 括号，砍掉末尾不完整的键值）
-export function parsePlanJSONLoose(content: string): { data: any; repaired: boolean } {
-  try { return { data: parsePlanJSON(content), repaired: false }; } catch { /* 试着修 */ }
-  const data = repairJSON(String(content || ''));
-  if (data === null) throw new Error('模型返回的不是有效 JSON');
-  return { data, repaired: true };
+export function parsePlanJSONLoose(content: string): { data: any; repaired: boolean; truncated: boolean } {
+  try { return { data: parsePlanJSON(content), repaired: false, truncated: false }; } catch { /* 试着修 */ }
+  const fixed = repairJSONInfo(String(content || ''));
+  if (!fixed) throw new Error('模型返回的不是有效 JSON');
+  return { data: fixed.data, repaired: true, truncated: fixed.closedString };
 }
-function autoClose(s: string): string {
+// 补上没闭合的引号 / 括号；closedString 表示最后是断在一个字符串中间（真截断的标志，结构写歪时不会出现）
+function autoClose(s: string): { text: string; closedString: boolean } {
   const stack: string[] = []; let inStr = false, esc = false;
   for (const ch of s) {
     if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
@@ -330,13 +331,16 @@ function autoClose(s: string): string {
   }
   let out = s; if (inStr) out += '"';
   out = out.replace(/[,\s]+$/, '').replace(/,?\s*"[^"]*"\s*:\s*$/, '').replace(/[,\s]+$/, '');   // 去掉末尾的逗号与悬空的 key
-  return out + stack.reverse().join('');
+  return { text: out + stack.reverse().join(''), closedString: inStr };
 }
-export function repairJSON(text: string): any | null {
+export function repairJSON(text: string): any | null { return repairJSONInfo(text)?.data ?? null; }
+// 同上，另外告诉调用方修复时是否断在字符串中间：是 = 内容真被截断（最后一个操作多半只写了一半），否 = 只是结构写歪或末尾有多余字符
+export function repairJSONInfo(text: string): { data: any; closedString: boolean } | null {
   const clean = sanitizeJSON(text); const start = clean.indexOf('{'); if (start < 0) return null;
   let s = clean.slice(start).replace(/\s*```\s*$/, '');
   for (let attempt = 0; attempt < 30 && s.length > 1; attempt++) {
-    try { const v = JSON.parse(autoClose(s)); if (v && typeof v === 'object') return v; } catch { /* 再砍一截 */ }
+    const closed = autoClose(s);
+    try { const v = JSON.parse(closed.text); if (v && typeof v === 'object') return { data: v, closedString: closed.closedString }; } catch { /* 再砍一截 */ }
     const cut = Math.max(s.lastIndexOf(','), s.lastIndexOf('{'), s.lastIndexOf('['), s.lastIndexOf('}'), s.lastIndexOf(']'), s.lastIndexOf('"'));
     if (cut <= 0) break; s = s.slice(0, cut);
   }

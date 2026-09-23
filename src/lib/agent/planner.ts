@@ -107,9 +107,24 @@ export function normalizeQuestions(list: unknown): Question[] {
   }).filter(q => q.text);
 }
 
-// 严格模式：结构不对就抛错（触发一次带修正提示的重试）；宽松模式（重试那次）：修复截断、丢掉无效操作、归一常见走形，尽量把能用的部分交出来
+// 每个工具真正必须的参数：缺了就说明这个操作没写全（多半是回复被截断在半截），宁可丢掉也不要拿去执行
+const REQUIRED_ARGS: Record<string, string[]> = {
+  ask_user: ['questions'], read_doc: ['id'], open_doc: ['id'], open_media: ['id'], export_doc: ['id'], inspect_image: ['id'], make_sheet: ['tiles'],
+  write_doc: ['name', 'content'], append_doc: ['id', 'content'], replace_section: ['id', 'heading', 'content'], rename_doc: ['id', 'name'], delete_doc: ['id'],
+  rename_media: ['id', 'name'], tag_media: ['id'], delete_media: ['id'],
+  generate_image: ['prompt'], generate_video: ['prompt'], generate_voice: ['description'], generate_speech: ['text'], compose_video: ['clip_ids'],
+  switch_project: ['id'], rename_project: ['title'],
+};
+const filled = (v: unknown): boolean => Array.isArray(v) ? v.length > 0 : typeof v === 'string' ? !!v.trim() : v !== undefined && v !== null && v !== '';
+const wellFormed = (action: any): boolean =>
+  !!action && typeof action === 'object' && typeof action.tool === 'string' && Object.hasOwn(AGENT_TOOLS, action.tool)
+  && !!action.args && typeof action.args === 'object' && !Array.isArray(action.args)
+  && (REQUIRED_ARGS[action.tool] || []).every(k => filled(action.args[k]));
+
+// 严格模式：结构不对就抛错（触发一次带修正提示的重试）；宽松模式：修复截断、丢掉无效操作、归一常见走形，尽量把能用的部分交出来
+// 两种模式都只丢坏掉的那一个操作，严格模式下只有「一个有效操作都不剩」才抛错去重问模型
 export function parseAgentPlan(content: string, { lenient = false }: { lenient?: boolean } = {}): PlanReply {
-  const { data: parsed, repaired } = lenient ? parsePlanJSONLoose(content) : { data: parsePlanJSON(content), repaired: false };
+  const { data: parsed, repaired, truncated } = lenient ? parsePlanJSONLoose(content) : { data: parsePlanJSON(content), repaired: false, truncated: false };
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('模型回复不是 JSON 对象');
   // 常见走形：message 写成对象或叫 text / reply；actions 叫 plan / steps；顶层直接是一个操作；顶层直接给 questions
   const message: string = typeof parsed.message === 'string' ? parsed.message : typeof parsed.message?.text === 'string' ? parsed.message.text : typeof parsed.text === 'string' ? parsed.text : typeof parsed.reply === 'string' ? parsed.reply : '';
@@ -118,13 +133,13 @@ export function parseAgentPlan(content: string, { lenient = false }: { lenient?:
   if (!Array.isArray(raw) || (!message && !raw.length) || raw.length > 100) throw new Error('模型回复缺少有效的 message / actions');
   const actions: { tool: string; args: Record<string, any> }[] = []; const dropped: string[] = [];
   for (const action of raw as any[]) {
-    const ok = !!action && typeof action === 'object' && typeof action.tool === 'string' && Object.hasOwn(AGENT_TOOLS, action.tool) && !!action.args && typeof action.args === 'object' && !Array.isArray(action.args);
-    if (ok) actions.push({ tool: action.tool, args: action.args });
-    else if (lenient) dropped.push(String(action?.tool || '?').slice(0, 24));
-    else throw new Error('模型回复包含无效的操作结构');
+    if (wellFormed(action)) actions.push({ tool: action.tool, args: action.args });
+    else dropped.push(String(action?.tool || '?').slice(0, 24));
   }
-  if (repaired && actions.length) actions.pop();   // 截断修复后最后一个操作多半不完整，宁可丢掉也不执行半截
-  const notes = [repaired ? '回复在末尾被截断，最后一步已丢弃' : '', dropped.length ? `忽略了 ${dropped.length} 个无效操作（${dropped.slice(0, 3).join('、')}）` : ''].filter(Boolean);
+  if (dropped.length && !actions.length) throw new Error('模型回复包含无效的操作结构');   // 一个有效操作都没有：交给上层重问模型
+  const cut = repaired && truncated && actions.length;
+  if (cut) actions.pop();   // 真截断（断在字符串中间）时最后一个操作只写了一半，宁可丢掉也不执行半截
+  const notes = [cut ? '回复在末尾被截断，最后一步已丢弃' : repaired ? '回复格式有误，已自动修复' : '', dropped.length ? `忽略了 ${dropped.length} 个无效操作（${dropped.slice(0, 3).join('、')}）` : ''].filter(Boolean);
   return { message: notes.length ? `${message}${message ? '\n' : ''}（${notes.join('；')}）` : message, actions, followUps: normalizeFollowUps(parsed.followUps) };
 }
 
@@ -136,6 +151,11 @@ async function requestAgentPlan(request: (retry: boolean) => Promise<string>): P
       lastError = e; lastContent = String(content || '');
       console.warn(`[moodio] 第 ${attempt + 1} 次规划回复无法解析：${e?.message || e}`, lastContent.slice(0, 3000));
       try { (window as any).__moodioLastPlanError = { attempt: attempt + 1, error: String(e?.message || e), content: lastContent }; } catch { /* ignore */ }   // 排查用：控制台里能拿到原样字节
+    }
+    // 重问模型之前先在本地修一次同一份回复（补括号、丢掉坏掉的操作）：救得回动作就不用多花一次调用，界面上也不会闪「正在修正模型回复格式」
+    if (attempt === 0) {
+      try { const salvaged = parseAgentPlan(content, { lenient: true }); if (salvaged.actions.length) { console.warn('[moodio] 本地修复了这次回复，未重问模型'); return salvaged; } }
+      catch { /* 修不动就照常重问 */ }
     }
   }
   const head = lastContent.trim().replace(/\s+/g, ' ').slice(0, 240);

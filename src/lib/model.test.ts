@@ -61,8 +61,11 @@ describe('plan json repair', () => {
     expect(repairJSON('{"message":"你好","actions":[{"tool":"open_doc","args":{"id":"d1"}},{"tool":"write_doc","args":{"name":"a.md","content":"半截')).toEqual({ message: '你好', actions: [{ tool: 'open_doc', args: { id: 'd1' } }, { tool: 'write_doc', args: { name: 'a.md', content: '半截' } }] });
     expect(repairJSON('```json\n{"message":"x","actions":[],"followUps":[{"label":"a",')).toEqual({ message: 'x', actions: [], followUps: [{ label: 'a' }] });
     expect(repairJSON('not json at all')).toBeNull();
-    expect(parsePlanJSONLoose('{"message":"ok","actions":[]}')).toEqual({ data: { message: 'ok', actions: [] }, repaired: false });
+    expect(parsePlanJSONLoose('{"message":"ok","actions":[]}')).toEqual({ data: { message: 'ok', actions: [] }, repaired: false, truncated: false });
     expect(parsePlanJSONLoose('{"message":"ok","actions":[').repaired).toBe(true);
+    // truncated 只在断在字符串中间时为真：结构写歪（这里多了一个 ]）不算截断，最后一个操作要留着
+    expect(parsePlanJSONLoose('{"message":"x","actions":[{"tool":"open_doc","args":{"id":"d1"}}]}]}').truncated).toBe(false);
+    expect(parsePlanJSONLoose('{"message":"x","actions":[{"tool":"write_doc","args":{"name":"a.md","content":"半截').truncated).toBe(true);
   });
 });
 

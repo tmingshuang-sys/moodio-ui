@@ -41,6 +41,18 @@ describe('plan parsing', () => {
     expect(planner.parseAgentPlan('{"text":"问一下","questions":[{"text":"类型？","options":["广告"]}]}').actions[0].tool).toBe('ask_user');
     expect(planner.parseAgentPlan('{"message":{"text":"直接一个操作"},"tool":"open_doc","args":{"id":"d1"}}').actions).toEqual([{ tool: 'open_doc', args: { id: 'd1' } }]);
   });
+  it('salvages a mis-nested reply and drops actions missing required args', () => {
+    // 实测样本：JSON 没被截断，是 ask_user 那层括号配错了，后面还跟着 followUps —— 本地修复要救回 actions，不能把最后一个操作丢掉
+    const misNested = '{"message":"先问几个问题","actions":[{"tool":"ask_user","args":{"questions":[{"text":"类型？","options":["广告","短片"]}]}}]}]},"followUps":[{"label":"继续","prompt":"继续"}]}';
+    expect(() => planner.parseAgentPlan(misNested)).toThrow();
+    const fixed = planner.parseAgentPlan(misNested, { lenient: true });
+    expect(fixed.actions).toEqual([{ tool: 'ask_user', args: { questions: [{ text: '类型？', options: ['广告', '短片'] }] } }]);
+    expect(fixed.message).toContain('已自动修复'); expect(fixed.message).not.toContain('截断');
+    // 必填参数缺了就丢掉这一个操作；严格模式下只要还剩有效操作就照常执行，一个不剩才抛错去重问模型
+    const partial = planner.parseAgentPlan('{"message":"x","actions":[{"tool":"open_doc","args":{"id":"d1"}},{"tool":"write_doc","args":{"name":"a.md"}}]}');
+    expect(partial.actions).toEqual([{ tool: 'open_doc', args: { id: 'd1' } }]); expect(partial.message).toContain('忽略了 1 个无效操作');
+    expect(() => planner.parseAgentPlan('{"message":"x","actions":[{"tool":"write_doc","args":{"name":"a.md"}}]}')).toThrow();
+  });
   it('rejects unknown tools and malformed shapes', () => {
     for (const bad of ['null', '{}', '[]', '{"message":"x","actions":[null]}', '{"message":"x","actions":[{"tool":"__proto__","args":{}}]}', '{"message":"x","actions":[{"tool":"format_disk","args":{}}]}']) {
       expect(() => planner.parseAgentPlan(bad)).toThrow();
