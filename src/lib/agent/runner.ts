@@ -14,7 +14,7 @@ import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
 import { styleBaseline } from '../guides';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
-import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, recommendedAnswers } from '../director';
+import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, recommendedAnswers, dropAnsweredQuestions } from '../director';
 import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
 
@@ -147,7 +147,8 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const r = await AGENT_TOOLS.update_ledger(a.args || {}, { request: text, chatId: c.id, typeInto, step, live: setLive }); if (a.args?.stage) notes.push(`✓ ${typeof r === 'string' ? r : r.summary}`); } catch (e: any) { notes.push(`✗ ${e?.message || e}`); } }
     plan = plan.filter(a => a.tool !== 'update_ledger');
     const ask = plan.find(a => a.tool === 'ask_user');
-    if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
+    // dropAnsweredQuestions：模型又把已经答过的题问了一遍时（换个说法也算）直接丢掉，避免前后两次答案打架
+    if (ask) { out.questions = dropAnsweredQuestions(normalizeQuestions(ask.args?.questions)); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
     if (notes.length) message = (message ? message + '\n' : '') + notes.join('\n');
     // 读取 / 打开直接执行；读到的内容交回模型再规划，最多四轮
     const autoLog: string[] = []; let readFeed = '';
@@ -163,7 +164,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
       } else plan = [];
     }
     if (plan.some(a => a.tool === 'read_doc')) { plan = []; message = (message ? message + '\n' : '') + '还需要读取更多文稿，尚未生成可执行计划。请指定要处理的文稿后继续。'; }
-    const nextAsk = plan.find(a => a.tool === 'ask_user'); if (nextAsk) { out.questions = normalizeQuestions(nextAsk.args?.questions); plan = []; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
+    const nextAsk = plan.find(a => a.tool === 'ask_user'); if (nextAsk) { out.questions = dropAnsweredQuestions(normalizeQuestions(nextAsk.args?.questions)); plan = []; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
     if (plan.length) {
       const key = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const steps = planSteps(plan);

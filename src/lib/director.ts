@@ -212,6 +212,22 @@ export function askLocally(questions: QuestionDef[]) {
   const qs: Question[] = questions.map(q => ({ text: q.text, type: q.type, options: q.options, multi: q.multi, placeholder: q.placeholder, key: q.key, recommended: q.recommended }));
   useChats.getState().push(chat.id, { role: 'assistant', text: '先确认几件事，不想一道道选就点「全部用推荐值」：', at: Date.now(), questions: qs, followUpContext: { chatId: chat.id } });
 }
+// 丢掉模型又问了一遍的题：台账 answers 里有这个 key、或题面能在题库里对上而对应的纲领字段已经有值
+// （用户反馈：通用问卷问过「画风走哪种？」之后又被问「视觉风格倾向？」，两次答案还不一样）
+export function dropAnsweredQuestions(list: Question[]): Question[] {
+  const { brief } = useFiles.getState(); const ledger = readLedger();
+  const answers = ledger?.answers || {};
+  const bank = has(brief?.format) ? [...skillFor(brief!.format).general, ...skillFor(brief!.format).modeling] : [];
+  const norm = (t: string) => String(t || '').replace(/[\s?？。，,、：:！!]/g, '');
+  const done = (d: QuestionDef) => { const bk = briefKeyOf(d); return !!answers[d.key] || !!(bk && has((brief as any)[bk])); };
+  const answeredTexts = new Set(bank.filter(done).map(d => norm(d.text)));
+  return list.filter(q => {
+    if (q.key && answers[q.key]) return false;
+    if (answeredTexts.has(norm(q.text))) return false;
+    const def = bank.find(d => (q.key && d.key === q.key) || norm(d.text) === norm(q.text));
+    return !(def && done(def));
+  });
+}
 // 模型自己发的追问：按 key 或题面在题库里找到对应的推荐项，标在选项上（同样不预选），让用户也能一键过
 export function recommendedAnswers(questions: Question[]): Record<number, number[]> {
   const { brief } = useFiles.getState(); if (!has(brief?.format)) return {};

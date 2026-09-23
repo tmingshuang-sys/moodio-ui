@@ -130,4 +130,14 @@ describe('director', () => {
     expect(labels).not.toContain('为剧本拆分镜'); expect(labels).not.toContain('生成视频提示词'); expect(labels).toContain('逐段核对片段方案');
     expect(planner.stageFallbacks('storyboard').map(f => f.label)).toContain('检查分镜节奏');
   });
+
+  it('drops questions that were already answered, even when worded differently', () => {
+    // 纲领里画风已经是「写实真人」、受众也答过：模型再问一遍（换措辞也算）要被丢掉，只留真正的新问题
+    const kept = director.dropAnsweredQuestions([
+      { text: '画风走哪种？', type: 'single', options: ['写实真人', '3D 动画'], multi: false, key: 'look' },
+      { text: '主要给谁看？', type: 'single', options: ['学生'], multi: false },
+      { text: '有没有特别想避免的画面？', type: 'text', options: [], multi: false },
+    ]);
+    expect(kept.map(q => q.text)).toEqual(['有没有特别想避免的画面？']);
+  });
 });
