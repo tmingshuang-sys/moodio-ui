@@ -14,7 +14,7 @@ import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
 import { styleBaseline } from '../guides';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
-import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, recommendedAnswers, dropAnsweredQuestions } from '../director';
+import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, runNextStep, recommendedAnswers, dropAnsweredQuestions, stripEarlyAssets } from '../director';
 import { recordRound } from '../timing';
 import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
@@ -152,6 +152,8 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     if (fmt) { try { const { created, ledger } = ensureLedger(fmt); if (created) notes.push(`✓ 已加载创作流程「${skillFor(ledger.skill).name}」，台账已建立`); } catch { /* ignore */ } }
     for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const r = await AGENT_TOOLS.update_ledger(a.args || {}, { request: text, chatId: c.id, typeInto, step, live: setLive }); if (a.args?.stage) notes.push(`✓ ${typeof r === 'string' ? r : r.summary}`); } catch (e: any) { notes.push(`✗ ${e?.message || e}`); } }
     plan = plan.filter(a => a.tool !== 'update_ledger');
+    // 建模 / 脚本阶段只写文稿：参考图、音色统一留到「素材检查」阶段一次性生成（用户这轮自己要求生成时不拦）
+    { const early = stripEarlyAssets(plan, text, readLedger()?.stage); if (early.skipped) { plan = early.plan; notes.push(`✓ 这一步只写文稿：${early.skipped} 个生成操作留到「素材检查」阶段一起做`); } }
     const ask = plan.find(a => a.tool === 'ask_user');
     // dropAnsweredQuestions：模型又把已经答过的题问了一遍时（换个说法也算）直接丢掉，避免前后两次答案打架
     if (ask) { out.questions = dropAnsweredQuestions(normalizeQuestions(ask.args?.questions)); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
@@ -356,10 +358,13 @@ export function reviewFix(messageAt: number, index: number) {
 function markReviewHandled(messageAt: number) {
   chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.review) m.review = { ...m.review, handled: true }; });
 }
-// 「不改，继续下一步」：不认可自审意见时原样继续，交回导演
+// 「不修改，继续下一步」：不认可自审意见时直接执行导演的下一步（等于替用户点了停靠卡上的当前步骤）
 export function skipReview(messageAt: number) {
   markReviewHandled(messageAt);
-  afterTurn();
+  try { directorTick(); } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent('moodio:director-changed'));
+  const step = runNextStep();
+  if (step && (step.kind === 'upload' || step.kind === 'done')) toast('这一份就按现在的定稿了，下一步在输入框上方的步骤条里');
 }
 export function restoreTrash(trashId: string, messageAt: number) {
   const entry = useFiles.getState().restoreTrash(trashId);

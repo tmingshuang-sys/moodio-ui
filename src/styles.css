@@ -746,4 +746,5 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .review-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .review-acts button { height: 30px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); font: 500 12.5px var(--font-ui); }
 .review-acts .review-fix { margin-top: 0; }
+.review-acts button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 .review-done { margin: 8px 0 0; color: var(--ink-3); font-size: 12px; }

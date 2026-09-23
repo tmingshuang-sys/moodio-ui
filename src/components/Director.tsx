@@ -5,7 +5,7 @@ import { LEDGER_NAME } from '../lib/ledger';
 const DOCK_KEY = 'moodio-dock-open';   // 步骤清单卡收起 / 展开的记忆
 import { useFiles, useAgent } from '../lib/store';
 import { pickFiles, uploadFiles } from '../lib/upload';
-import { nextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, skipVoice, skipSong, chooseFormat, askLocally, isAutopilot, setAutopilot, resetAutopilot, autopilotPaused } from '../lib/director';
+import { nextStep, runNextStep, tick, confirmCheckpoint, skipAssets, skipLintGate, skipVoice, skipSong, chooseFormat, askLocally, isAutopilot, setAutopilot, resetAutopilot, autopilotPaused } from '../lib/director';
 import type { NextStep } from '../lib/director';
 import { BRIEF_FORMATS } from '../lib/guides';
 import { skillFor, skillStages } from '../lib/skills';
@@ -49,11 +49,10 @@ export default function NextStepBar() {
   const ledgerDoc = docs.find(d => d.name === LEDGER_NAME);
   const primary = () => {
     if (busy) return;
-    if (step.kind === 'ask' && step.questions) askLocally(step.questions);
-    else if (step.kind === 'agent' && step.prompt) { resetAutopilot(); void send(step.prompt, { fromSuggestion: true }); }
-    else if (step.kind === 'confirm' && step.checkpoint) confirmCheckpoint(step.checkpoint);
-    else if (step.kind === 'upload') { void pickFiles(step.accept || 'audio/*', false).then(files => files.length ? uploadFiles(files, { group: '配乐' }) : []).then(() => { tick(); window.dispatchEvent(new CustomEvent('moodio:director-changed')); }); }
-    else if (step.kind === 'done') window.dispatchEvent(new CustomEvent('moodio:new-creation'));
+    // ask / agent / confirm 走 runNextStep（自审卡的「不修改」用的是同一个入口），upload 与 done 要界面配合
+    if (step.kind === 'upload') { void pickFiles(step.accept || 'audio/*', false).then(files => files.length ? uploadFiles(files, { group: '配乐' }) : []).then(() => { tick(); window.dispatchEvent(new CustomEvent('moodio:director-changed')); }); return; }
+    if (step.kind === 'done') { window.dispatchEvent(new CustomEvent('moodio:new-creation')); return; }
+    runNextStep();
   };
   const askChange = () => window.dispatchEvent(new CustomEvent('moodio:compose', { detail: step.checkpoint === 'script' ? '请修改脚本：' : step.checkpoint === 'assets' ? '请重新生成这张参考图：' : step.checkpoint === 'prompts' ? '请修改片段方案：' : '请修改成片的第 ' }));
   const secondary = [

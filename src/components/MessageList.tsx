@@ -7,7 +7,7 @@ import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot
 import type { Artifact, Chat, Message, Plan, PlanStep, Question } from '../lib/types';
 import { useAgent, useFiles, useChats } from '../lib/store';
 import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, decideQuestion, useRecommended, useFollowUp, reviewFix, skipReview, restoreTrash, retryStep, send } from '../lib/agent/runner';
-import { skipLintGate } from '../lib/director';
+import { skipLintGate, nextStep } from '../lib/director';
 import { mediaUrl } from '../lib/storage';
 import { clock } from '../lib/time';
 import { expectedMs, humanDuration } from '../lib/timing';
@@ -216,21 +216,38 @@ function ImageReviewCard({ m, onOpen }: { m: Message; onOpen: (id: string) => vo
   );
 }
 
+// 自审卡：判「需修改」时只给两个出口——按建议改 / 不改，两个都会把流程往下推（用户要求：这时不要再出常规的三条建议）
+export function reviewNeedsDecision(m: Message): boolean {
+  return !!m.review && !m.review.handled && m.review.items.some(it => it.verdict === '需修改' && it.issues.length > 0);
+}
 function ReviewCard({ m }: { m: Message }) {
   const t = useT();
+  const items = m.review!.items;
+  const needs = items.map((it, i) => ({ it, i })).filter(x => x.it.verdict === '需修改' && x.it.issues.length > 0);
+  const decided = !!m.review!.handled;
+  let nextLabel = '';
+  try { const s = nextStep(); if (s.kind !== 'start' && s.kind !== 'done') nextLabel = s.label; } catch { /* 没有台账就不显示下一步 */ }
   return (
     <>
-      {m.review!.items.map((it, i) => (
+      {items.map((it, i) => (
         <details key={i} className="review" open={it.verdict === '需修改'}>
           <summary>自审 · 《{it.title}》 · {it.score ? it.score + '/10 · ' : ''}{it.verdict}</summary>
           {it.praise && <p className="review-praise">✓ {it.praise}</p>}
-          {it.issues.length > 0 && <><ol>{it.issues.map((x, j) => <li key={j}><strong>{x.point}</strong>{x.fix && <><br /><span>{x.fix}</span></>}</li>)}</ol>
-            {m.review!.handled ? <p className="review-done">{t('已就这条自审意见做过选择')}</p> : <div className="review-acts">
-              <button type="button" className="review-fix" onClick={() => reviewFix(m.at, i)}>{t('按自审建议修改这份文稿')}</button>
-              <button type="button" onClick={() => skipReview(m.at)}>{t('不改，继续下一步')}</button>
-            </div>}</>}
+          {it.issues.length > 0 && <ol>{it.issues.map((x, j) => <li key={j}><strong>{x.point}</strong>{x.fix && <><br /><span>{x.fix}</span></>}</li>)}</ol>}
         </details>
       ))}
+      {needs.length > 0 && (decided
+        ? <p className="review-done">{t('已就自审意见做过选择')}</p>
+        : <div className="review-acts">
+            {needs.map(({ it, i }) => (
+              <button key={i} type="button" className="review-fix primary" onClick={() => reviewFix(m.at, i)}>
+                {needs.length > 1 ? `${t('按自审建议修改')}《${it.title}》` : t('按自审建议修改这份文稿')}
+              </button>
+            ))}
+            <button type="button" onClick={() => skipReview(m.at)} title={nextLabel || t('继续下一步')}>
+              {nextLabel ? `${t('不修改')} · ${nextLabel}` : t('不修改，继续下一步')}
+            </button>
+          </div>)}
     </>
   );
 }
@@ -266,7 +283,8 @@ export default function MessageList({ chat }: { chat: Chat }) {
         const latest = m === lastAssistant;
         const liveQ = latest && !!m.questions?.length && !m.questionsUsed && !busy;
         const followUps = m.followUps || [];
-        const showFollowUps = followUps.length > 0 && !(m.plan && ['pending', 'confirmed'].includes(m.plan.state)) && !(m.actions || []).some(a => a.id.startsWith('plan-'));
+        // 自审还等着用户拿主意时不出常规建议：这一步只有「按自审建议修改」「不修改 · 下一步」两个出口
+        const showFollowUps = followUps.length > 0 && !reviewNeedsDecision(m) && !(m.plan && ['pending', 'confirmed'].includes(m.plan.state)) && !(m.actions || []).some(a => a.id.startsWith('plan-'));
         const followAvailable = latest && !busy && !m.followUpUsed && m.followUpContext?.chatId === chat.id;
         return (
           <div key={i} className={`msg assistant${m.streaming ? ' is-streaming' : ''}`}>

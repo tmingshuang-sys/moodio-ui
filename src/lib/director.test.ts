@@ -140,4 +140,16 @@ describe('director', () => {
     ]);
     expect(kept.map(q => q.text)).toEqual(['有没有特别想避免的画面？']);
   });
+
+  it('keeps asset generation out of the modeling and script stages', () => {
+    const plan = [{ tool: 'write_doc' }, { tool: 'generate_image' }, { tool: 'generate_voice' }];
+    const inModel = director.stripEarlyAssets(plan, '请写人物小传和世界观', 'model');
+    expect(inModel.skipped).toBe(2); expect(inModel.plan.map(a => a.tool)).toEqual(['write_doc']);
+    // 素材检查阶段照常生成
+    expect(director.stripEarlyAssets(plan, '按实体清单生成参考图', 'assets').skipped).toBe(0);
+    // 用户这一轮自己要求出图时不拦
+    expect(director.stripEarlyAssets(plan, '先给我生成一张林晚的形象图', 'model').skipped).toBe(0);
+    // 没有台账（自由对话）也不拦
+    expect(director.stripEarlyAssets(plan, '随便画点什么', undefined).skipped).toBe(0);
+  });
 });

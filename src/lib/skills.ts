@@ -336,12 +336,16 @@ export function briefKeyOf(q: QuestionDef): QuestionDef['briefKey'] | undefined 
 // 画风是所有类型通用的纲领题：答案回写纲领 visualStyle，参考图提示词与质检门禁都以它为准（默认写实真人）
 const LOOK_QUESTION = (): QuestionDef => withBrief(single('look', '画风走哪种？', [opt('写实真人', '真人实拍质感，不卡通'), opt('3D 动画', '皮克斯那种'), opt('2D 手绘 / 插画'), opt('其他 / 我来描述')], 0), 'visualStyle');
 
+// 建模 / 脚本阶段只产出文字：参考图、音色这些资产统一放到「素材检查」阶段一次性生成
+// （用户反馈：建模时顺手生成了一个人物的形象图，素材阶段又生成一批，重复且分散）
+const TEXT_ONLY_NOTE = '本阶段只写文稿，不要调用 generate_image / generate_video / generate_voice：人物形象图、场景图、道具图与音色样本统一在「素材检查」阶段按实体清单一次性生成，这里只把外形、场景、道具写成可复用的文字描述。';
+
 // 通用阶段骨架；每个技能只改建模阶段的名字与目标
 function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; clipSeconds: number }): StageDef[] {
   return [
     { id: 'brief', name: '需求澄清', goal: '用问卷问清类型、时长、平台与画幅、受众、调性，答案用 save_brief 记录；信息够了就推进，不要反复追问。', outputs: '创作纲领', gate: '纲领里类型、时长、受众、调性齐全' },
-    { id: 'model', name: s.modelName, goal: s.modelGoal, outputs: s.modelDocs.map(d => `「${d}」`).join('、'), gate: '建模文稿写完并经用户确认' },
-    { id: 'script', name: '脚本', goal: '按写作规范写故事脚本，多场先给大纲再逐场写；写完用自审清单核对。人物名、产品名全片用同一写法并加粗，产品每次露出写明看得见的部位。', outputs: '「故事脚本.md」', gate: '脚本通过自审且用户确认' },
+    { id: 'model', name: s.modelName, goal: s.modelGoal + TEXT_ONLY_NOTE, outputs: s.modelDocs.map(d => `「${d}」`).join('、'), gate: '建模文稿写完并经用户确认' },
+    { id: 'script', name: '脚本', goal: '按写作规范写故事脚本，多场先给大纲再逐场写；写完用自审清单核对。人物名、产品名全片用同一写法并加粗，产品每次露出写明看得见的部位。' + TEXT_ONLY_NOTE, outputs: '「故事脚本.md」', gate: '脚本通过自审且用户确认' },
     { id: 'assets', name: '素材检查', goal: '列出脚本涉及的实体，判断哪些需要参考图；按契约处理产品 / 人物参考图；生成后把实体和参考图 id 写进台账并请用户确认；有对白的角色（含旁白）用 generate_voice 按人物小传的音色行设计音色样本。', outputs: '参考图与音色样本（媒体库）与台账里的实体清单', gate: '所有需要参考图的实体都有用户确认过的参考图' },
     { id: 'storyboard', name: '分镜', goal: '按分镜规范把脚本拆成分镜表（十列 + 全片 BGM），镜头总时长与纲领时长一致；脚本已经是分镜脚本表时只核对与微调。镜头时长与运镜按生成策略安排：「长片段优先」时多用长镜头与场面调度、少切碎，「分镜接续」时单镜不超过模型单段上限并在切换处安排可衔接的构图。', outputs: '「分镜表.md」', gate: '分镜表写完并经用户确认' },
     { id: 'prompts', name: '片段方案', goal: `按总时长、当前视频模型的单段上限与生成策略（系统提示里的「长片段优先 / 分镜接续」）把分镜切成若干片段，每段一份按「片段提示词冻结格式」写的文稿：全片风格表逐字相同、主体绑定参考图并写清只采用什么、子镜头时段首尾相接且合计等于片段时长；片段清单写进台账 clips（no / seconds / shots / docId）；全部写完先用 lint_clips 自查，再用 ask_user 问「确认按此生成 / 需要修改」。`, outputs: '「视频生成Prompt-01..N.md」与台账 clips', gate: '用户确认按此生成；系统会校验时长与卖点落地' },

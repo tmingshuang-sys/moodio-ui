@@ -199,6 +199,28 @@ export function skipLintGate() { lastAuto = ''; lastAutoAt = Date.now(); paused 
 // 用户在检查点点了确认 / 跳过之后，一键模式要马上接着走，不用等下一轮 Agent 回复
 const resume = () => { setTimeout(() => { try { autopilotTick(); } catch (e) { console.warn('autopilot', e); } }, 300); };
 
+// 资产统一在「素材检查」阶段生成：建模 / 脚本阶段模型顺手生成一两张参考图，到素材阶段又生成一批，重复又分散（用户要求）
+// 例外：用户这一轮自己要求生成图 / 视频 / 配音时不拦
+const TEXT_ONLY_STAGES = new Set(['brief', 'model', 'script']);
+const ASSET_TOOLS = new Set(['generate_image', 'generate_video', 'generate_voice', 'generate_speech', 'make_sheet']);
+const ASSET_REQUEST_RE = /生成[^。；\n]{0,8}(图|视频|配音|音色)|画一张|出一张|来一张|配图|参考图|形象图|设定图|定妆照|三视图/;
+export function stripEarlyAssets<T extends { tool: string }>(plan: T[], requestText: string, stage: string | undefined): { plan: T[]; skipped: number } {
+  if (!stage || !TEXT_ONLY_STAGES.has(stage) || ASSET_REQUEST_RE.test(String(requestText || ''))) return { plan, skipped: 0 };
+  const kept = plan.filter(a => !ASSET_TOOLS.has(a.tool));
+  return { plan: kept, skipped: plan.length - kept.length };
+}
+
+// 执行导演算出的下一步（停靠卡的当前步骤行、自审卡的「不修改」都用它）；
+// upload / done 这两种要界面配合（开文件选择、开新创作），原样返回交给调用方处理
+export function runNextStep(): NextStep | null {
+  if (useAgent.getState().busy) return null;
+  const step = nextStep();
+  if (step.kind === 'ask' && step.questions) askLocally(step.questions);
+  else if (step.kind === 'agent' && step.prompt && sender) { resetAutopilot(); sender(step.prompt); }
+  else if (step.kind === 'confirm' && step.checkpoint) confirmCheckpoint(step.checkpoint);
+  return step;
+}
+
 // 选类型：写纲领、建台账，然后本地渲染第一轮问卷（不经过模型）
 export function chooseFormat(format: string) {
   useFiles.getState().setBrief({ format }); ensureLedger(format); emit();
