@@ -395,7 +395,6 @@ export const SKILLS: Record<string, Skill> = {
       single('genre', '是什么类型？', [opt('剧情'), opt('悬疑 / 惊悚'), opt('爱情'), opt('科幻 / 奇幻'), opt('喜剧'), opt('其他')]),
       text('theme', '一句话说这个故事讲什么？', '比如：一个不肯回家的人，在雨夜被一只猫带回了家'),
       ...COMMON_GENERAL,
-      single('ending', '结局倾向？', [opt('圆满'), opt('悲剧'), opt('开放'), opt('由 Agent 决定')], 3),
     ],
     modeling: [
       text('protagonist', '主角是谁，最想要什么？', '比如：林晚，26 岁，想在签字前得到一句道歉'),
