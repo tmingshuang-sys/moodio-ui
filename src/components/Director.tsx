@@ -89,7 +89,7 @@ export default function NextStepBar() {
       )}
       <div className="dock-bar">
         <button type="button" className="dock-pill" onClick={toggle} aria-expanded={open} title={open ? t('收起步骤') : t('展开步骤')}>
-          {busy ? <span className="plan-spin" /> : <span className="dock-dot" />}
+          {busy && <span className="plan-spin" />}
           <span className="dock-pill-text">Step {Math.min(idx + 1, stages.length)} / {stages.length} · {current}</span>
           {open ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
         </button>

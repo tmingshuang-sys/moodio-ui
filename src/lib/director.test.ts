@@ -19,11 +19,13 @@ beforeAll(async () => {
 const files = () => store.useFiles.getState();
 
 describe('director', () => {
-  it('starts with the format picker, then asks the general questions locally with recommended answers preselected', () => {
+  it('starts with the format picker, then asks the general questions locally with nothing preselected', () => {
     expect(director.nextStep().kind).toBe('start');
     director.chooseFormat('ad');
     const chat = store.useChats.getState().chat(); const card = chat.messages[chat.messages.length - 1];
-    expect(card.questions!.length).toBeGreaterThanOrEqual(4); expect(card.answers![0]).toEqual([0]);   // 推荐项预选
+    expect(card.questions!.length).toBeGreaterThanOrEqual(4);
+    expect(card.answers).toBeUndefined();                       // 新项目打开时一题都没答
+    expect(card.questions![0].recommended).toEqual([0]);        // 推荐项只打标，用户点「全部用推荐值」才填
     expect(director.nextStep()).toMatchObject({ stage: 'brief', kind: 'ask' });
     director.applyAnswersToBrief({ duration: '60 秒', ratio: '竖屏 9:16', audience: '18–30 岁都市年轻人', style: '剧情故事型', look: '写实真人' });
     ledger.updateLedger({ answers: { subject: '实物产品', look: '写实真人', style: '剧情故事型', duration: '60 秒', ratio: '竖屏 9:16', audience: '18–30 岁都市年轻人' } });

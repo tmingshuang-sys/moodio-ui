@@ -147,7 +147,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
     for (const a of plan.filter(x => x.tool === 'update_ledger')) { try { const r = await AGENT_TOOLS.update_ledger(a.args || {}, { request: text, chatId: c.id, typeInto, step, live: setLive }); if (a.args?.stage) notes.push(`✓ ${typeof r === 'string' ? r : r.summary}`); } catch (e: any) { notes.push(`✗ ${e?.message || e}`); } }
     plan = plan.filter(a => a.tool !== 'update_ledger');
     const ask = plan.find(a => a.tool === 'ask_user');
-    if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; try { const rec = recommendedAnswers(out.questions); if (Object.keys(rec).length) out.answers = rec; } catch { /* ignore */ } }
+    if (ask) { out.questions = normalizeQuestions(ask.args?.questions); plan = []; if (!out.questions.length && !message) message = '我需要再确认几个信息，请补充说明。'; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
     if (notes.length) message = (message ? message + '\n' : '') + notes.join('\n');
     // 读取 / 打开直接执行；读到的内容交回模型再规划，最多四轮
     const autoLog: string[] = []; let readFeed = '';
@@ -163,7 +163,7 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
       } else plan = [];
     }
     if (plan.some(a => a.tool === 'read_doc')) { plan = []; message = (message ? message + '\n' : '') + '还需要读取更多文稿，尚未生成可执行计划。请指定要处理的文稿后继续。'; }
-    const nextAsk = plan.find(a => a.tool === 'ask_user'); if (nextAsk) { out.questions = normalizeQuestions(nextAsk.args?.questions); plan = []; try { const rec = recommendedAnswers(out.questions); if (Object.keys(rec).length) out.answers = rec; } catch { /* ignore */ } }
+    const nextAsk = plan.find(a => a.tool === 'ask_user'); if (nextAsk) { out.questions = normalizeQuestions(nextAsk.args?.questions); plan = []; try { recommendedAnswers(out.questions); } catch { /* ignore */ } }   // recommendedAnswers 只把推荐项标在选项上，不预选
     if (plan.length) {
       const key = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const steps = planSteps(plan);
@@ -282,32 +282,59 @@ async function selfReview(targets: { docId: string; title: string }[]): Promise<
 }
 
 // 追问卡片：提交答案（气泡显示「我已确认以上信息」，完整答案交给模型并记进台账）/ 由 Agent 决定
-export function answerQuestions(messageAt: number, decide: boolean) {
-  const c = chats().chat(); const m = c.messages.find(x => x.at === messageAt && x.questions); if (!m || !m.questions) return;
-  const answers = m.answers || {}, texts = m.textAnswers || {};
-  const lines: string[] = []; const record: Record<string, string> = {}; let answered = 0;
-  m.questions.forEach((q, qi) => {
+// 问卷答案 → 交给模型的文字、要记进台账的键值、要回写纲领的键值（纯函数，便于核对）。
+// 标了「由 Agent 决定」的题：交给模型时写成「题目：由 Agent 决定」，台账里记这四个字让导演不再重复问，但不回写纲领。
+export function buildQuestionAnswers(m: Message): { lines: string[]; record: Record<string, string>; briefRecord: Record<string, string>; answered: number } {
+  const answers = m.answers || {}, texts = m.textAnswers || {}, decided = m.decided || [];
+  const lines: string[] = []; const record: Record<string, string> = {}; const briefRecord: Record<string, string> = {}; let answered = 0;
+  (m.questions || []).forEach((q, qi) => {
+    if (decided.includes(qi)) { answered++; lines.push(`${q.text}：由 Agent 决定`); if (q.key) record[q.key] = '由 Agent 决定'; return; }
     const picks = (answers[qi] || []).map(oi => optionLabel(q.options[oi])).filter(Boolean); const free = String(texts[qi] || '').trim();
     const value = [...picks, free].filter(Boolean).join('、');
-    if (value) { answered++; lines.push(`${q.text}：${value}`); if (q.key) record[q.key] = value; } else lines.push(`${q.text}：（未回答，由你决定）`);
+    if (value) { answered++; lines.push(`${q.text}：${value}`); if (q.key) { record[q.key] = value; briefRecord[q.key] = value; } } else lines.push(`${q.text}：（未回答，由你决定）`);
   });
+  return { lines, record, briefRecord, answered };
+}
+export function answerQuestions(messageAt: number, decide: boolean) {
+  const c = chats().chat(); const m = c.messages.find(x => x.at === messageAt && x.questions); if (!m || !m.questions) return;
+  const { lines, record, briefRecord, answered } = buildQuestionAnswers(m);
   const text = decide ? '这些问题由你来定，按专业判断处理，之后不必再问。' : answered ? '我已确认以上信息：\n' + lines.join('\n') : ''; if (!text) return;
   try {
     const fmt = useFiles.getState().brief?.format;
     if (readLedger() || fmt) {
       if (!readLedger()) ensureLedger(fmt);
       if (decide) { const all: Record<string, string> = {}; m.questions.forEach(q => { if (q.key) all[q.key] = '由 Agent 决定'; }); if (Object.keys(all).length) updateLedger({ answers: all }); }   // 记下「由 Agent 决定」，导演不再重复问
-      else if (Object.keys(record).length) { updateLedger({ answers: record }); applyAnswersToBrief(record); }
+      else { if (Object.keys(record).length) updateLedger({ answers: record }); if (Object.keys(briefRecord).length) applyAnswersToBrief(briefRecord); }
     }
   } catch { /* ignore */ }
   chats().mutate(all => { for (const cc of all) for (const mm of cc.messages) if (mm.at === messageAt) mm.questionsUsed = true; });
   void send(text, { display: decide ? undefined : '我已确认以上信息' });
 }
 export function setTextAnswer(messageAt: number, qi: number, text: string) {
-  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { m.textAnswers = { ...(m.textAnswers || {}), [qi]: text }; } });
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { m.textAnswers = { ...(m.textAnswers || {}), [qi]: text }; if (m.decided?.includes(qi)) m.decided = m.decided.filter(x => x !== qi); } });
+}
+// 「由 Agent 决定」只针对当前这一题：标记这一题交给 Agent（再点一次取消），并清掉这题已选的选项与填写；返回是否标上了
+export function decideQuestion(messageAt: number, qi: number): boolean {
+  let on = false;
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) {
+    const cur = m.decided || []; on = !cur.includes(qi); m.decided = on ? [...cur, qi] : cur.filter(x => x !== qi);
+    if (on) { if (m.answers) delete m.answers[qi]; if (m.textAnswers) delete m.textAnswers[qi]; }
+  } });
+  return on;
+}
+// 「全部用推荐值」：把还没答的题按推荐项一次填好（没有推荐项的题不动），返回填完之后是不是每一题都有答案
+export function useRecommended(messageAt: number): boolean {
+  let done = false;
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) {
+    const answers = { ...(m.answers || {}) }; const texts = m.textAnswers || {}; const decided = m.decided || [];
+    const has = (i: number) => decided.includes(i) || (answers[i] || []).length > 0 || !!String(texts[i] || '').trim();
+    m.questions.forEach((q, i) => { if (!has(i) && q.type !== 'text' && q.recommended?.length) answers[i] = q.recommended.filter(x => x >= 0 && x < q.options.length); });
+    m.answers = answers; done = m.questions.every((_, i) => has(i));
+  } });
+  return done;
 }
 export function toggleAnswer(messageAt: number, qi: number, oi: number) {
-  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { const q = m.questions[qi]; if (!q) return; m.answers = m.answers || {}; const cur = m.answers[qi] || []; m.answers[qi] = q.multi ? (cur.includes(oi) ? cur.filter(x => x !== oi) : [...cur, oi]) : [oi]; /* 单选再点已选项不取消，像单选框；多选才切换 */ } });
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.questions) { const q = m.questions[qi]; if (!q) return; m.answers = m.answers || {}; const cur = m.answers[qi] || []; m.answers[qi] = q.multi ? (cur.includes(oi) ? cur.filter(x => x !== oi) : [...cur, oi]) : [oi]; if (m.decided?.includes(qi)) m.decided = m.decided.filter(x => x !== qi); /* 单选再点已选项不取消，像单选框；多选才切换 */ } });
 }
 export function useFollowUp(messageAt: number, index: number) {
   const c = chats().chat(); const m = c.messages.find(x => x.at === messageAt); const option = m?.followUps?.[index]; if (!m || !option) return;

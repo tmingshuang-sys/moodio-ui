@@ -204,16 +204,15 @@ export function chooseFormat(format: string) {
   useFiles.getState().setBrief({ format }); ensureLedger(format); emit();
   const step = nextStep(); if (step.kind === 'ask' && step.questions) askLocally(step.questions);
 }
-// 本地问卷：把题库里的题渲染成追问卡，推荐项预选；提交仍走 answerQuestions（答案进台账与纲领，再交给模型继续）
+// 本地问卷：把题库里的题渲染成追问卡，推荐项只打「推荐」标不预选（用户要求：新项目打开时不能看起来已经答过）；
+// 想一键过就点卡片底部的「全部用推荐值」。提交仍走 answerQuestions（答案进台账与纲领，再交给模型继续）
 export function askLocally(questions: QuestionDef[]) {
   const chat = useChats.getState().chat();
   const last = chat.messages[chat.messages.length - 1]; if (last?.questions?.length && !last.questionsUsed) return;   // 已经有一张没答的卡，不重复弹
   const qs: Question[] = questions.map(q => ({ text: q.text, type: q.type, options: q.options, multi: q.multi, placeholder: q.placeholder, key: q.key, recommended: q.recommended }));
-  const answers: Record<number, number[]> = {};
-  qs.forEach((q, i) => { if (q.type !== 'text' && q.recommended?.length) answers[i] = q.recommended.slice(); });
-  useChats.getState().push(chat.id, { role: 'assistant', text: '先确认几件事，不想选就用推荐值：', at: Date.now(), questions: qs, answers, followUpContext: { chatId: chat.id } });
+  useChats.getState().push(chat.id, { role: 'assistant', text: '先确认几件事，不想一道道选就点「全部用推荐值」：', at: Date.now(), questions: qs, followUpContext: { chatId: chat.id } });
 }
-// 模型自己发的追问：按 key 或题面在题库里找推荐项预选，让用户也能一键过
+// 模型自己发的追问：按 key 或题面在题库里找到对应的推荐项，标在选项上（同样不预选），让用户也能一键过
 export function recommendedAnswers(questions: Question[]): Record<number, number[]> {
   const { brief } = useFiles.getState(); if (!has(brief?.format)) return {};
   const bank = [...skillFor(brief!.format).general, ...skillFor(brief!.format).modeling];

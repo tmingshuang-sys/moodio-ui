@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard, ChevronLeft, ChevronRight, Film, Music } from 'lucide-react';
 import type { Artifact, Chat, Message, Plan, PlanStep, Question } from '../lib/types';
 import { useAgent, useFiles, useChats } from '../lib/store';
-import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, useFollowUp, reviewFix, restoreTrash, retryStep, send } from '../lib/agent/runner';
+import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, decideQuestion, useRecommended, useFollowUp, reviewFix, restoreTrash, retryStep, send } from '../lib/agent/runner';
 import { skipLintGate } from '../lib/director';
 import { mediaUrl } from '../lib/storage';
 import { clock } from '../lib/time';
@@ -76,28 +76,41 @@ const typeOf = (q: Question): 'single' | 'multi' | 'text' => q.type || (q.multi 
 
 function QuestionCard({ m, live }: { m: Message; live: boolean }) {
   const t = useT();
-  const qs = m.questions!; const answers = m.answers || {}; const texts = m.textAnswers || {};
-  const answered = (qi: number) => (answers[qi] || []).length > 0 || !!String(texts[qi] || '').trim();
+  const qs = m.questions!; const answers = m.answers || {}; const texts = m.textAnswers || {}; const decided = m.decided || [];
+  const answered = (qi: number) => decided.includes(qi) || (answers[qi] || []).length > 0 || !!String(texts[qi] || '').trim();
   const [page, setPage] = useState(0);
   const [custom, setCustom] = useState<Record<number, boolean>>({});
   const qi = Math.min(page, qs.length - 1); const q = qs[qi]; const type = typeOf(q);
   const anyAnswered = qs.some((_, i) => answered(i)); const allAnswered = qs.every((_, i) => answered(i));
+  const hasRec = qs.some((q, i) => !answered(i) && q.type !== 'text' && q.recommended?.length);   // 还有没答又带推荐项的题，才给「全部用推荐值」
   const submitted = !!m.questionsUsed;
-  const pick = (oi: number) => {
-    if (!live) return; toggleAnswer(m.at, qi, oi);
-    if (type === 'single' && qi < qs.length - 1) setTimeout(() => setPage(qi + 1), 220);   // 单选后自动翻到下一题
-    else if (type === 'single') setTimeout(() => {   // 最后一题也是单选：全部答完就直接发送，不用再点按钮
+  // 答完一题往下走：不是最后一题就翻页；是最后一题且全部有答案就直接发送，不用再点按钮
+  const advance = (from: number) => {
+    if (from < qs.length - 1) { setTimeout(() => setPage(from + 1), 220); return; }
+    setTimeout(() => {
       const fresh = useChats.getState().chat().messages.find(x => x.at === m.at); if (!fresh?.questions || fresh.questionsUsed) return;
-      const done = fresh.questions.every((_, i) => (fresh.answers?.[i] || []).length > 0 || !!String(fresh.textAnswers?.[i] || '').trim());
+      const done = fresh.questions.every((_, i) => (fresh.decided || []).includes(i) || (fresh.answers?.[i] || []).length > 0 || !!String(fresh.textAnswers?.[i] || '').trim());
       if (done) answerQuestions(m.at, false);
     }, 260);
+  };
+  const pick = (oi: number) => { if (!live) return; toggleAnswer(m.at, qi, oi); if (type === 'single') advance(qi); };
+  // 「由 Agent 决定」只针对当前这一题：标上就像选了一个答案一样往下走；再点一次取消
+  const decide = () => { if (!live) return; if (decideQuestion(m.at, qi)) advance(qi); };
+  // 「全部用推荐值」：没答的题一次按推荐项填好；填完全齐就直接发送，还有空题（比如填空题）就翻到第一道空题
+  const takeAll = () => {
+    if (!live) return;
+    const done = useRecommended(m.at);
+    if (done) { answerQuestions(m.at, false); return; }
+    const fresh = useChats.getState().chat().messages.find(x => x.at === m.at);
+    const next = fresh?.questions?.findIndex((_, i) => !((fresh.decided || []).includes(i) || (fresh.answers?.[i] || []).length > 0 || String(fresh.textAnswers?.[i] || '').trim()));
+    if (next !== undefined && next >= 0) setPage(next);
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (!live || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'INPUT') return;
     const n = parseInt(e.key, 10); if (n >= 1 && n <= q.options.length && type !== 'text') { e.preventDefault(); pick(n - 1); }
     else if (e.key === 'ArrowLeft' && qi > 0) setPage(qi - 1); else if (e.key === 'ArrowRight' && qi < qs.length - 1) setPage(qi + 1);
   };
-  const status = submitted ? t('已提交') : answered(qi) ? t('已选择') : '';
+  const status = submitted ? t('已提交') : decided.includes(qi) ? t('由 Agent 决定') : answered(qi) ? t('已选择') : '';
   const showText = type === 'text' || custom[qi] || texts[qi] !== undefined;
   return (
     <div className={`qcard${submitted ? ' is-submitted' : ''}`} tabIndex={0} onKeyDown={onKey} role="group" aria-label={q.text}>
@@ -125,8 +138,9 @@ function QuestionCard({ m, live }: { m: Message; live: boolean }) {
       {showText && <textarea className="q-input" rows={2} value={texts[qi] || ''} placeholder={q.placeholder || (type === 'text' ? '' : t('补充说明…'))} disabled={!live} onChange={e => setTextAnswer(m.at, qi, e.target.value)} />}
       {live && (
         <footer className="q-foot">
-          <button type="button" className="primary" disabled={!anyAnswered} onClick={() => answerQuestions(m.at, false)}>{allAnswered || qi === qs.length - 1 ? t('发送回答') : `${t('发送回答')}（${qs.filter((_, i) => answered(i)).length}/${qs.length}）`}</button>
-          <button type="button" onClick={() => answerQuestions(m.at, true)}>{t('由 Agent 决定')}</button>
+          {hasRec && <button type="button" className="q-all" title={t('没答的题一次按推荐值填好')} onClick={takeAll}>{t('全部用推荐值')}</button>}
+          <button type="button" className="primary" disabled={!anyAnswered} onClick={() => answerQuestions(m.at, false)}>{allAnswered || qi === qs.length - 1 || !anyAnswered ? t('发送回答') : `${t('发送回答')}（${qs.filter((_, i) => answered(i)).length}/${qs.length}）`}</button>
+          <button type="button" className={decided.includes(qi) ? 'on' : ''} aria-pressed={decided.includes(qi)} title={t('这一题交给 Agent 按专业判断处理')} onClick={decide}>{t('由 Agent 决定')}</button>
         </footer>
       )}
     </div>

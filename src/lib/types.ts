@@ -78,6 +78,7 @@ export interface Message {
   questions?: Question[];
   answers?: Record<number, number[]>;
   textAnswers?: Record<number, string>;   // 填空题与「自己填写」的答案
+  decided?: number[];                    // 交给 Agent 决定的题（下标）——「由 Agent 决定」只针对当前这一题
   questionsUsed?: boolean;
   artifacts?: Artifact[];
   imageReview?: ImageCheck[];
