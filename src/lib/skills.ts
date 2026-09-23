@@ -353,7 +353,7 @@ function stages(s: { modelName: string; modelGoal: string; modelDocs: string[]; 
 const COMMON_GENERAL: QuestionDef[] = [
   withBrief(single('duration', '成片总时长大概多长？', [opt('15 秒'), opt('30 秒'), opt('60 秒'), opt('3 分钟以内'), opt('5–15 分钟'), opt('更长')], 2), 'duration'),
   withBrief(single('ratio', '画幅选哪种？', [opt('竖屏 9:16', '抖音 / 快手 / Reels 等竖屏平台'), opt('横屏 16:9', 'YouTube / B 站 / 大屏'), opt('方屏 1:1', 'Instagram 等方屏')]), 'ratio'),
-  withBrief(single('audience', '主要给谁看？', [opt('18–30 岁都市年轻人'), opt('25–40 岁家庭用户'), opt('学生'), opt('中老年'), opt('专业人群 / B 端')]), 'audience'),
+  withBrief(single('audience', '主要给谁看？', [opt('18–30 岁都市年轻人'), opt('25–40 岁家庭用户'), opt('学生'), opt('中老年')]), 'audience'),
 ];
 
 export const SKILLS: Record<string, Skill> = {
