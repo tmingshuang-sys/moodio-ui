@@ -6,13 +6,14 @@ import remarkGfm from 'remark-gfm';
 import { PenLine, FileText, Image, Trash2, FolderKanban, Download, Sparkles, Dot, Check, X, ListChecks, Wand2, Clapperboard, ChevronLeft, ChevronRight, Film, Music } from 'lucide-react';
 import type { Artifact, Chat, Message, Plan, PlanStep, Question } from '../lib/types';
 import { useAgent, useFiles, useChats } from '../lib/store';
-import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, decideQuestion, useRecommended, useFollowUp, reviewFix, restoreTrash, retryStep, send } from '../lib/agent/runner';
+import { executePlan, cancelPlan, answerQuestions, toggleAnswer, setTextAnswer, decideQuestion, useRecommended, useFollowUp, reviewFix, skipReview, restoreTrash, retryStep, send } from '../lib/agent/runner';
 import { skipLintGate } from '../lib/director';
 import { mediaUrl } from '../lib/storage';
 import { clock } from '../lib/time';
+import { expectedMs, humanDuration } from '../lib/timing';
 import { toast } from './Toast';
 import { runJianyingExport } from './ResourcePane';
-import { useT } from '../lib/i18n';
+import { useT, useLang } from '../lib/i18n';
 
 // 导入到剪辑软件用的成片：本地合成的那条优先，否则最新的视频
 const latestFilm = () => { const media = useFiles.getState().media; return media.find(x => x.kind === 'video' && x.model === '本地合成') || media.find(x => x.kind === 'video'); };
@@ -29,7 +30,7 @@ function PlanCard({ plan }: { plan: Plan }) {
   const planning = ['pending', 'confirmed', 'cancelled'].includes(state), folded = state === 'confirmed' || state === 'cancelled';
   const head: Record<string, [string, string, string]> = {
     pending: [`计划 · ${n} 步`, destructive ? `含 ${destructive} 项删除` : t('待确认'), destructive ? 'warn' : ''], confirmed: [`计划 · ${n} 步`, t('已确认'), ''], cancelled: [`计划 · ${n} 步`, t('已取消'), ''],
-    running: [`执行中 · 第 ${Math.min(n, finished + 1)} / ${n} 步`, t('进行中'), ''], reviewing: [`执行完成 · ${done} / ${n} 步`, t('正在自审刚写的内容…'), ''], done: [`执行完成 · ${done} / ${n} 步`, t('完成'), ''],
+    running: [`执行中 · 第 ${Math.min(n, finished + 1)} / ${n} 步`, t('进行中'), ''], reviewing: [`执行完成 · ${done} / ${n} 步`, (plan.reviewing ? plan.reviewing + '…' : t('正在自审刚写的内容…')), ''], done: [`执行完成 · ${done} / ${n} 步`, t('完成'), ''],
     stopped: [`已停止 · 完成 ${done} / ${n} 步`, t('已停止'), ''], error: [`执行出错 · 完成 ${done} / ${n} 步`, `${failed} 步出错`, 'warn'],
   };
   const [title, badge, badgeCls] = head[state] || head.pending;
@@ -65,9 +66,26 @@ function PlanCard({ plan }: { plan: Plan }) {
       </li>
     );
   });
-  const header = <><span className="plan-icon"><ListChecks size={14} /></span><strong>{title}</strong>{badge && <span className={`plan-badge${badgeCls ? ' ' + badgeCls : ''}`}>{badge}</span>}</>;
+  const header = <><span className="plan-icon"><ListChecks size={14} /></span><strong>{title}</strong>{badge && <span className={`plan-badge${badgeCls ? ' ' + badgeCls : ''}`}>{badge}</span>}{state === 'reviewing' && <WaitNote />}</>;
   if (folded) return <details className={`plan is-${state}`}><summary className="plan-head">{header}<small>{t('查看步骤')}</small></summary><ol className="plan-steps">{rows}</ol></details>;
   return <section className={`plan is-${state}`} aria-live="polite"><header className="plan-head">{header}</header>{(state === 'running' || state === 'reviewing') && <div className="plan-bar"><span style={{ width: `${Math.round(finished / n * 100)}%` }} /></div>}<ol className="plan-steps">{rows}</ol></section>;
+}
+
+// 等模型这一轮时的计时：「已用 12 秒 · 通常 40 秒」，超过预期就换成「比平时久一些」，让人知道还要等多久而不是干等
+function WaitNote() {
+  const t = useT(); const lang = useLang(s => s.lang);
+  const round = useAgent(s => s.round);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (!round) return; setNow(Date.now()); const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, [round?.startedAt]);
+  if (!round) return null;
+  const elapsed = Math.max(0, now - round.startedAt), expected = expectedMs(round.kind), en = lang === 'en';
+  const over = elapsed > expected * 1.3;
+  return (
+    <span className="wait-note">
+      {t('已用')} {humanDuration(elapsed, en)}
+      <em> · {over ? t('比平时久一些，还在生成') : `${t('通常')} ${humanDuration(expected, en, true)}`}</em>
+    </span>
+  );
 }
 
 // ===== 追问卡：一次一题、翻页 n/N，单选数字键、多选勾选、填空输入；提交后显示「已提交」并保留答案 =====
@@ -199,13 +217,18 @@ function ImageReviewCard({ m, onOpen }: { m: Message; onOpen: (id: string) => vo
 }
 
 function ReviewCard({ m }: { m: Message }) {
+  const t = useT();
   return (
     <>
       {m.review!.items.map((it, i) => (
         <details key={i} className="review" open={it.verdict === '需修改'}>
           <summary>自审 · 《{it.title}》 · {it.score ? it.score + '/10 · ' : ''}{it.verdict}</summary>
           {it.praise && <p className="review-praise">✓ {it.praise}</p>}
-          {it.issues.length > 0 && <><ol>{it.issues.map((x, j) => <li key={j}><strong>{x.point}</strong>{x.fix && <><br /><span>{x.fix}</span></>}</li>)}</ol><button type="button" className="review-fix" onClick={() => reviewFix(m.at, i)}>按自审建议修改这份文稿</button></>}
+          {it.issues.length > 0 && <><ol>{it.issues.map((x, j) => <li key={j}><strong>{x.point}</strong>{x.fix && <><br /><span>{x.fix}</span></>}</li>)}</ol>
+            {m.review!.handled ? <p className="review-done">{t('已就这条自审意见做过选择')}</p> : <div className="review-acts">
+              <button type="button" className="review-fix" onClick={() => reviewFix(m.at, i)}>{t('按自审建议修改这份文稿')}</button>
+              <button type="button" onClick={() => skipReview(m.at)}>{t('不改，继续下一步')}</button>
+            </div>}</>}
         </details>
       ))}
     </>
@@ -230,7 +253,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
   return (
     <div className="messages">
       {chat.messages.map((m, i) => {
-        if (m.role === 'system') return <div key={i} className="msg system">{m.text}</div>;
+        if (m.role === 'system') return <div key={i} className="msg system">{m.text}{busy && i === chat.messages.length - 1 && <WaitNote />}</div>;
         if (m.role === 'user') return (
           <div key={i} className="msg-wrap user">
             <div className="msg user">
@@ -248,7 +271,7 @@ export default function MessageList({ chat }: { chat: Chat }) {
         return (
           <div key={i} className={`msg assistant${m.streaming ? ' is-streaming' : ''}`}>
             {m.thinking && <details className="thinking" open={!!m.streaming}><summary>{t('思考过程')}</summary><div>{m.thinking}</div></details>}
-            {(m.text || (m.streaming ? t('正在生成…') : '')) && <div className="msg-text"><ReactMarkdown remarkPlugins={[remarkGfm]}>{(m.text || t('正在生成…')).replace(/\n/g, '  \n')}</ReactMarkdown>{m.streaming && <span className="stream-cursor" aria-hidden="true" />}</div>}
+            {(m.text || (m.streaming ? t('正在生成…') : '')) && <div className="msg-text"><ReactMarkdown remarkPlugins={[remarkGfm]}>{(m.text || t('正在生成…')).replace(/\n/g, '  \n')}</ReactMarkdown>{m.streaming && <span className="stream-cursor" aria-hidden="true" />}{m.streaming && latest && <WaitNote />}</div>}
             {m.plan && m.plan.steps?.length > 0 && <PlanCard plan={m.plan} />}
             {m.artifacts && m.artifacts.length > 0 && <Artifacts items={m.artifacts} onOpen={openInPane} />}
             {m.log && m.log.length > 0 && <details className="exec-log"><summary>执行记录 · {m.log.length} 步</summary><ol>{m.log.map((l, j) => <li key={j}>{l}</li>)}</ol></details>}

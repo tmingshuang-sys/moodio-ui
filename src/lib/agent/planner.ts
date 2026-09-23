@@ -8,6 +8,8 @@ import { STAGE_ORDER } from '../skills';
 import type { StageId } from '../skills';
 import type { ChatKind } from '../model';
 import { nextStep } from '../director';
+import { useAgent } from '../store';
+import { recordRound } from '../timing';
 
 // 请求用哪类模型：分镜 / 片段提示词 / 台账阶段在片段方案时走「编译」（强模型、低温度），其他创意请求走写作，剩下走规划
 export function kindForRequest(text: string): ChatKind {
@@ -166,10 +168,17 @@ async function requestAgentPlan(request: (retry: boolean) => Promise<string>): P
 export async function remotePlan(text: string, chat: Chat, hooks: PlanHooks = {}): Promise<PlanReply | null> {
   const cfg = modelCfg(); if (!cfg?.apiKey) return null;
   const sys = buildSystemPrompt(text, chat);
-  const callCfg = chatCfg(cfg, kindForRequest(text));
-  return requestAgentPlan(async retry => {
-    const repair = retry ? '\n上次回复未通过 JSON / actions 结构校验。请依据同一用户请求重新输出完整 JSON 对象，包含字符串 message 和数组 actions。字符串中的换行与引号必须正确转义，不要代码围栏、前后说明或截断内容。不要增加原请求以外的操作。' : '';
-    if (retry) hooks.onStatus?.('正在修正模型回复格式…');
-    return callModel(callCfg, sys + repair, text, { signal: hooks.signal, onText: hooks.onText, onReasoning: hooks.onReasoning });
-  });
+  const kind = kindForRequest(text);
+  const callCfg = chatCfg(cfg, kind);
+  // 打点：界面上的「已用 N 秒 · 通常 M 秒」靠它，耗时也回写成下次的预期
+  const startedAt = Date.now();
+  useAgent.getState().set({ round: { kind, startedAt } });
+  const stop = () => { recordRound(kind, Date.now() - startedAt); useAgent.getState().set({ round: null }); };
+  try {
+    return await requestAgentPlan(async retry => {
+      const repair = retry ? '\n上次回复未通过 JSON / actions 结构校验。请依据同一用户请求重新输出完整 JSON 对象，包含字符串 message 和数组 actions。字符串中的换行与引号必须正确转义，不要代码围栏、前后说明或截断内容。不要增加原请求以外的操作。' : '';
+      if (retry) hooks.onStatus?.('正在修正模型回复格式…');
+      return callModel(callCfg, sys + repair, text, { signal: hooks.signal, onText: hooks.onText, onReasoning: hooks.onReasoning });
+    });
+  } finally { stop(); }
 }

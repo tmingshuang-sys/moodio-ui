@@ -15,6 +15,7 @@ import { reviewImages, visionReady } from '../vision';
 import { styleBaseline } from '../guides';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
 import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, recommendedAnswers, dropAnsweredQuestions } from '../director';
+import { recordRound } from '../timing';
 import { findMedia } from '../store';
 import { skillFor, stageName } from '../skills';
 
@@ -106,19 +107,24 @@ function begin(pending: Message) {
 function end() { agent().set({ busy: false, controller: null, writing: null }); glow(false); pendingMessage = null; }
 
 // 每轮结束后交给导演：推进阶段；一键模式下自动发出下一步（检查点会停）
-function afterTurn() { try { directorTick(); } catch { /* ignore */ } window.dispatchEvent(new CustomEvent('moodio:director-changed')); setTimeout(() => { try { autopilotTick(); } catch (e) { console.warn('autopilot', e); } }, 400); }
+function afterTurn(hold = false) {
+  try { directorTick(); } catch { /* ignore */ }
+  window.dispatchEvent(new CustomEvent('moodio:director-changed'));
+  if (hold) return;   // 等用户拿主意（自审说需修改时），一键模式也不自动发下一步
+  setTimeout(() => { try { autopilotTick(); } catch (e) { console.warn('autopilot', e); } }, 400);
+}
 
-export async function send(text: string, { quote = null as { text: string; source?: string } | null, attachments = [] as string[], fromSuggestion = false, display = undefined as string | undefined } = {}) {
+export async function send(text: string, { quote = null as { text: string; source?: string } | null, attachments = [] as string[], fromSuggestion = false, display = undefined as string | undefined, needsConfirm = false } = {}) {
   const t = text.trim(); if (!t && !quote) return;
   if (agent().busy) { toast('上一条指令还在执行，等它完成或点「停止」'); return; }
   const c = chats().chat();
   chats().push(c.id, { role: 'user', text: t || '请看这段文字', display, quote, attachments: attachments.length ? attachments : undefined, at: Date.now() });
   agent().set({ busy: true });
   await sleep(200);
-  await reply(t, c.id, fromSuggestion);
+  await reply(t, c.id, fromSuggestion, needsConfirm);
 }
 
-export async function reply(text: string, chatId: string, fromSuggestion = false) {
+export async function reply(text: string, chatId: string, fromSuggestion = false, needsConfirm = false) {
   const c = chats().chats.find(x => x.id === chatId) || chats().chat();
   const last = c.messages[c.messages.length - 1]; const t = text + (last?.quote ? '\n' + last.quote.text : '');
   const pending: Message = { role: 'system', text: 'Agent 正在思考…', at: Date.now() };
@@ -171,7 +177,8 @@ export async function reply(text: string, chatId: string, fromSuggestion = false
       pendingPlans.set(key, { plan, text, chatId: c.id, steps });
       const destructive = plan.filter(a => DESTRUCTIVE_TOOLS.has(a.tool)).length;
       // 自动执行：生成模式为自动且全是生成类；或一键模式且没有删除类操作
-      const auto = (genMode() === 'auto' && plan.every(a => GENERATE_TOOLS.has(a.tool) || NO_CONFIRM_TOOLS.has(a.tool))) || (isAutopilot() && !destructive);
+      // needsConfirm：按自审建议改稿这类「用户未必认可」的请求，一键 / 自动模式也要他点确认
+      const auto = !needsConfirm && ((genMode() === 'auto' && plan.every(a => GENERATE_TOOLS.has(a.tool) || NO_CONFIRM_TOOLS.has(a.tool))) || (isAutopilot() && !destructive));
       out.text = (autoLog.length ? autoLog.map(r => '✓ ' + r).join('\n') + '\n' : '') + (message ? message + '\n' : '') + (auto ? '自动模式：直接开始生成。' : destructive ? `以下操作包含 ${destructive} 项删除，请确认：` : '我准备执行以下操作，确认后开始：');
       out.plan = { key, steps, state: 'pending', destructive };
       out.actions = auto ? null : [{ id: 'plan-confirm:' + key, label: destructive ? `确认执行（含 ${destructive} 项删除）` : '确认执行' }, { id: 'plan-cancel:' + key, label: '取消' }];
@@ -205,13 +212,13 @@ export async function executePlan(key: string, messageAt: number) {
   try {
     await sleep(250);
     const run = await runActions(p.plan, p.text, c.id, steps, pending.at); results = run.results; out.actions = run.buttons; out.artifacts = run.artifacts;
-    if (run.reviewTargets.length && modelCfg()?.apiKey && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在自审刚写的内容…'); commit(); try { out.review = await selfReview(run.reviewTargets.slice(0, 2)); } catch (e) { console.warn('自审失败', e); } }
+    if (run.reviewTargets.length && modelCfg()?.apiKey && !aborted()) { const titles = run.reviewTargets.slice(0, 2).map(x => `《${x.title}》`).join('、'); pending.plan!.state = 'reviewing'; pending.plan!.reviewing = `正在自审${titles}`; setLive(`正在自审${titles}…`); commit(); const at = Date.now(); agent().set({ round: { kind: 'review', startedAt: at } }); try { out.review = await selfReview(run.reviewTargets.slice(0, 2)); } catch (e) { console.warn('自审失败', e); } finally { recordRound('review', Date.now() - at); agent().set({ round: null }); } }
     // 片段提示词写完先校验；不通过就把清单发回模型改一轮，最多两轮，每轮都以计划卡展示
     const touchedClips = p.plan.some(a => ['write_doc', 'replace_section', 'append_doc'].includes(a.tool) && CLIP_DOC_RE.test(String(a.args?.name || findDoc(String(a.args?.id || ''))?.name || '')));
     if (touchedClips && !aborted()) { try { out.lint = await lintFixRounds(c.id, p.text); } catch (e) { console.warn('片段校验修正失败', e); } }
     // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
     const images = run.artifacts.filter(a => a.kind === 'image');
-    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; setLive('正在用视觉模型检查参考图…'); commit(); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal, `${skillFor(useFiles.getState().brief?.format).imageQA || ''}画风基线：${styleBaseline(useFiles.getState().brief?.visualStyle)}——这一创作的所有参考图必须是同一种画风，人物是真人却出成卡通 / 3D / 插画（或反过来）一律判「需重生成」。`); } catch (e) { console.warn('参考图质检失败', e); } }
+    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; pending.plan!.reviewing = '正在用视觉模型检查参考图'; setLive('正在用视觉模型检查参考图…'); commit(); const at = Date.now(); agent().set({ round: { kind: 'vision', startedAt: at } }); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal, `${skillFor(useFiles.getState().brief?.format).imageQA || ''}画风基线：${styleBaseline(useFiles.getState().brief?.visualStyle)}——这一创作的所有参考图必须是同一种画风，人物是真人却出成卡通 / 3D / 插画（或反过来）一律判「需重生成」。`); } catch (e) { console.warn('参考图质检失败', e); } finally { recordRound('vision', Date.now() - at); agent().set({ round: null }); } }
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });
@@ -227,13 +234,10 @@ export async function executePlan(key: string, messageAt: number) {
   if (videos >= 2) extra.push({ label: '按顺序合成成片', prompt: `把刚生成的 ${videos} 段视频按分镜顺序用 compose_video 合成一条成片，先给方案。` });
   out.followUps = extra;
   chats().mutate(all => { const cc = all.find(x => x.id === c.id)!; const i = cc.messages.indexOf(pending); if (i >= 0) cc.messages.splice(i, 1); attachFollowUps(out, p.text + '\n' + results.join('\n'), c.id); cc.messages.push(out); cc.at = Date.now(); });
-  // 一键模式：剧本自审「需修改」就自动按建议修一轮（每份文稿只修一次），修完再停在检查点
-  const badReview = out.review?.items.findIndex(it => it.verdict === '需修改' && it.issues.length) ?? -1;
-  if (badReview >= 0 && isAutopilot() && !aborted()) {
-    const docId = out.review!.items[badReview].docId; const flag = 'autofix:' + docId;
-    if (!readLedger()?.flags?.[flag]) { updateLedger({ flags: { [flag]: true } }); setTimeout(() => reviewFix(out.at, badReview), 400); return; }
-  }
-  afterTurn();
+  // 自审说「需修改」时就地停下：用户可能并不认可自审意见，必须由他点「按自审建议修改」或「不改，继续」
+  // （一键模式以前会自己修一轮，用户要求改成必须确认）
+  const badReview = out.review?.items.some(it => it.verdict === '需修改' && it.issues.length) ?? false;
+  afterTurn(badReview);
 }
 
 // 重试已执行计划里出错的那一步：单独作为一个新计划执行
@@ -345,7 +349,17 @@ export function useFollowUp(messageAt: number, index: number) {
 export function reviewFix(messageAt: number, index: number) {
   const c = chats().chat(); const m = c.messages.find(x => x.at === messageAt); const it = m?.review?.items?.[index]; if (!it) return;
   const text = `按自审建议修改《${it.title}》：\n${it.issues.map((x, i) => `${i + 1}. ${x.point}${x.fix ? '：' + x.fix : ''}`).join('\n')}\n只改有问题的段落（用 replace_section），其他内容保持不变。`;
-  void send(text);
+  markReviewHandled(messageAt);
+  void send(text, { needsConfirm: true });   // 自审意见照样先出计划卡等用户确认
+}
+// 自审卡上的选择记下来：按钮收起，一键模式可以继续往下走
+function markReviewHandled(messageAt: number) {
+  chats().mutate(all => { for (const c of all) for (const m of c.messages) if (m.at === messageAt && m.review) m.review = { ...m.review, handled: true }; });
+}
+// 「不改，继续下一步」：不认可自审意见时原样继续，交回导演
+export function skipReview(messageAt: number) {
+  markReviewHandled(messageAt);
+  afterTurn();
 }
 export function restoreTrash(trashId: string, messageAt: number) {
   const entry = useFiles.getState().restoreTrash(trashId);

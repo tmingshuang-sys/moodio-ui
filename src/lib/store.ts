@@ -191,6 +191,7 @@ export const useNav = create<{ page: Page; go: (page: Page) => void }>(set => ({
 export interface Writing { docId: string; text: string; }
 interface AgentState {
   busy: boolean; live: string; glow: boolean; writing: Writing | null; abortRequested: boolean; controller: AbortController | null;
+  round: { kind: string; startedAt: number } | null;   // 正在等模型的这一轮：界面按它显示「已用 N 秒 · 通常 M 秒」
   set(patch: Partial<AgentState>): void;
 }
-export const useAgent = create<AgentState>(set => ({ busy: false, live: '', glow: false, writing: null, abortRequested: false, controller: null, set: patch => set(patch) }));
+export const useAgent = create<AgentState>(set => ({ busy: false, live: '', glow: false, writing: null, abortRequested: false, controller: null, round: null, set: patch => set(patch) }));

@@ -60,10 +60,10 @@ export interface ImageCheck { id: string; name: string; verdict: '通过' | '需
 export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 export interface PlanStep { tool: string; kind: string; title: string; preview: string; destructive: boolean; status: StepStatus; result: string; logs: string[]; }
 export type PlanState = 'pending' | 'confirmed' | 'cancelled' | 'running' | 'reviewing' | 'done' | 'stopped' | 'error';
-export interface Plan { key?: string; steps: PlanStep[]; state: PlanState; destructive?: number; }
+export interface Plan { key?: string; steps: PlanStep[]; state: PlanState; destructive?: number; reviewing?: string; }   // reviewing：自审 / 质检阶段显示在卡头的说明（正在自审《故事脚本.md》）
 export interface ReviewIssue { point: string; fix: string; }
 export interface ReviewItem { docId: string; title: string; verdict: '通过' | '需修改'; score: number | null; praise: string; issues: ReviewIssue[]; }
-export interface Review { items: ReviewItem[]; at: number; }
+export interface Review { items: ReviewItem[]; at: number; handled?: boolean; }   // handled：用户已经就自审意见做过选择（去修 / 不改），按钮收起、一键模式可以继续
 export interface MessageAction { id: string; label: string; }
 
 export interface Message {
