@@ -3,6 +3,7 @@
 // 关键限制：媒体引用必须是**绝对**的 file:// URL，相对路径（./x.mp4、file://x.mp4）和省略 media-rep 都会让达芬奇整份拒绝，
 // 所以需要知道片段文件夹的绝对路径；浏览器的 File System Access API 不给路径，只能让用户粘贴一次基准路径记下来。
 export interface NleClip { file: string; name: string; seconds: number; width?: number; height?: number; }
+export interface NleSubtitle { start: number; end: number; text: string; }
 export interface NleOptions { title: string; clips: NleClip[]; dirPath: string; fps?: number; }
 
 const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -54,6 +55,19 @@ ${spine}
     </event>
   </library>
 </fcpxml>`;
+}
+
+// SRT 字幕：达芬奇的脚本接口没有导入字幕的方法（只有「从音频生成字幕」），所以备一份 SRT 让用户拖进字幕轨；
+// 配乐 / 配音也不写进 FCPXML——实测把它们当 connected clip 挂上去，达芬奇会把第二段之后视频自己的音频挤到配乐轨，
+// 所以导出目录里单独放音频文件，本地助手那条路则用脚本接口 AddTrack + AppendToTimeline 精确放置
+export function buildSrt(subs: NleSubtitle[]): string {
+  const tc = (sec: number) => {
+    const ms = Math.max(0, Math.round(sec * 1000));
+    const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`;
+  };
+  return (subs || []).filter(s => s && s.text && s.end > s.start).sort((a, b) => a.start - b.start)
+    .map((s, i) => `${i + 1}\n${tc(s.start)} --> ${tc(s.end)}\n${String(s.text).trim()}\n`).join('\n');
 }
 
 // EDL：不含媒体路径的后备格式，导入时由剪辑软件按文件名关联素材

@@ -118,6 +118,37 @@ def unique_timeline_name(proj, name):
             return candidate
     return "%s %d" % (name, int(time.time()))
 
+def place_audio(proj, tl, dir_path, audios, fps):
+    """把配乐 / 配音各放一条独立音轨上：用秒数算帧范围（媒体池的 Frames 属性读出来是空的），recordFrame 就是时间线起点。"""
+    mp = proj.GetMediaPool()
+    paths = [os.path.join(dir_path, a["file"]) for a in audios]
+    items = mp.ImportMedia(paths) or []
+    by_name = {}
+    for it in items:
+        try:
+            by_name[it.GetName()] = it
+        except Exception:
+            pass
+    placed = 0
+    for a in audios:
+        item = by_name.get(a["file"])
+        if not item:
+            continue
+        frames = max(1, int(round(float(a["seconds"]) * fps)))
+        tl.AddTrack("audio", "stereo")
+        idx = tl.GetTrackCount("audio")
+        got = mp.AppendToTimeline([{
+            "mediaPoolItem": item, "startFrame": 0, "endFrame": frames - 1, "mediaType": 2,
+            "trackIndex": idx, "recordFrame": max(0, int(round(float(a.get("start") or 0) * fps))),
+        }])
+        if got:
+            placed += 1
+            try:
+                tl.SetTrackName("audio", idx, a.get("name") or a["file"])
+            except Exception:
+                pass
+    return placed
+
 def import_to_resolve(app, proj, make_xml, title, tries=3):
     """导入时间线、切到剪辑页。项目刚打开的头一两秒达芬奇会拒绝导入，所以失败了换个名字缓一下再试。"""
     last = "达芬奇拒绝了这份工程文件"
@@ -138,8 +169,20 @@ def import_to_resolve(app, proj, make_xml, title, tries=3):
     return False, last
 
 # ---------- FCPXML ----------
+def build_srt(subs):
+    """达芬奇的脚本接口没有导入字幕的方法（只有从音频生成），所以备一份 SRT 让用户拖进字幕轨。"""
+    def tc(sec):
+        ms = max(0, int(round(sec * 1000)))
+        return "%02d:%02d:%02d,%03d" % (ms // 3600000, ms // 60000 % 60, ms // 1000 % 60, ms % 1000)
+    rows = [x for x in (subs or []) if x.get("text") and float(x.get("end", 0)) > float(x.get("start", 0))]
+    rows.sort(key=lambda x: float(x["start"]))
+    return "\n".join("%d\n%s --> %s\n%s\n" % (i + 1, tc(float(x["start"])), tc(float(x["end"])), str(x["text"]).strip())
+                     for i, x in enumerate(rows))
+
 def build_fcpxml(title, clips, dir_path, fps=30):
-    """与网页端 src/lib/nle.ts 同一套写法：媒体引用必须是绝对 file:// URL。"""
+    """与网页端 src/lib/nle.ts 同一套写法：媒体引用必须是绝对 file:// URL。只放视频——
+    配乐 / 配音如果作为 connected clip 写进来，达芬奇会把第二段之后视频自己的音频挤到配乐轨上（实测），
+    所以音频改用脚本接口 AddTrack + AppendToTimeline 精确放置。"""
     from urllib.parse import quote
     base = fps * 100
     frames = lambda sec: max(0, round(sec * fps))
@@ -262,6 +305,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "请求不是合法的 JSON"})
         title = str(data.get("title") or "Moodio 成片")
         clips = data.get("clips") or []
+        audios = data.get("audios") or []
+        subtitles = data.get("subtitles") or []
         job = data.get("job") or title
         if not clips:
             return self._json(400, {"error": "没有片段"})
@@ -271,6 +316,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "这些片段还没传上来：" + "、".join(missing)})
         for c in clips:
             c["file"] = safe_name(c["file"])
+        audios = [a for a in audios if os.path.exists(os.path.join(d, safe_name(a.get("file", ""))))]
+        for a in audios:
+            a["file"] = safe_name(a["file"])
+        srt_path = ""
+        if subtitles:
+            srt_path = os.path.join(d, safe_name(title) + ".srt")
+            with open(srt_path, "w", encoding="utf-8") as f:
+                f.write(build_srt(subtitles))
+            log("生成字幕", srt_path)
         app, proj, err = open_project(safe_name(title))
         if err:
             log("失败", err)
@@ -283,8 +337,20 @@ class Handler(BaseHTTPRequestHandler):
             log("生成工程", path)
             return path
         ok, msg = import_to_resolve(app, proj, make_xml, title)
+        if ok and audios:
+            tl = proj.GetCurrentTimeline()
+            fps = float(tl.GetSetting("timelineFrameRate") or 30)
+            n = place_audio(proj, tl, d, audios, fps)
+            if n:
+                msg += "；配乐 / 配音 %d 条已各占一条音轨" % n
+        if ok and srt_path:
+            try:
+                proj.GetMediaPool().ImportMedia([srt_path])     # 达芬奇的脚本接口不能把字幕放上字幕轨，只能先进媒体池
+                msg += "；字幕在媒体池里，拖到字幕轨即可"
+            except Exception:
+                msg += "；字幕文件是 " + os.path.basename(srt_path)
         log(("成功 " if ok else "失败 ") + msg)
-        return self._json(200 if ok else 500, {"ok": ok, "message": msg, "dir": d})
+        return self._json(200 if ok else 500, {"ok": ok, "message": msg, "dir": d, "srt": srt_path})
 
 def main():
     ap = argparse.ArgumentParser(description="Moodio 本地助手：把成片一键送进达芬奇")

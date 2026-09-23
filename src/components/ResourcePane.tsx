@@ -14,8 +14,9 @@ export async function runJianyingExport(mediaId?: string) {
     if (helper.ok && helper.resolveInstalled) {
       const ids = collectClipIds(mediaId); if (!ids.length) throw new Error('没有可导出的片段');
       const title = projects.active().title || '成片';
+      const recipe = mediaId ? useFiles.getState().media.find(m => m.id === mediaId)?.compose : undefined;
       toast(`正在把 ${ids.length} 段片段送进达芬奇…`);
-      const r = await sendToResolve(ids, title, text => toast(text));
+      const r = await sendToResolve(ids, title, text => toast(text), recipe);
       toast(r.message);
       return;
     }

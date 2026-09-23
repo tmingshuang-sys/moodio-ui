@@ -1,6 +1,6 @@
 // 导出到剪辑软件：FCPXML 片段首尾相接、媒体引用是绝对 file:// URL；EDL 时间码连续
 import { describe, expect, it } from 'vitest';
-import { buildFcpxml, buildEdl, fileUrl, cleanPath, isAbsolutePath, pathFromDrop } from './nle';
+import { buildFcpxml, buildEdl, buildSrt, fileUrl, cleanPath, isAbsolutePath, pathFromDrop } from './nle';
 
 const clips = [{ file: 'clip_01.mp4', name: '片段01', seconds: 15.1, width: 1254, height: 720 }, { file: 'clip_02.mp4', name: '片段02', seconds: 10, width: 1254, height: 720 }];
 
@@ -37,5 +37,12 @@ describe('从访达拖进来的路径', () => {
     expect(pathFromDrop(dt({ 'text/plain': '/Users/andrew/Movies/x' }))).toBe('/Users/andrew/Movies/x');
     expect(pathFromDrop(dt({ 'text/uri-list': 'https://example.com/a' }))).toBe('');
     expect(pathFromDrop(null)).toBe('');
+  });
+});
+
+describe('字幕文件', () => {
+  it('SRT 按时间排序、跳过空的', () => {
+    const srt = buildSrt([{ start: 6, end: 9.5, text: '第二句' }, { start: 1, end: 4, text: ' 第一句 ' }, { start: 9, end: 9, text: '零长' }, { start: 2, end: 3, text: '' }]);
+    expect(srt).toBe('1\n00:00:01,000 --> 00:00:04,000\n第一句\n\n2\n00:00:06,000 --> 00:00:09,500\n第二句\n');
   });
 });

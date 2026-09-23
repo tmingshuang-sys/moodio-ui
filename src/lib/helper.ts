@@ -3,6 +3,7 @@
 // 没装助手时一切照旧（导出片段文件夹），所以这是纯增量能力。
 import { getBlob } from './storage';
 import { findMedia } from './store';
+import type { ComposeRecipe } from './types';
 
 export const HELPER_PORT = 17817;
 export const HELPER_URL = `http://127.0.0.1:${HELPER_PORT}`;
@@ -26,7 +27,7 @@ export const forgetHelper = () => { cached = null; };
 
 export interface SendResult { message: string; dir?: string; }
 // 把片段按顺序送进达芬奇：先逐段上传，再让助手生成工程并导入
-export async function sendToResolve(ids: string[], title: string, onProgress?: (t: string) => void): Promise<SendResult> {
+export async function sendToResolve(ids: string[], title: string, onProgress?: (t: string) => void, recipe?: ComposeRecipe): Promise<SendResult> {
   if (!ids.length) throw new Error('没有可导出的片段');
   const job = title;
   const clips: { file: string; name: string; seconds: number; width?: number; height?: number }[] = [];
@@ -42,8 +43,26 @@ export async function sendToResolve(ids: string[], title: string, onProgress?: (
     if (!r.ok) throw new Error(`片段 ${file} 没传成功（${r.status}）`);
     clips.push({ file, name: m.name, seconds, width: width || undefined, height: height || undefined });
   }
+  // 配乐与配音：成片记着它们，一并传上去挂成独立音频轨；字幕交给助手写成 SRT
+  const audios: { file: string; name: string; seconds: number; start: number; volume?: number; role?: string }[] = [];
+  const pushAudio = async (id: string, start: number, volume: number | undefined, role: string, tag: string) => {
+    const m = findMedia(id); if (!m) return;
+    const blob = await getBlob(m.id); if (!blob) return;
+    const ext = (/\.([a-z0-9]{2,4})$/i.exec(m.name)?.[1] || 'mp3').toLowerCase();
+    const file = `${tag}.${ext}`;
+    let seconds = m.duration || 0;
+    if (!seconds) seconds = (await probe(blob)).seconds;
+    if (!seconds) return;
+    onProgress?.(`传送${role === 'music' ? '配乐' : '配音'}…`);
+    const up = await fetch(`${HELPER_URL}/file?job=${encodeURIComponent(job)}&name=${encodeURIComponent(file)}`, { method: 'POST', body: blob });
+    if (!up.ok) return;
+    audios.push({ file, name: m.name, seconds, start, volume, role });
+  };
+  if (recipe?.musicId) await pushAudio(recipe.musicId, 0, recipe.musicVolume, 'music', 'music');
+  const voices = recipe?.voices || [];
+  for (let i = 0; i < voices.length; i++) await pushAudio(voices[i].id, voices[i].start || 0, voices[i].volume, 'dialogue', `voice_${String(i + 1).padStart(2, '0')}`);
   onProgress?.('正在让达芬奇打开时间线…');
-  const r = await fetch(`${HELPER_URL}/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job, title, clips }) });
+  const r = await fetch(`${HELPER_URL}/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ job, title, clips, audios, subtitles: recipe?.subtitles || [] }) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok || !data.ok) throw new Error(data.error || data.message || '达芬奇没能打开这条时间线');
   return { message: String(data.message || '已送进达芬奇'), dir: data.dir };

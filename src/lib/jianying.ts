@@ -11,7 +11,7 @@ import { readLedger } from './ledger';
 import { findMedia } from './store';
 import { projects } from './projects';
 import { makeZip, safeFolderName } from './jianying-draft';
-import { buildFcpxml, buildEdl, cleanPath, isAbsolutePath, buildManifest, fileExt } from './nle';
+import { buildFcpxml, buildEdl, buildSrt, cleanPath, isAbsolutePath, buildManifest, fileExt } from './nle';
 
 export const JIANYING_SCHEME = 'videocut://';
 const BASE_PATH_KEY = 'moodio-export-base-path';   // 片段文件夹的父目录绝对路径，用户粘贴一次（FCPXML 的媒体引用必须是绝对路径）
@@ -73,6 +73,16 @@ export async function exportToJianying(mediaId?: string, onProgress?: (t: string
     if (!seconds || !width) { const p = await probeVideo(blob); seconds = seconds || p.seconds; width = width || p.width; height = height || p.height; }
     files.push({ file: `clip_${String(i + 1).padStart(2, '0')}.${fileExt(m)}`, name: m.name, seconds, width, height, blob });
   }
+  // 配乐 / 配音与字幕：成片记着它们，一并放进导出目录（FCPXML 里不写音频，否则达芬奇会打乱音轨分配）
+  const extras: { file: string; blob: Blob }[] = [];
+  const recipe = mediaId ? findMedia(mediaId)?.compose : undefined;
+  const addAudio = async (id: string, tag: string) => {
+    const m = findMedia(id); if (!m) return; const blob = await getBlob(m.id); if (!blob) return;
+    extras.push({ file: `${tag}.${(/\.([a-z0-9]{2,4})$/i.exec(m.name)?.[1] || 'mp3').toLowerCase()}`, blob });
+  };
+  if (recipe?.musicId) await addAudio(recipe.musicId, '配乐');
+  for (let i = 0; i < (recipe?.voices || []).length; i++) await addAudio(recipe!.voices![i].id, `配音_${String(i + 1).padStart(2, '0')}`);
+  const srt = buildSrt(recipe?.subtitles || []);
   const manifest = buildManifest(title, files);
   const nleClips = files.map(f => ({ file: f.file, name: f.name, seconds: f.seconds || 0, width: f.width, height: f.height }));
   const edl = buildEdl({ title, clips: nleClips });
@@ -83,6 +93,8 @@ export async function exportToJianying(mediaId?: string, onProgress?: (t: string
     for (let i = 0; i < files.length; i++) { onProgress?.(`复制片段 ${i + 1}/${files.length}…`); await writeFile(dir, files[i].file, files[i].blob); }
     await writeFile(dir, '片段清单.txt', manifest);
     await writeFile(dir, `${title}.edl`, edl);
+    for (const e of extras) await writeFile(dir, e.file, e.blob);
+    if (srt) await writeFile(dir, `${title}.srt`, srt);
     // 知道绝对路径才能生成 FCPXML：媒体引用必须是绝对的 file:// URL
     const base = basePath(); let project = false;
     if (base) { await writeFile(dir, `${title}.fcpxml`, buildFcpxml({ title, clips: nleClips, dirPath: `${base}/${name}` })); project = true; }
@@ -94,6 +106,8 @@ export async function exportToJianying(mediaId?: string, onProgress?: (t: string
   onProgress?.('打包片段…');
   const enc = new TextEncoder();
   const entries: { path: string; data: Uint8Array }[] = [{ path: `${folder}/片段清单.txt`, data: enc.encode(manifest) }, { path: `${folder}/${title}.edl`, data: enc.encode(edl) }];
+  if (srt) entries.push({ path: `${folder}/${title}.srt`, data: enc.encode(srt) });
+  for (const e of extras) entries.push({ path: `${folder}/${e.file}`, data: new Uint8Array(await e.blob.arrayBuffer()) });
   const base = basePath();
   if (base) entries.push({ path: `${folder}/${title}.fcpxml`, data: enc.encode(buildFcpxml({ title, clips: nleClips, dirPath: `${base}/${folder}` })) });
   for (const f of files) entries.push({ path: `${folder}/${f.file}`, data: new Uint8Array(await f.blob.arrayBuffer()) });
