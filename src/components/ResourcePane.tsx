@@ -3,30 +3,28 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye, Clapperboard } from 'lucide-react';
-import { exportToJianying, canWriteDirectly, hasExportDir, basePath, setBasePath, basePathOk } from '../lib/jianying';
-// 导出片段到剪辑软件：片段按顺序命名 + FCPXML 工程（达芬奇 / Final Cut 一键导入就排好）+ EDL + 清单，然后唤起剪映
-// 剪映不接受外部写入的草稿（见 lib/jianying.ts 顶部），所以剪映那边只能导入素材自己拖；专业软件走 FCPXML
+import { exportToJianying, canWriteDirectly, hasExportDir, rememberExportDir, basePath, setBasePath, basePathOk } from '../lib/jianying';
+// 导出片段到剪辑软件：片段按顺序命名 + FCPXML 工程（达芬奇 / Final Cut 一键导入就排好）+ EDL + 清单
+// 剪映不接受外部写入的草稿（见 lib/jianying.ts 顶部），达芬奇也没有 URL scheme 不能被网页唤起，所以导完只提示位置
 export async function runJianyingExport(mediaId?: string) {
   try {
-    if (canWriteDirectly() && !(await hasExportDir())) {
-      const ok = await confirmDialog({ title: t('导出片段'), okLabel: t('选择文件夹'), body: (
-        <div className="jy-setup">
+    // 第一次：把文件夹从访达拖进来，一步同时拿到写入权限与绝对路径（FCPXML 的媒体引用必须是绝对路径）
+    if (canWriteDirectly() && (!(await hasExportDir()) || !basePath())) {
+      const r = await folderDialog({ title: t('片段存到哪'), hint: (
+        <>
           <p>{t('会把成片的每个片段按顺序导出成 clip_01、clip_02…，并附一份达芬奇 / Final Cut 能直接导入的工程文件，导入后时间线上已经排好。')}</p>
-          <p>{t('第一次需要选一个存放片段的文件夹（建议「影片」），之后不用再选。')}</p>
-        </div>) });
-      if (!ok) return;
-    }
-    // FCPXML 的媒体引用必须是绝对路径，浏览器拿不到，所以让用户粘贴一次上级目录
-    if (!basePath()) {
-      const v = await promptDialog({ title: t('片段文件夹在哪'), label: t('粘贴刚才那个文件夹的完整路径（访达里选中它按 ⌥⌘C 即可复制）。留空则只导片段，不生成工程文件。'), placeholder: '/Users/你的用户名/Movies', okLabel: t('保存') });
-      if (v && basePathOk(v)) setBasePath(v);
-      else if (v) toast(t('路径要以 / 开头，这次先只导片段'));
+          <p>{t('只需这一次，之后直接导出。')}</p>
+        </>) });
+      if (!r) return;
+      if (r.handle) await rememberExportDir(r.handle);
+      if (r.path && basePathOk(r.path)) setBasePath(r.path);   // 拖进来的就是存放片段的文件夹，导出时在它下面再建子文件夹
+      if (!r.handle) return;
     }
     const r = await exportToJianying(mediaId, text => toast(text));
     const where = r.mode === 'direct' ? `「${r.folder}」` : `「${r.folder}.zip」`;
     toast(r.project
-      ? `已导出 ${r.clips} 段片段到${where}，里面的 .fcpxml 用达芬奇 / Final Cut 打开就是排好的时间线；剪映需要导入素材后自己拖`
-      : `已导出 ${r.clips} 段片段到${where}，在剪辑软件里导入后按 clip_01…的顺序拖到时间线`);
+      ? `已导出 ${r.clips} 段到${where}，双击里面的 .fcpxml 之前先在达芬奇里「文件 › 导入 › 时间线」选它，时间线就是排好的`
+      : `已导出 ${r.clips} 段到${where}，没有路径所以没生成工程文件，在剪辑软件里按 clip_01…的顺序拖即可`);
   } catch (e: any) { if (e?.name !== 'AbortError') toast(`导出片段失败：${e?.message || e}`); }
 }
 import type { Doc, MediaItem } from '../lib/types';
@@ -36,7 +34,7 @@ import { timeAgo } from '../lib/time';
 import { mediaUrl, downloadText, getBlob, downloadBlob } from '../lib/storage';
 import { uploadFiles } from '../lib/upload';
 import { openMenuAt } from './Menu';
-import { confirmDialog, promptDialog } from './Dialogs';
+import { confirmDialog, promptDialog, folderDialog } from './Dialogs';
 import { toast } from './Toast';
 import { useT, t } from '../lib/i18n';
 import LedgerView from './LedgerView';

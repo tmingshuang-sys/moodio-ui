@@ -716,8 +716,15 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .sb-split:hover::after, body.is-resizing .sb-split::after { height: 2px; top: 4.5px; background: rgba(29, 29, 31, .3); }
 .sb-nav { flex: none; }
 
-/* 去剪映编辑：第一次授权草稿文件夹的说明弹窗 */
+/* 导出片段：第一次选存放文件夹（拖进来一步拿到权限与路径） */
 .jy-setup p { margin: 0 0 10px; line-height: 1.6; }
 .jy-setup p:last-child { margin-bottom: 0; }
-.jy-setup .muted { color: var(--ink-2); font-size: 12px; }
-.jy-setup code { padding: 2px 6px; border-radius: 6px; background: var(--panel); font-size: 12px; }
+.folder-pick .hint p { margin: 0 0 8px; line-height: 1.6; color: var(--ink-2); font-size: 13px; }
+.folder-pick .drop-zone { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; margin: 12px 0; border: 1px dashed var(--line); border-radius: 12px; background: var(--panel); color: var(--ink-2); text-align: center; }
+.folder-pick .drop-zone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.folder-pick .drop-zone strong { font-size: 14px; color: var(--ink); font-weight: 600; }
+.folder-pick .drop-zone span { font-size: 12px; }
+.folder-pick .drop-zone .btn { margin-top: 6px; }
+.folder-pick label { display: block; font-size: 13px; color: var(--ink-2); }
+.folder-pick label input { margin-top: 6px; }
+.folder-pick .state { margin: 10px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.6; }

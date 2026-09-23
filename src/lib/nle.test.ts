@@ -1,6 +1,6 @@
 // 导出到剪辑软件：FCPXML 片段首尾相接、媒体引用是绝对 file:// URL；EDL 时间码连续
 import { describe, expect, it } from 'vitest';
-import { buildFcpxml, buildEdl, fileUrl, cleanPath, isAbsolutePath } from './nle';
+import { buildFcpxml, buildEdl, fileUrl, cleanPath, isAbsolutePath, pathFromDrop } from './nle';
 
 const clips = [{ file: 'clip_01.mp4', name: '片段01', seconds: 15.1, width: 1254, height: 720 }, { file: 'clip_02.mp4', name: '片段02', seconds: 10, width: 1254, height: 720 }];
 
@@ -27,5 +27,15 @@ describe('导出到剪辑软件', () => {
     expect(cleanPath('  "/Users/a/Movies/"  ')).toBe('/Users/a/Movies');
     expect(isAbsolutePath('/Users/a')).toBe(true); expect(isAbsolutePath('Users/a')).toBe(false); expect(isAbsolutePath('~/Movies')).toBe(false);
     expect(fileUrl('/a b/c&d.mp4')).toBe('file:///a%20b/c%26d.mp4');
+  });
+});
+
+describe('从访达拖进来的路径', () => {
+  const dt = (data: Record<string, string>) => ({ getData: (t: string) => data[t] || '' } as unknown as DataTransfer);
+  it('解析 uri-list 里的 file:// 并解码中文与空格', () => {
+    expect(pathFromDrop(dt({ 'text/uri-list': 'file:///Users/andrew/Movies/%E7%89%87%E6%AE%B5%20%E5%A4%B9/' }))).toBe('/Users/andrew/Movies/片段 夹');
+    expect(pathFromDrop(dt({ 'text/plain': '/Users/andrew/Movies/x' }))).toBe('/Users/andrew/Movies/x');
+    expect(pathFromDrop(dt({ 'text/uri-list': 'https://example.com/a' }))).toBe('');
+    expect(pathFromDrop(null)).toBe('');
   });
 });

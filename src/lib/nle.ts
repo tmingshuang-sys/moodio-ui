@@ -87,3 +87,15 @@ export function buildManifest(title: string, items: { file: string; name: string
   if (total) lines.push('', `合计 ${items.length} 段，约 ${Math.round(total)} 秒`);
   return lines.join('\n') + '\n';
 }
+
+// 拖放里解析出本地绝对路径：访达拖进来的是 file:///... 的 uri-list
+export function pathFromDrop(dt: DataTransfer | null): string {
+  if (!dt) return '';
+  for (const type of ['text/uri-list', 'text/plain']) {
+    const raw = dt.getData(type); if (!raw) continue;
+    const line = raw.split(/[\r\n]+/).map(t => t.trim()).find(t => t.startsWith('file://') || t.startsWith('/'));
+    if (!line) continue;
+    try { return line.startsWith('file://') ? decodeURIComponent(new URL(line).pathname).replace(/\/$/, '') : line.replace(/\/$/, ''); } catch { /* 下一种 */ }
+  }
+  return '';
+}

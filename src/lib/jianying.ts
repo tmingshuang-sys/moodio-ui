@@ -44,6 +44,7 @@ const DIR_KEY = 'jianying-export-dir';
 type DirHandle = FileSystemDirectoryHandle & { queryPermission?: (o: { mode: string }) => Promise<string>; requestPermission?: (o: { mode: string }) => Promise<string> };
 export const canWriteDirectly = () => typeof window !== 'undefined' && typeof (window as any).showDirectoryPicker === 'function';
 export async function hasExportDir(): Promise<boolean> { return !!(await idbGet<DirHandle>(DIR_KEY, settingsStore).catch(() => null)); }
+export async function rememberExportDir(handle: FileSystemDirectoryHandle) { await idbSet(DIR_KEY, handle, settingsStore).catch(() => {}); }
 export async function forgetExportDir() { await idbDel(DIR_KEY, settingsStore).catch(() => {}); }
 async function pickExportDir(): Promise<FileSystemDirectoryHandle> {
   let handle = await idbGet<DirHandle>(DIR_KEY, settingsStore).catch(() => null);
@@ -85,7 +86,9 @@ export async function exportToJianying(mediaId?: string, onProgress?: (t: string
     // 知道绝对路径才能生成 FCPXML：媒体引用必须是绝对的 file:// URL
     const base = basePath(); let project = false;
     if (base) { await writeFile(dir, `${title}.fcpxml`, buildFcpxml({ title, clips: nleClips, dirPath: `${base}/${name}` })); project = true; }
-    let opened = false; try { window.location.href = JIANYING_SCHEME; opened = true; } catch { /* 没装剪映或浏览器拦了 */ }
+    // 有工程文件说明走达芬奇 / Final Cut，不再弹剪映（达芬奇没有 URL scheme，网页唤不起，只能提示位置）
+    let opened = false;
+    if (!project) { try { window.location.href = JIANYING_SCHEME; opened = true; } catch { /* 没装剪映或浏览器拦了 */ } }
     return { mode: 'direct', folder: name, clips: files.length, opened, project };
   }
   onProgress?.('打包片段…');

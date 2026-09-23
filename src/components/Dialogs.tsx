@@ -1,18 +1,21 @@
 // ===== 弹窗：确认 / 输入 / 模型设置 / 创作纲领。宽 620、圆角 12、标题栏 18/22 + 右上 ×、正文 20/22、底栏按钮靠右 =====
 import { useEffect, useState } from 'react';
+import type React from 'react';
 import type { ReactNode } from 'react';
 import { create } from 'zustand';
-import { X } from 'lucide-react';
+import { X, FolderOpen } from 'lucide-react';
 import { useFiles } from '../lib/store';
 import { BRIEF_FIELDS, BRIEF_FORMATS } from '../lib/guides';
 import { modelCfg, saveModelCfg, modelProvider, PROVIDER_DEFAULTS, probeModel, explainModelError } from '../lib/model';
 import { MEDIA_DEFAULTS, mediaEndpoint } from '../lib/mediagen';
 import type { ModelConfig } from '../lib/types';
 import { toast } from './Toast';
+import { pathFromDrop } from '../lib/nle';
 
 type DialogSpec =
   | { kind: 'confirm'; title: string; body: ReactNode; okLabel?: string; danger?: boolean; resolve: (ok: boolean) => void }
   | { kind: 'prompt'; title: string; label?: string; value: string; placeholder?: string; okLabel?: string; resolve: (v: string | null) => void }
+  | { kind: 'folder'; title: string; hint: ReactNode; resolve: (v: { handle: FileSystemDirectoryHandle | null; path: string } | null) => void }
   | { kind: 'model' }
   | { kind: 'brief' };
 interface DialogState { dialog: DialogSpec | null; open: (d: DialogSpec) => void; close: () => void; }
@@ -23,6 +26,10 @@ export function confirmDialog(opts: { title: string; body: ReactNode; okLabel?: 
 }
 export function promptDialog(opts: { title: string; label?: string; value?: string; placeholder?: string; okLabel?: string }): Promise<string | null> {
   return new Promise(resolve => useDialog.getState().open({ kind: 'prompt', title: opts.title, label: opts.label, value: opts.value || '', placeholder: opts.placeholder, okLabel: opts.okLabel, resolve }));
+}
+// 选导出文件夹：把文件夹从访达拖进来，一步同时拿到写入权限（FileSystemDirectoryHandle）与绝对路径（拖放的 text/uri-list）
+export function folderDialog(opts: { title: string; hint: ReactNode }): Promise<{ handle: FileSystemDirectoryHandle | null; path: string } | null> {
+  return new Promise(resolve => useDialog.getState().open({ kind: 'folder', title: opts.title, hint: opts.hint, resolve }));
 }
 export const openModelSettings = () => useDialog.getState().open({ kind: 'model' });
 export const openBrief = () => useDialog.getState().open({ kind: 'brief' });
@@ -52,6 +59,47 @@ function PromptDialog({ d }: { d: Extract<DialogSpec, { kind: 'prompt' }> }) {
   return (
     <Frame title={d.title} onClose={() => done(null)} footer={<><button type="button" className="btn" onClick={() => done(null)}>取消</button><button type="button" className="btn primary" onClick={() => done(value.trim())} disabled={!value.trim()}>{d.okLabel || '确定'}</button></>}>
       <label>{d.label || ''}<input autoFocus value={value} placeholder={d.placeholder} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && value.trim()) done(value.trim()); }} /></label>
+    </Frame>
+  );
+}
+
+function FolderDialog({ d }: { d: Extract<DialogSpec, { kind: 'folder' }> }) {
+  const close = useDialog(s => s.close);
+  const [path, setPath] = useState(''); const [handle, setHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [over, setOver] = useState(false); const [note, setNote] = useState('');
+  const done = (v: { handle: FileSystemDirectoryHandle | null; path: string } | null) => { close(); d.resolve(v); };
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault(); setOver(false);
+    const p = pathFromDrop(e.dataTransfer); if (p) setPath(p);
+    const item = e.dataTransfer.items?.[0] as any;
+    if (item?.getAsFileSystemHandle) {
+      try {
+        const h = await item.getAsFileSystemHandle();
+        if (h?.kind === 'directory') {
+          const perm = await (h as any).requestPermission?.({ mode: 'readwrite' }).catch(() => 'denied');
+          if (perm === 'granted') { setHandle(h); setNote(p ? '' : '拿到了写入权限，但没读出路径，可以手动粘贴'); }
+          else setNote('需要允许写入这个文件夹才能把片段放进去');
+        } else setNote('请拖一个文件夹，不是文件');
+      } catch { setNote('这个浏览器不支持拖文件夹，请用下面的按钮选择'); }
+    }
+  };
+  const pick = async () => {
+    try { const h = await (window as any).showDirectoryPicker({ id: 'moodio-export', mode: 'readwrite', startIn: 'videos' }); setHandle(h); setNote(path ? '' : '已选好文件夹，还差路径：把它从访达拖进来，或粘贴路径'); }
+    catch { /* 用户取消 */ }
+  };
+  return (
+    <Frame title={d.title} onClose={() => done(null)} footer={<><button type="button" className="btn" onClick={() => done(null)}>取消</button><button type="button" className="btn primary" disabled={!handle} onClick={() => done({ handle, path: path.trim() })}>完成</button></>}>
+      <div className="folder-pick">
+        <div className="hint">{d.hint}</div>
+        <div className={`drop-zone${over ? ' over' : ''}`} onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
+          <FolderOpen size={22} />
+          <strong>把文件夹从访达拖到这里</strong>
+          <span>一步搞定：同时拿到存放位置和路径，不用手填</span>
+          <button type="button" className="btn" onClick={pick}>或者点这里选文件夹</button>
+        </div>
+        <label>路径<input value={path} placeholder="/Users/你的用户名/Movies/片段" onChange={e => setPath(e.target.value)} /></label>
+        <p className="state">{handle ? `✓ 已授权文件夹「${handle.name}」` : '还没选文件夹'}{path ? `　✓ 路径已识别` : '　路径留空则不生成工程文件'}{note ? `　${note}` : ''}</p>
+      </div>
     </Frame>
   );
 }
@@ -119,6 +167,7 @@ export function DialogHost() {
   if (!d) return null;
   if (d.kind === 'confirm') return <ConfirmDialog d={d} />;
   if (d.kind === 'prompt') return <PromptDialog d={d} />;
+  if (d.kind === 'folder') return <FolderDialog d={d} />;
   if (d.kind === 'model') return <ModelDialog />;
   return <BriefDialog />;
 }
