@@ -115,12 +115,12 @@ export function nextStep(): NextStep {
       return { ...base, kind: 'agent', label: '进入分镜', detail: '', prompt: '参考图已全部确认，用 update_ledger 把阶段推进到 storyboard，然后按分镜规范拆分镜表。' };
     }
     case 'storyboard': {
-      if (storyboardDoc() || ((skill.id === 'ad' || skill.id === 'short') && shotTableInScript())) { const p = videoProfile(); return { ...base, kind: 'agent', label: '进入片段方案', detail: '分镜已就绪', prompt: `分镜已就绪，用 update_ledger 把阶段推进到 prompts，然后按片段提示词冻结格式与生成策略「${strategyLabel(p)}」写约 ${expectedClips(skill, b)} 份「视频生成Prompt-NN.md」（单段约 ${planClipSeconds(skill, p)} 秒、不超过 ${p.maxClip} 秒，最后一段可短，段数可少不可多），全片风格表逐字相同，主体绑定参考图，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。` }; }
-      return { ...base, kind: 'agent', label: '拆分镜表', detail: cur.goal, prompt: '按分镜规范把脚本拆成「分镜表.md」（十列 + 全片 BGM），镜头总时长与纲领时长一致；镜头时长与运镜按系统提示里的生成策略安排（「长片段优先」时多用长镜头、少切碎，「分镜接续」时单镜不超过模型单段上限）。' };
+      if (storyboardDoc() || ((skill.id === 'ad' || skill.id === 'short') && shotTableInScript())) { const p = videoProfile(); return { ...base, kind: 'agent', label: '进入片段方案', detail: '分镜已就绪', prompt: `分镜已就绪，用 update_ledger 把阶段推进到 prompts，然后按片段提示词冻结格式与生成策略「${strategyLabel(p)}」写约 ${expectedClips(skill, b)} 份「视频生成Prompt-NN.md」（单段约 ${planClipSeconds(skill, p)} 秒、不超过 ${p.maxClip} 秒，最后一段可短，段数可少不可多），全片风格表逐字相同，主体绑定参考图，子镜头时段首尾相接；每段第 4 行写「衔接」、结尾前写「结尾状态」，段界类型照分镜表的「## 段落衔接」，接续段的衔接句逐字照抄上一段的结尾状态（lint_clips 会逐字比对，写不出具体状态就改成硬切）；片段清单写进台账 clips；写完用 lint_clips 自查。` }; }
+      return { ...base, kind: 'agent', label: '拆分镜表', detail: cur.goal, prompt: '按分镜规范把脚本拆成「分镜表.md」（十列 + 全片 BGM），镜头总时长与纲领时长一致；镜头时长与运镜按系统提示里的生成策略安排（「长片段优先」时多用长镜头、少切碎，「分镜接续」时单镜不超过模型单段上限）；表后写「## 段落衔接」：按预计的段界逐个标「硬切——原因」或「接续——交接状态：…」（谁在画面哪里、姿态与动作进度、视线、道具、机位景别、光线），接续处段界前后两镜同场景、同光、同轴线，前一镜以动作到位的停顿收尾。' };
     }
     case 'prompts': {
       const n = expectedClips(skill, b); const have = clipDocs().length;
-      if (!have) { const p = videoProfile(); return { ...base, kind: 'agent', label: `写约 ${n} 份片段提示词`, detail: cur.goal, prompt: `按片段提示词冻结格式与生成策略「${strategyLabel(p)}」写约 ${n} 份「视频生成Prompt-NN.md」（单段约 ${planClipSeconds(skill, p)} 秒、不超过 ${p.maxClip} 秒，最后一段可短，段数可少不可多），全片风格表逐字相同，主体绑定参考图并原样带冻结外形描述，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。` }; }
+      if (!have) { const p = videoProfile(); return { ...base, kind: 'agent', label: `写约 ${n} 份片段提示词`, detail: cur.goal, prompt: `按片段提示词冻结格式与生成策略「${strategyLabel(p)}」写约 ${n} 份「视频生成Prompt-NN.md」（单段约 ${planClipSeconds(skill, p)} 秒、不超过 ${p.maxClip} 秒，最后一段可短，段数可少不可多），全片风格表逐字相同，主体绑定参考图并原样带冻结外形描述，子镜头时段首尾相接；片段清单写进台账 clips；写完用 lint_clips 自查。；每段第 4 行写「衔接」、结尾前写「结尾状态」，段界类型照分镜表的「## 段落衔接」，接续段的衔接句逐字照抄上一段的结尾状态（lint_clips 会逐字比对，写不出具体状态就改成硬切）` }; }
       const r = lintClips();
       if (r.errors.length && !ledger?.flags?.skipLint) return { ...base, kind: 'agent', label: `修正 ${r.errors.length} 处校验问题`, detail: r.errors[0], prompt: `片段提示词校验未通过：\n${r.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}\n请只修改有问题的文稿（write_doc overwrite 或 replace_section），并把台账 clips 改正确。` };
       if (!confirmed.includes('prompts')) return { ...base, kind: 'confirm', checkpoint: 'prompts', label: `确认按此生成（${have} 段，约 ${estimateMinutes(have, b)} 分钟）`, detail: '生成按次计费；先在工作区看一遍片段提示词', billable: true };

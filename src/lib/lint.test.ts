@@ -17,7 +17,7 @@ beforeAll(async () => {
   ({ parseSeconds, activeSellingPoints, sellingPointRows, lintClipDocs, ledgerRows, frozenDescriptions, songSegments } = await import('./lint'));
 });
 
-const clip = (no: number, seconds: number, ranges: string[], body = '', exposure = '无') => ({ name: `视频生成Prompt-${String(no).padStart(2, '0')}.md`, content: `时长：${seconds}秒，比例：16:9。任务：生成品牌TVC。\n\n${ranges.map(r => `${r}秒\n拍法：固定\n画面内容：${body}\n品牌/产品露出：${exposure}\n声音：{a}`).join('\n')}` });
+const clip = (no: number, seconds: number, ranges: string[], body = '', exposure = '无') => ({ name: `视频生成Prompt-${String(no).padStart(2, '0')}.md`, content: `时长：${seconds}秒，比例：16:9。任务：生成品牌TVC。\n衔接：${no === 1 ? '全片开场' : '硬切——测试用段界'}\n\n${ranges.map(r => `${r}秒\n拍法：固定\n画面内容：${body}\n品牌/产品露出：${exposure}\n声音：{a}`).join('\n')}\n结尾状态：人物居中面向镜头站定，手持产品1于胸前，近景固定机位，上午侧光` });
 const ledger = `# 营销脑图\n## 卖点账本\n| 编号 | 卖点 | 优先级 | 篇幅权重 | 内容 | 证明方式 | 落在哪个片段 | 状态 |\n|---|---|---|---|---|---|---|---|\n| USP-01 | 便携轻巧，单手可握 | P00 | 高 | x | y | 2 | 已激活 |\n| SP-01 | 防水设计 | P0 | 中 | x | y | 3 | 已激活 |\n| SP-02 | 长续航 | P1 | 低 | x | y | - | 备选 |\n`;
 
 describe('clip lint', () => {
@@ -43,6 +43,28 @@ describe('clip lint', () => {
     const byLedger = lintClipDocs([clip(1, 15, ['0-15'], '街头'), clip(2, 15, ['0-15'], '掌心')], [{ point: '便携轻巧，单手可握', clip: 2 }, { point: '防水设计', clip: 9 }], 30);
     expect(byLedger.errors).toEqual([expect.stringContaining('卖点「防水设计」')]);
     expect(lintClipDocs([{ name: '故事脚本.md', content: 'x' }], [], 60).errors[0]).toContain('还没有片段提示词');
+  });
+});
+
+describe('段落衔接', () => {
+  const state = '近景，主体1在左、主体2在右并肩面向镜头，产品1在掌心亮着指示灯，机位停住，上午侧逆光';
+  const first = () => { const c = clip(1, 15, ['0-15'], '街头'); return { ...c, content: c.content.replace(/结尾状态：.*/, `结尾状态：${state}`) }; };
+  const cont = (text: string) => { const c = clip(2, 15, ['0-15'], '掌心'); return { ...c, content: c.content.replace(/衔接：.*/, `衔接：接上一段——上一段结尾状态：${text}`) }; };
+  it('接续段的衔接句与上一段结尾状态逐字相同才通过，硬切不用对', () => {
+    expect(lintClipDocs([first(), cont(state)], [], 30).errors).toEqual([]);
+    expect(lintClipDocs([first(), cont(state.replace('，', ', ') + '。')], [], 30).errors).toEqual([]);   // 标点与空格差异不算
+    expect(lintClipDocs([first(), cont('近景，主体1在右')], [], 30).errors).toEqual([expect.stringContaining('接不上戏')]);
+    expect(lintClipDocs([first(), clip(2, 15, ['0-15'], '掌心')], [], 30).errors).toEqual([]);   // 硬切
+  });
+  it('缺衔接行、缺结尾状态、接上一段却没照抄都报错，最后一段可以不写结尾状态', () => {
+    const noHandoff = (() => { const c = clip(2, 15, ['0-15']); return { ...c, content: c.content.replace(/衔接：.*\n/, '') }; })();
+    expect(lintClipDocs([first(), noHandoff], [], 30).errors).toEqual([expect.stringContaining('没有写「衔接')]);
+    const noEnding = (() => { const c = clip(1, 15, ['0-15']); return { ...c, content: c.content.replace(/\n结尾状态：.*/, '') }; })();
+    expect(lintClipDocs([noEnding, cont(state)], [], 30).errors).toEqual([expect.stringContaining('没有写「结尾状态')]);
+    const lastNoEnding = (() => { const c = clip(2, 15, ['0-15']); return { ...c, content: c.content.replace(/\n结尾状态：.*/, '') }; })();
+    expect(lintClipDocs([first(), lastNoEnding], [], 30).errors).toEqual([]);
+    const bare = (() => { const c = clip(2, 15, ['0-15']); return { ...c, content: c.content.replace(/衔接：.*/, '衔接：接上一段') }; })();
+    expect(lintClipDocs([first(), bare], [], 30).errors).toEqual([expect.stringContaining('没有照抄')]);
   });
 });
 

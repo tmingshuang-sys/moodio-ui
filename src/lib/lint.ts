@@ -5,7 +5,7 @@ import { videoProfile } from './mediagen';
 import { CLIP_FOCUS_LABELS } from './guides';
 import { FROZEN_LABEL } from './skills';
 
-export interface ClipInfo { no: number; name: string; seconds: number; ranges: [number, number][]; }
+export interface ClipInfo { no: number; name: string; seconds: number; ranges: [number, number][]; handoff?: { type: 'open' | 'cut' | 'continue'; prev?: string }; ending?: string; }   // handoff：这一段的「衔接」行；ending：「结尾状态」行
 export interface ClipLint { errors: string[]; warnings: string[]; clips: ClipInfo[]; sellingPoints: string[]; }
 
 export const CLIP_DOC_RE = /^视频生成Prompt-(\d{1,2})\.md$/i;
@@ -25,7 +25,12 @@ function clipInfo(name: string, content: string): ClipInfo {
   const sec = /时长[：:]\s*(\d+(?:\.\d+)?)\s*(?:秒|s)/i.exec(content); const seconds = sec ? parseFloat(sec[1]) : 0;
   const ranges: [number, number][] = [];
   for (const m of content.matchAll(/^\s*(\d+(?:\.\d+)?)\s*[-–—~]\s*(\d+(?:\.\d+)?)\s*秒\s*$/gm)) ranges.push([parseFloat(m[1]), parseFloat(m[2])]);
-  return { no, name, seconds, ranges };
+  // 段落衔接：「衔接：硬切——…」「衔接：接上一段——上一段结尾状态：…」「衔接：全片开场」；「结尾状态：…」
+  let handoff: ClipInfo['handoff'];
+  const h = /^\s*衔接[：:]\s*(.+)$/m.exec(content);
+  if (h) { const t = h[1].trim(); const prev = /上一段结尾状态[：:]\s*(.+)$/.exec(t)?.[1]?.trim(); handoff = /^硬切/.test(t) ? { type: 'cut' } : /^(接上一段|接续)/.test(t) ? { type: 'continue', prev } : { type: 'open' }; }
+  const e = /^\s*结尾状态[：:]\s*(.+)$/m.exec(content); const ending = e ? e[1].trim() : undefined;
+  return { no, name, seconds, ranges, handoff, ending };
 }
 
 // 账本：任何带「落在哪个片段」列的表都算（卖点账本 / 意象账本 / 钩子账本 / 场景账本 / 道具账本…），一行一个要落地的元素
@@ -113,6 +118,18 @@ export function lintClipDocs(docs: { name: string; content: string }[], sellingP
     let cursor = 0;
     for (const [a, b] of c.ranges) { if (Math.abs(a - cursor) > 0.01) errors.push(`「${c.name}」时段 ${a}-${b} 秒与前一段不相接（应从 ${cursor} 秒开始）`); if (b <= a) errors.push(`「${c.name}」时段 ${a}-${b} 秒结束早于开始`); cursor = b; }
     if (Math.abs(cursor - c.seconds) > 0.01) errors.push(`「${c.name}」子镜头只排到 ${cursor} 秒，片段时长是 ${c.seconds} 秒`);
+  });
+  // 段落衔接：每个段界要么硬切要么接续；接续段的「衔接」句必须与上一段「结尾状态」逐字相同，否则两段接不上戏
+  clips.forEach((c, i) => {
+    const prev = i > 0 ? clips[i - 1] : null; const last = i === clips.length - 1;
+    if (i > 0 && !c.handoff) errors.push(`「${c.name}」没有写「衔接：…」行（接上一段——上一段结尾状态：<逐字照抄上一段的结尾状态> 或 硬切——原因）`);
+    if (!last && !c.ending) errors.push(`「${c.name}」没有写「结尾状态：…」行，下一段无法接戏（写清画面里有谁、位置朝向、姿态与动作进度、视线、道具、机位景别、光线）`);
+    else if (!last && c.ending && normalize(c.ending).length < 12) warnings.push(`「${c.name}」的结尾状态太短，写不出可接戏的交接状态`);
+    if (c.handoff?.type === 'continue') {
+      if (!c.handoff.prev) errors.push(`「${c.name}」写了接上一段，但没有照抄「上一段结尾状态：…」`);
+      else if (prev?.ending && normalize(prev.ending) !== normalize(c.handoff.prev)) errors.push(`「${c.name}」的衔接句与「${prev.name}」的结尾状态不一致，两段接不上戏——上一段结尾：${prev.ending.slice(0, 60)}；本段衔接：${c.handoff.prev.slice(0, 60)}`);
+      else if (!prev) warnings.push(`「${c.name}」写了接上一段，但没有上一段的文稿可核对`);
+    }
   });
   const sum = clips.reduce((s, c) => s + c.seconds, 0);
   if (totalSeconds && Math.abs(sum - totalSeconds) > Math.max(2, totalSeconds * 0.1)) warnings.push(`片段时长合计 ${sum} 秒，纲领总时长 ${totalSeconds} 秒，相差较大`);

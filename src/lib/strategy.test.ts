@@ -12,7 +12,7 @@ describe('generation strategy', () => {
     expect(long).toMatchObject({ longTake: true, maxClip: 30, minClip: 4, keyframes: 'both', nativeAudio: true }); expect(strategyText(long)).toContain('自己生成对白');
     expect(planClipSeconds({ clipSeconds: 15 }, long)).toBe(20); expect(planClipSeconds({ clipSeconds: 10 }, long)).toBe(20);
     expect(strategyLabel(long)).toBe('长片段优先');
-    expect(strategyText(long)).toContain('长镜头'); expect(strategyText(long)).toContain('15–30 秒'); expect(strategyText(long)).toContain('承接');
+    expect(strategyText(long)).toContain('长镜头'); expect(strategyText(long)).toContain('15–30 秒'); expect(strategyText(long)).toContain('段落衔接规范');
     expect(strategyText(long, 'mv')).toContain('不做末帧接续'); expect(strategyText(long)).not.toContain('MV：');
   });
   it('falls back to shot-by-shot chaining with keyframes elsewhere', () => {

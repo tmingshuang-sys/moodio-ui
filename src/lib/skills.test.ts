@@ -59,6 +59,10 @@ describe('skill packs', () => {
     const film = lint.lintClipDocs([{ name: '视频生成Prompt-02.md', content: skills.FILM_CLIP_SAMPLE }], [], null, { frozen }); expect(film.errors).toEqual([]);
     const ad = lint.lintClipDocs([{ name: '视频生成Prompt-02.md', content: skills.AD_CLIP_SAMPLE }], [], null); expect(ad.errors).toEqual([]);
     expect(skills.skillFor('film').contracts.some(c => c.startsWith('对白契约'))).toBe(true);
+    // 段落衔接契约挂在所有类型上；三份片段样例都带衔接与结尾状态两行
+    for (const id of ['ad', 'film', 'series', 'short', 'mv', 'other']) expect(skills.skillFor(id).contracts.some(c => c.startsWith('段落衔接契约'))).toBe(true);
+    for (const id of ['ad', 'film', 'mv']) { const c = skills.skillFor(id).samples!.clip; expect(c).toMatch(/\n衔接[：:]/); expect(c).toMatch(/\n结尾状态[：:]/); }
+    expect(skills.MV_CLIP_SAMPLE).not.toContain('承接：');
   });
 });
 
