@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye, Clapperboard } from 'lucide-react';
+import { LayoutGrid, List, Search, X, ChevronLeft, ChevronRight, Download, MoreHorizontal, FileText, Image as ImageIcon, Film, Music, Pencil, Eye, Clapperboard, Maximize2, Minimize2 } from 'lucide-react';
 import { exportToJianying, canWriteDirectly, hasExportDir, rememberExportDir, basePath, setBasePath, basePathOk, collectClipIds } from '../lib/jianying';
 import { pingHelper, sendToResolve, HELPER_FILE } from '../lib/helper';
 import { projects } from '../lib/projects';
@@ -147,10 +147,31 @@ function DocView({ doc, onBack }: { doc: Doc; onBack: () => void }) {
   );
 }
 
+// 全屏：先请求浏览器原生全屏，环境不给（预览窗里就会这样，请求既不成功也不报错）就把播放区铺满窗口
+async function goFullscreen(box: HTMLElement | null, video: HTMLVideoElement | null, fallback: (on: boolean) => void) {
+  const anyVideo = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+  if (anyVideo?.webkitEnterFullscreen && !document.fullscreenEnabled) { anyVideo.webkitEnterFullscreen(); return; }   // iOS Safari 只认这个
+  const target = box || video;
+  if (target?.requestFullscreen) {
+    try {
+      await Promise.race([target.requestFullscreen(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 400))]);
+      if (document.fullscreenElement) return;
+    } catch { /* 下面兜底 */ }
+  }
+  fallback(true);
+}
+
 function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
   const t = useT();
   const url = useMediaUrl(item.id);
   const groups = ['人物', '场景', '产品', '道具', '其他'];
+  const bodyRef = useRef<HTMLDivElement>(null); const videoRef = useRef<HTMLVideoElement>(null);
+  const [filled, setFilled] = useState(false);   // 铺满窗口：浏览器不给原生全屏时的兜底
+  useEffect(() => {
+    if (!filled) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFilled(false); };
+    document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey);
+  }, [filled]);
   return (
     <div className="doc-view">
       <header className="view-head">
@@ -159,15 +180,17 @@ function MediaView({ item, onBack }: { item: MediaItem; onBack: () => void }) {
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: item.name }); if (name) useFiles.getState().updateMedia(item.id, { name }); }}>{item.name}</button>
         <div className="view-tools">
           <label className="group-select">{t('分区')}<select value={groups.includes(item.group) ? item.group : '其他'} onChange={e => useFiles.getState().updateMedia(item.id, { group: e.target.value })}>{groups.map(g => <option key={g} value={g}>{g}</option>)}</select></label>
-          {item.kind === 'video' && <button type="button" className="icon-btn" aria-label={t('导出片段到剪辑软件')} title={t('导出片段到剪辑软件')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={17} /></button>}
+          {item.kind === 'video' && <button type="button" className="icon-btn" aria-label={t('导入到剪辑软件')} title={t('把片段按顺序导入达芬奇，配乐与配音各占一条音轨')} onClick={() => void runJianyingExport(item.id)}><Clapperboard size={17} /></button>}
+          {item.kind === 'video' && <button type="button" className="icon-btn" aria-label={t('全屏')} title={t('全屏')} onClick={() => void goFullscreen(bodyRef.current, videoRef.current, setFilled)}><Maximize2 size={17} /></button>}
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={async () => { const blob = await getBlob(item.id); if (blob) downloadBlob(item.name, blob); }}><Download size={17} /></button>
           <button type="button" className="icon-btn" aria-label="更多" onClick={e => openMenuAt(e.currentTarget, [
             { label: t('删除'), danger: true, onClick: async () => { if (await confirmDialog({ title: '删除文件', body: `删除「${item.name}」？7 天内可撤销。`, okLabel: '删除', danger: true })) { const entry = useFiles.getState().removeMedia(item.id); onBack(); toast(`已删除「${item.name}」`, entry ? { label: '撤销', onClick: () => useFiles.getState().restoreTrash(entry.trashId) } : undefined); } } },
           ], { width: 160, align: 'right' })}><MoreHorizontal size={17} /></button>
         </div>
       </header>
-      <div className="view-body media-body">
-        {url ? (item.kind === 'image' ? <img src={url} alt={item.name} /> : item.kind === 'audio' ? <div className="audio-player"><Music size={40} /><audio src={url} controls /></div> : <video src={url} controls />) : <p className="md-empty">文件不在本机媒体库里（可能在另一台设备上传）。</p>}
+      <div className={`view-body media-body${filled ? ' filled' : ''}`} ref={bodyRef}>
+        {filled && <button type="button" className="fill-exit" onClick={() => setFilled(false)} title={t('退出全屏')}><Minimize2 size={16} />{t('退出全屏')}</button>}
+        {url ? (item.kind === 'image' ? <img src={url} alt={item.name} /> : item.kind === 'audio' ? <div className="audio-player"><Music size={40} /><audio src={url} controls /></div> : <video ref={videoRef} src={url} controls playsInline />) : <p className="md-empty">文件不在本机媒体库里（可能在另一台设备上传）。</p>}
       </div>
     </div>
   );

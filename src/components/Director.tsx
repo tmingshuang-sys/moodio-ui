@@ -1,6 +1,6 @@
 // ===== 导演停靠区：贴在输入框上方——一张步骤清单卡（八个阶段，当前步骤带下一步动作）、一颗进度胶囊（Step k / 8，点了收起 / 展开清单）和主按钮；一键模式开关；空白页的类型选择也在这里 =====
-import { useEffect, useState } from 'react';
-import { Check, SkipForward, Sparkles, Wand2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, SkipForward, Sparkles, Wand2, ChevronDown, ChevronUp, Clapperboard } from 'lucide-react';
 import { LEDGER_NAME } from '../lib/ledger';
 const DOCK_KEY = 'moodio-dock-open';   // 步骤清单卡收起 / 展开的记忆
 import { useFiles, useAgent } from '../lib/store';
@@ -10,6 +10,7 @@ import type { NextStep } from '../lib/director';
 import { BRIEF_FORMATS } from '../lib/guides';
 import { skillFor, skillStages } from '../lib/skills';
 import { send } from '../lib/agent/runner';
+import { runJianyingExport } from './ResourcePane';
 import { useT } from '../lib/i18n';
 
 export function useNextStep(): NextStep {
@@ -55,12 +56,17 @@ export default function NextStepBar() {
     else if (step.kind === 'done') window.dispatchEvent(new CustomEvent('moodio:new-creation'));
   };
   const askChange = () => window.dispatchEvent(new CustomEvent('moodio:compose', { detail: step.checkpoint === 'script' ? '请修改脚本：' : step.checkpoint === 'assets' ? '请重新生成这张参考图：' : step.checkpoint === 'prompts' ? '请修改片段方案：' : '请修改成片的第 ' }));
+  const media = useFiles(x => x.media);
+  const film = useMemo(() => media.find(x => x.kind === 'video' && x.model === '本地合成') || media.find(x => x.kind === 'video'), [media]);
   const secondary = [
     step.kind === 'confirm' && <button key="change" type="button" className="next-secondary" onClick={askChange}>{t('让 Agent 修改')}</button>,
     step.kind === 'confirm' && step.checkpoint === 'assets' && <button key="assets" type="button" className="next-secondary" onClick={skipAssets}><SkipForward size={13} />{t('跳过参考图')}</button>,
     step.kind === 'agent' && /校验/.test(step.label) && <button key="lint" type="button" className="next-secondary" onClick={skipLintGate}><SkipForward size={13} />{t('跳过校验继续')}</button>,
     step.kind === 'agent' && /音色样本|旁白配音/.test(step.label) && <button key="voice" type="button" className="next-secondary" onClick={skipVoice}><SkipForward size={13} />{t('跳过音色')}</button>,
     step.kind === 'upload' && <button key="song" type="button" className="next-secondary" onClick={skipSong}><SkipForward size={13} />{t('没有歌曲，先跳过')}</button>,
+    // 走到交付、手上已经有成片时，随时能把它送进剪辑软件（任何类型的创作都一样）
+    !!film && (step.stage === 'deliver' || step.kind === 'done') &&
+      <button key="nle" type="button" className="next-secondary" onClick={() => void runJianyingExport(film.id)}><Clapperboard size={13} />{t('导入到剪辑软件')}</button>,
   ].filter(Boolean);
   const current = busy && live ? live : step.kind === 'done' ? step.label : `${stages[idx]?.name || step.stage} · ${step.label}`;
   return (
