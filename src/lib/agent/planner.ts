@@ -1,6 +1,6 @@
 // ===== 规划器：把用户请求交给模型，得到 {message, actions, followUps}；追问与下一步建议的规整 =====
 import type { Action, Chat, FollowUp, Message, Question } from '../types';
-import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON, parsePlanJSONLoose } from '../model';
+import { modelCfg, callModel, isCreativeRequest, chatCfg, parsePlanJSON, parsePlanJSONLoose, salvagePlanParts } from '../model';
 import { AGENT_TOOLS } from './tools';
 import { buildSystemPrompt, hasScriptDoc } from './prompt';
 import { readLedger } from '../ledger';
@@ -145,23 +145,32 @@ export function parseAgentPlan(content: string, { lenient = false }: { lenient?:
   return { message: notes.length ? `${message}${message ? '\n' : ''}（${notes.join('；')}）` : message, actions, followUps: normalizeFollowUps(parsed.followUps) };
 }
 
-async function requestAgentPlan(request: (retry: boolean) => Promise<string>): Promise<PlanReply> {
+async function requestAgentPlan(request: (attempt: number) => Promise<string>): Promise<PlanReply> {
   let lastError: any = null, lastContent = '';
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const content = await request(attempt > 0);   // 网络中断或不完整响应不能当作格式错误继续执行
+  // 本地抢救同一份回复：先按宽松模式修，修不回来就扫出 message 与每个 {"tool":…} 对象
+  // needActions=true 时只有捞回动作才算数（前两轮还能重问模型），最后一轮连说明也要留下，不让整轮白跑
+  const salvage = (content: string, needActions: boolean): PlanReply | null => {
+    try { const r = parseAgentPlan(content, { lenient: true }); if (r.actions.length || !needActions) return r; } catch { /* 继续扫 */ }
+    const parts = salvagePlanParts(content);
+    const actions = parts.actions.filter(a => wellFormed(a)).map(a => ({ tool: a.tool as string, args: a.args as Record<string, any> }));
+    const message = String(parts.message || '').trim();
+    if (!actions.length && (needActions || !message)) return null;
+    const dropped = parts.actions.length - actions.length;
+    const note = `（模型这次的 JSON 写坏了，已从回复里救回${actions.length ? ` ${actions.length} 个操作` : '说明部分'}${dropped > 0 ? `，${dropped} 个写坏的操作已丢弃` : ''}${actions.length ? '' : '，没有执行任何操作'}）`;
+    return { message: message ? `${message}\n${note}` : note, actions, followUps: [] };
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const content = await request(attempt);   // 网络中断或不完整响应不能当作格式错误继续执行
     try { return parseAgentPlan(content, { lenient: attempt > 0 }); } catch (e: any) {
       lastError = e; lastContent = String(content || '');
       console.warn(`[moodio] 第 ${attempt + 1} 次规划回复无法解析：${e?.message || e}`, lastContent.slice(0, 3000));
       try { (window as any).__moodioLastPlanError = { attempt: attempt + 1, error: String(e?.message || e), content: lastContent }; } catch { /* ignore */ }   // 排查用：控制台里能拿到原样字节
     }
-    // 重问模型之前先在本地修一次同一份回复（补括号、丢掉坏掉的操作）：救得回动作就不用多花一次调用，界面上也不会闪「正在修正模型回复格式」
-    if (attempt === 0) {
-      try { const salvaged = parseAgentPlan(content, { lenient: true }); if (salvaged.actions.length) { console.warn('[moodio] 本地修复了这次回复，未重问模型'); return salvaged; } }
-      catch { /* 修不动就照常重问 */ }
-    }
+    const rescued = salvage(content, attempt < 2);
+    if (rescued) { console.warn(`[moodio] 第 ${attempt + 1} 次回复本地修复成功（${rescued.actions.length} 个操作），不再重问模型`); return rescued; }
   }
   const head = lastContent.trim().replace(/\s+/g, ' ').slice(0, 240);
-  const error: any = new Error(`模型回复格式不正确（${lastError?.message || '无法解析'}），自动重试后仍未得到有效操作计划。未执行任何文件操作，请重试。${head ? `\n\n模型原始回复开头：${head}${lastContent.trim().length > 240 ? '…' : ''}` : '\n\n模型返回了空内容。'}`);
+  const error: any = new Error(`模型回复格式不正确（${lastError?.message || '无法解析'}），重试两次并尝试本地修复后仍然没有可用内容。未执行任何文件操作，请重试。${head ? `\n\n模型原始回复开头：${head}${lastContent.trim().length > 240 ? '…' : ''}` : '\n\n模型返回了空内容。'}`);
   error.code = 'MODEL_PLAN_FORMAT'; error.raw = lastContent; throw error;
 }
 
@@ -175,9 +184,13 @@ export async function remotePlan(text: string, chat: Chat, hooks: PlanHooks = {}
   useAgent.getState().set({ round: { kind, startedAt } });
   const stop = () => { recordRound(kind, Date.now() - startedAt); useAgent.getState().set({ round: null }); };
   try {
-    return await requestAgentPlan(async retry => {
-      const repair = retry ? '\n上次回复未通过 JSON / actions 结构校验。请依据同一用户请求重新输出完整 JSON 对象，包含字符串 message 和数组 actions。字符串中的换行与引号必须正确转义，不要代码围栏、前后说明或截断内容。不要增加原请求以外的操作。' : '';
-      if (retry) hooks.onStatus?.('正在修正模型回复格式…');
+    return await requestAgentPlan(async attempt => {
+      const repair = attempt === 1
+        ? '\n上次回复未通过 JSON / actions 结构校验。请依据同一用户请求重新输出完整 JSON 对象，包含字符串 message 和数组 actions。字符串中的换行与引号必须正确转义，不要代码围栏、前后说明或截断内容。不要增加原请求以外的操作。'
+        : attempt >= 2
+          ? '\n前两次回复都没能解析成 JSON。这一次把输出压到最简：只输出 {"message":"一两句话","actions":[…]}，不要 followUps、不要任何解释文字与代码围栏；message 不超过 80 字；actions 最多 3 个、只保留最关键的操作；所有字符串里的换行写成 \\n。'
+          : '';
+      if (attempt > 0) hooks.onStatus?.('正在修正模型回复格式…');
       return callModel(callCfg, sys + repair, text, { signal: hooks.signal, onText: hooks.onText, onReasoning: hooks.onReasoning });
     });
   } finally { stop(); }

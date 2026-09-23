@@ -338,13 +338,37 @@ export function repairJSON(text: string): any | null { return repairJSONInfo(tex
 export function repairJSONInfo(text: string): { data: any; closedString: boolean } | null {
   const clean = sanitizeJSON(text); const start = clean.indexOf('{'); if (start < 0) return null;
   let s = clean.slice(start).replace(/\s*```\s*$/, '');
-  for (let attempt = 0; attempt < 30 && s.length > 1; attempt++) {
+  for (let attempt = 0; attempt < 400 && s.length > 1; attempt++) {   // 回复越长要砍的次数越多，30 次不够（实测长回复砍不到可解析的前缀就放弃了）
     const closed = autoClose(s);
     try { const v = JSON.parse(closed.text); if (v && typeof v === 'object') return { data: v, closedString: closed.closedString }; } catch { /* 再砍一截 */ }
     const cut = Math.max(s.lastIndexOf(','), s.lastIndexOf('{'), s.lastIndexOf('['), s.lastIndexOf('}'), s.lastIndexOf(']'), s.lastIndexOf('"'));
     if (cut <= 0) break; s = s.slice(0, cut);
   }
   return null;
+}
+
+// 最后一道防线：整份 JSON 修不回来时，直接扫出 message 和每一个 {"tool":…,"args":{…}} 对象（按括号配平取，不依赖整份文档合法）
+// 用户要求：有问题尽量把能用的捞出来继续走，不要一见解析失败就停
+export function salvagePlanParts(text: string): { message: string; actions: any[] } {
+  const raw = sanitizeJSON(String(text || ''));
+  const message = partialPlanMessage(raw);
+  const actions: any[] = [];
+  const re = /\{\s*"tool"\s*:/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let i = m.index; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) break;                       // 最后一个对象没写完，丢掉
+    try { const v = JSON.parse(raw.slice(m.index, end + 1)); if (v && typeof v.tool === 'string') actions.push(v); } catch { /* 这一个残缺就跳过 */ }
+    re.lastIndex = end;
+  }
+  return { message, actions };
 }
 
 // 从尚未结束的 JSON 文本里取出 "message" 字段已生成的部分（流式显示用）

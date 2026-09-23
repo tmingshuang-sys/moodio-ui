@@ -511,10 +511,31 @@ export const SKILLS: Record<string, Skill> = {
 };
 for (const s of Object.values(SKILLS)) { if (!s.general.some(q => q.key === 'look')) s.general.splice(Math.min(1, s.general.length), 0, LOOK_QUESTION()); }
 
+// 场景图与道具图的验收门禁（所有类型共用，挂在各自的 imageQA 后面）
+export const SCENE_PROP_QA = '场景图门禁：画面里没有人和动物；单一视角不拼格；地平线水平、无鱼眼与畸变；全局清晰不虚化；前景 / 中景 / 背景层次分明且中景留出可站人的空地；光源位置与色温和文稿一致；锚点物件齐全、位置与文稿一致；无文字招牌乱码、无 logo、无水印、无剧组器材。道具图门禁：只有这一件道具、居中完整不裁切；四分之三视角；浅灰无缝背景加接地阴影；材质、颜色、磨损与开关状态和文稿一致；比例符合写明的真实尺寸；无手无人、无文字与 logo、无多件或多角度拼格。';
+
+// 参考图质检的门禁按图的类型挑：人物图用人物门禁、场景图用场景门禁……（用户反馈：拿七视图人物的要求去审场景和道具，全判需重生成）
+export const COMMON_IMAGE_QA = '通用门禁：画面主体与说明一致；没有畸形、结构错误或多余肢体；构图干净、主体完整不裁切；无水印、无乱码文字；画风与全片基线一致。';
+export function imageGateFor(skill: Skill, kind: 'character' | 'scene' | 'prop' | 'product' | null): string {
+  const text = String(skill.imageQA || '');
+  if (!text) return COMMON_IMAGE_QA;
+  // 按「XX门禁：」切段：找到每个「门禁：」，往前回到上一个句号 / 分号 / 换行，那里就是这一条的开头
+  const starts = [...text.matchAll(/门禁：/g)].map(m => {
+    const at = m.index || 0;
+    return Math.max(text.lastIndexOf('。', at), text.lastIndexOf('；', at), text.lastIndexOf('\n', at)) + 1;
+  }).filter((v, i, arr) => arr.indexOf(v) === i).sort((a, b) => a - b);
+  const parts = starts.map((from, i) => text.slice(from, starts[i + 1] ?? text.length).trim()).filter(Boolean);
+  const head: Record<string, RegExp> = { character: /^(人物|角色|艺人|定妆照|形象图)/, scene: /^场景/, prop: /^道具/, product: /^(产品|商品)/ };
+  const re = kind ? head[kind] : null;
+  const hit = re ? parts.filter(p => re.test(p)) : [];
+  return hit.length ? hit.join('') : COMMON_IMAGE_QA;   // 认不出类型就只用通用门禁，绝不套别的类型的要求
+}
+
 export function skillFor(format?: string): Skill {
   const s = SKILLS[String(format || '')] || SKILLS.other;
   const extra = [EVIDENCE_CONTRACT, CONTINUITY_CONTRACT].filter(c => !s.contracts.includes(c));   // 证据来源与段落衔接是所有类型共用的契约
-  return extra.length ? { ...s, contracts: [...s.contracts, ...extra] } : s;
+  const imageQA = s.imageQA?.includes('场景图门禁') ? s.imageQA : [s.imageQA, SCENE_PROP_QA].filter(Boolean).join('');   // 场景 / 道具门禁所有类型共用
+  return (extra.length || imageQA !== s.imageQA) ? { ...s, contracts: [...s.contracts, ...extra], imageQA } : s;
 }
 export function skillStages(skill: Skill): StageDef[] {
   const goal: Record<string, string> = {

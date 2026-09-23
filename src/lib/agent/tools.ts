@@ -4,7 +4,7 @@ import { useFiles, findDoc, findMedia } from '../store';
 import { projects } from '../projects';
 import { appendMarkdown, findSection, replaceSection, ensureExt, docRole, sanitizeName, wordCount, baseName } from '../markdown';
 import { downloadText } from '../storage';
-import { BRIEF_FIELDS, BRIEF_FORMATS, styleBaseline, applyStyleBaseline, characterSheetPrompt, isCharacterAsset } from '../guides';
+import { BRIEF_FIELDS, BRIEF_FORMATS, styleBaseline, applyStyleBaseline, characterSheetPrompt, scenePlatePrompt, propShotPrompt, assetShotKind } from '../guides';
 import { generateImage, generateVideo, designVoice, generateSpeech, mediaReadyReason, fallbackNote, videoProfile, DEFAULT_VOICE_ID } from '../mediagen';
 import { captureFrame } from '../frames';
 import type { GenResult } from '../mediagen';
@@ -127,16 +127,24 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);
     // 画风基线固定附在提示词末尾：不管模型怎么写，同一创作的参考图都是同一种画风（真人就都真人，不会一张真人一张卡通）
     const visualStyle = useFiles.getState().brief?.visualStyle; const baseline = styleBaseline(visualStyle);
-    // 人物类参考图默认套七视图设定图模板（16:9，左三全身右四头肩），模型给的提示词只当人物描述用；其他图只附画风基线
-    const sheet = isCharacterAsset(args.group, args.name) && !args.no_sheet;
-    const prompt = sheet ? characterSheetPrompt(String(args.prompt || ''), visualStyle) : applyStyleBaseline(String(args.prompt || ''), visualStyle);
-    const ratio: RatioKey | undefined = sheet ? '16:9' : IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined;
+    // 参考图按分区自动套模板，模型给的提示词只当「这个东西本身」的描述用：
+    // 人物 → 七视图设定图（16:9）；场景 → 空场建立镜头（跟纲领画幅，可直接当首帧）；道具 → 单体棚拍（1:1）；其余只附画风基线
+    const shot = args.no_sheet ? null : assetShotKind(args.group, args.name);
+    const desc = String(args.prompt || '');
+    const prompt = shot === 'character' ? characterSheetPrompt(desc, visualStyle)
+      : shot === 'scene' ? scenePlatePrompt(desc, visualStyle)
+      : shot === 'prop' ? propShotPrompt(desc, visualStyle)
+      : applyStyleBaseline(desc, visualStyle);
+    const asked: RatioKey | undefined = IMAGE_RATIOS.includes(args.ratio) ? (args.ratio as RatioKey) : undefined;
+    const briefRatio = IMAGE_RATIOS.find(r => String(useFiles.getState().brief?.ratio || '').includes(r));
+    const ratio: RatioKey | undefined = shot === 'character' ? '16:9' : shot === 'prop' ? '1:1' : shot === 'scene' ? (asked || briefRatio) : asked;
+    const shotNote = shot === 'character' ? '七视图设定图' : shot === 'scene' ? '场景板（空场建立镜头）' : shot === 'prop' ? '道具图（单体棚拍）' : '';
     let r!: GenResult;
-    await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」${sheet ? '（七视图设定图）' : ''}`, async () => {
+    await ctx.step(`生成图片「${String(args.name || args.prompt || '').slice(0, 20)}」${shotNote ? `（${shotNote}）` : ''}`, async () => {
       r = await generateImage({ prompt, name: args.name ? String(args.name) : undefined, group: args.group ? String(args.group) : undefined, ratio }, { onProgress: ctx.live, signal: ctx.signal, task: { chatId: ctx.chatId, messageAt: ctx.messageAt, stepIndex: ctx.stepIndex } });
     });
     useFiles.getState().openInPane(r.item.id);
-    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}（${sheet ? '七视图设定图，' : ''}画风基线：${baseline.replace(/（.*$/, '')}）`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name, prompt } };
+    return { summary: `已用 ${r.model.name} 生成图片「${r.item.name}」并存入媒体库${fallbackNote(r)}（${shotNote ? shotNote + '，' : ''}画风基线：${baseline.replace(/（.*$/, '')}）`, actions: [{ id: 'open-media:' + r.item.id, label: '查看' }], artifact: { id: r.item.id, kind: 'image', name: r.item.name, prompt } };
   },
   async generate_video(args, ctx) {
     const reason = mediaReadyReason(); if (reason) throw new Error(reason);

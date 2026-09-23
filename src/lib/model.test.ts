@@ -86,3 +86,18 @@ describe('temperature rejection', () => {
   });
 });
 
+
+// 整份 JSON 修不回来时的最后一道防线：扫出 message 与每个 {"tool":…} 对象
+describe('salvagePlanParts', () => {
+  it('pulls the message and every complete action out of a broken reply', async () => {
+    const { salvagePlanParts } = await import('./model');
+    const broken = '{"message":"收到，先把脚本读进来。","actions":[{"tool":"read_doc","args":{"id":"d1"}},{"tool":"write_doc","args":{"name":"分镜表.md","content":"半截';
+    const r = salvagePlanParts(broken);
+    expect(r.message).toBe('收到，先把脚本读进来。');
+    expect(r.actions).toEqual([{ tool: 'read_doc', args: { id: 'd1' } }]);   // 写了一半的那个丢掉
+    // 括号配错（整份 JSON.parse 失败）时照样能扫出两个完整操作
+    const misNested = '{"message":"两步","actions":[{"tool":"open_doc","args":{"id":"d1"}},{"tool":"open_media","args":{"id":"m1"}}]}]},"followUps":[]}';
+    expect(salvagePlanParts(misNested).actions.map(a => a.tool)).toEqual(['open_doc', 'open_media']);
+    expect(salvagePlanParts('完全不是 JSON').actions).toEqual([]);
+  });
+});

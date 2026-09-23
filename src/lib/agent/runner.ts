@@ -12,12 +12,12 @@ import { docRole, splitLines } from '../markdown';
 import { toast } from '../../components/Toast';
 import { readLedger, ensureLedger, updateLedger } from '../ledger';
 import { reviewImages, visionReady } from '../vision';
-import { styleBaseline } from '../guides';
+import { styleBaseline, assetQAKind } from '../guides';
 import { lintClips, lintSummary, CLIP_DOC_RE } from '../lint';
 import { setSender, autopilotTick, isAutopilot, applyAnswersToBrief, tick as directorTick, runNextStep, recommendedAnswers, dropAnsweredQuestions, stripEarlyAssets } from '../director';
 import { recordRound } from '../timing';
 import { findMedia } from '../store';
-import { skillFor, stageName } from '../skills';
+import { skillFor, stageName, imageGateFor } from '../skills';
 
 const optionLabel = (o: unknown) => typeof o === 'string' ? o : String((o as any)?.label || '');
 
@@ -220,7 +220,7 @@ export async function executePlan(key: string, messageAt: number) {
     if (touchedClips && !aborted()) { try { out.lint = await lintFixRounds(c.id, p.text); } catch (e) { console.warn('片段校验修正失败', e); } }
     // 参考图质检：有支持看图的模型就逐张检查刚生成的图片
     const images = run.artifacts.filter(a => a.kind === 'image');
-    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; pending.plan!.reviewing = '正在用视觉模型检查参考图'; setLive('正在用视觉模型检查参考图…'); commit(); const at = Date.now(); agent().set({ round: { kind: 'vision', startedAt: at } }); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '' })), agent().controller?.signal, `${skillFor(useFiles.getState().brief?.format).imageQA || ''}画风基线：${styleBaseline(useFiles.getState().brief?.visualStyle)}——这一创作的所有参考图必须是同一种画风，人物是真人却出成卡通 / 3D / 插画（或反过来）一律判「需重生成」。`); } catch (e) { console.warn('参考图质检失败', e); } finally { recordRound('vision', Date.now() - at); agent().set({ round: null }); } }
+    if (images.length && visionReady() && !aborted()) { pending.plan!.state = 'reviewing'; pending.plan!.reviewing = '正在用视觉模型检查参考图'; setLive('正在用视觉模型检查参考图…'); commit(); const at = Date.now(); agent().set({ round: { kind: 'vision', startedAt: at } }); try { out.imageReview = await reviewImages(images.slice(0, 6).map(a => ({ id: a.id, name: a.name, expect: a.prompt || '', gate: imageGate(a.id, a.name) })), agent().controller?.signal, imageGate('', '')); } catch (e) { console.warn('参考图质检失败', e); } finally { recordRound('vision', Date.now() - at); agent().set({ round: null }); } }
   } catch (e: any) { out.text = '执行时出错：' + (e?.message || e); }
   end();
   steps.forEach(s => { if (s.status === 'running') s.status = 'failed'; else if (s.status === 'pending') s.status = 'skipped'; });
@@ -270,6 +270,15 @@ async function lintFixRounds(chatId: string, request: string): Promise<{ ok: boo
     r = lintClips();
   }
   return { ok: !r.errors.length, text: lintSummary(r), rounds };
+}
+
+// 每张参考图按自己的类型取门禁（人物图用人物门禁、场景图用场景门禁……），再统一附上画风基线
+function imageGate(mediaId: string, name: string): string {
+  const { brief, media } = useFiles.getState();
+  const item = mediaId ? media.find(m => m.id === mediaId) : undefined;
+  const kind = assetQAKind(item?.group, item?.name || name);
+  const gate = imageGateFor(skillFor(brief?.format), kind);
+  return `${gate}画风基线：${styleBaseline(brief?.visualStyle)}——这一创作的所有参考图必须是同一种画风，该是真人却出成卡通 / 3D / 插画（或反过来）一律判「需重生成」。`;
 }
 
 // 写完自审：用写作模型按当前类型的自查清单审读刚写的剧本文稿

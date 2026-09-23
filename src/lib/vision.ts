@@ -23,12 +23,13 @@ export async function askAboutImages(ids: string[], question: string, sys = '你
 }
 
 // 参考图质检：逐张对照生成要求，判断能不能当后续片段的参考
-export async function reviewImages(targets: { id: string; name: string; expect: string }[], signal?: AbortSignal, gate?: string): Promise<ImageCheck[]> {
+// gate 是兜底门禁；每张图可以用 t.gate 传自己那一类的门禁（人物 / 场景 / 道具 / 产品），不要拿人物的要求去审场景
+export async function reviewImages(targets: { id: string; name: string; expect: string; gate?: string }[], signal?: AbortSignal, gate?: string): Promise<ImageCheck[]> {
   const out: ImageCheck[] = [];
   for (const t of targets) {
     if (signal?.aborted) break;
     try {
-      const r = await askAboutImages([t.id], `这张图是按下面的要求生成的参考图：「${t.expect.slice(0, 600) || '（无说明）'}」。请判断它能否作为后续视频生成的参考图：主体是否符合要求，是否有明显畸形（多手指、肢体错位、文字乱码、结构错误），构图是否干净、风格是否统一。${gate ? `验收门禁（逐条核对，任一条不过就判「需重生成」，并把不过的那条写进 issues）：${gate.slice(0, 400)}` : ''}只输出 JSON：{"verdict":"通过|需重生成","description":"一句话描述画面","issues":["具体问题（没有就空数组）"]}`, undefined, signal);
+      const r = await askAboutImages([t.id], `这张图是按下面的要求生成的参考图：「${t.expect.slice(0, 600) || '（无说明）'}」。请判断它能否作为后续视频生成的参考图：主体是否符合要求，是否有明显畸形（多手指、肢体错位、文字乱码、结构错误），构图是否干净、风格是否统一。${(t.gate || gate) ? `验收门禁（只按下面这几条核对，与这张图无关的其他类型要求一律不要套用；任一条不过就判「需重生成」，并把不过的那条写进 issues）：${String(t.gate || gate).slice(0, 500)}` : ''}只输出 JSON：{"verdict":"通过|需重生成","description":"一句话描述画面","issues":["具体问题（没有就空数组）"]}`, undefined, signal);
       out.push({ id: t.id, name: t.name, verdict: r?.verdict === '需重生成' ? '需重生成' : '通过', description: String(r?.description || '').slice(0, 160), issues: (Array.isArray(r?.issues) ? r.issues : []).map((x: any) => String(x).slice(0, 80)).filter(Boolean).slice(0, 4) });
     } catch (e: any) { out.push({ id: t.id, name: t.name, verdict: '通过', description: `（质检没有完成：${e?.message || e}。请自己看一眼这张图，不对就让 Agent 重新生成）`, issues: [] }); }
   }

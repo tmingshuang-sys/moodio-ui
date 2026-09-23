@@ -33,6 +33,53 @@ export function characterSheetPrompt(description: string, visualStyle?: string):
   const lead = isPhotoreal(visualStyle) ? '写实真人摄影的七视图人物设定图（photorealistic photographs of one real person, natural skin and fabric texture, not cartoon, not 3D, not illustration）。' : '七视图人物设定图，全部视图统一采用指定画风，保留人物识别特征与布局要求。';
   return `${lead}\n【人物】${desc}\n${CHARACTER_SHEET_RULES}\n【视觉风格】${base}；近白纯色背景、柔和均匀照明、自然皮肤与衣料质感，清楚呈现五官、发丝、服装结构和鞋子；不自动添加复古滤镜或胶片颗粒。\n画风基线：${base}`;
 }
+// 场景板（场景类参考图默认套用）：一张空场的建立镜头，锁住这个地点的几何、材质、光线与色彩，之后每个片段都引用它，也可以直接当首帧
+// 要点：画面里不能有人（人物由设定图提供，两套人会打架）、单一视角不分格、全局清晰、留出人物走位的空地
+export const SCENE_PLATE_RULES = `【空场】画面里没有人、没有动物、没有正在发生的动作，只有这个地点本身；中景留出一块可供人物走位站立的空地，不要把前景堆满。
+【视角】一张图、一个视角，不分格不拼贴。水平视线（相机高度约 1.5–1.6 米）、等效 24–35mm 广角建立镜头，地平线保持水平，不用鱼眼、不用倾斜构图、不用俯拍仰拍。全局清晰（整幅景深），不要浅景深虚化——虚化留给片段。
+【纵深三层】前景、中景、背景各写明有什么，物件之间的左右与前后关系明确，方便之后的镜头在同一空间里调度。
+【锚点】给出 2–4 个不会变的标志物（位置、颜色、材质），之后所有镜头靠它们认出这是同一个地点。
+【光线】写明时间（清晨 / 正午 / 黄昏 / 夜）、主光来源与方向（窗 / 顶灯 / 霓虹 / 路灯）、色温冷暖与光比软硬，入画的实用光源（灯管、招牌、屏幕）要画出来并保持位置固定。
+【材质与色彩】地面、墙面、主要陈设的材质与颜色写清楚，整幅控制在三种主色以内，与全片色彩方向一致。
+【避免】不要人、动物、文字招牌与 logo（容易出乱码）、水印、多格拼贴、广角畸变、HDR 过曝或死黑、雾化滤镜；不要把摄影机、灯架、剧组器材画进去。
+Scene plate (for the image model): one single-view empty establishing shot of the location, no people and no animals, eye level (~1.55m), 24–35mm equivalent, level horizon, deep focus across the whole frame, clear foreground / midground / background with open floor space for actors to be placed later, fixed practical lights visible, no text, no logos, no watermark, no collage, no fisheye.`;
+export function scenePlatePrompt(description: string, visualStyle?: string): string {
+  const desc = String(description || '').trim().replace(/\n?画风基线：[\s\S]*$/, '').trim();
+  const base = styleBaseline(visualStyle);
+  const lead = isPhotoreal(visualStyle) ? '写实场景照片，实景拍摄的空镜建立镜头（photorealistic architectural / location photograph, real materials, not cartoon, not 3D render, not illustration）。' : '场景建立镜头，采用指定画风，保持布局与光线要求。';
+  return `${lead}\n【场景】${desc}\n${SCENE_PLATE_RULES}\n【视觉风格】${base}\n画风基线：${base}`;
+}
+// 道具图（道具 / 物件类参考图默认套用）：单体、四分之三视角、浅灰无缝背景，锁住形状、比例、材质、颜色与磨损
+export const PROP_SHOT_RULES = `【单体】画面里只有这一件道具，居中、完整不裁切；不要手、不要人、不要其他物件做尺寸参照，真实尺寸用文字写明。
+【视角】四分之三视角（水平偏上约 15°，同时看到正面与一个侧面），一张图一个视角，不分格不拼贴。
+【背景与光】中性浅灰无缝背景（近 #f0f0f0），柔和大面积顶侧光加补光，物体下方有一小片柔和接地阴影；不要强反光炫光、不要纯黑背景、不要环境场景。
+【材质与状态】写明材质、颜色、表面处理（磨砂 / 阳极 / 帆布 / 做旧）、磨损与使用痕迹，以及开关 / 屏幕 / 指示灯的状态；剧本里已经写死的细节逐字照搬。
+【比例】按真实尺寸画出比例关系（长 × 宽 × 高，厘米），不要把小物件画成家具那么大。
+【避免】不要文字、品牌 logo、型号字样、水印、多件同款、多角度拼格、夸张广角畸变、浅景深虚化主体。
+Prop plate (for the image model): one single object, centred, complete in frame, three-quarter view slightly above eye level, seamless light-grey backdrop (~#f0f0f0), soft large-source lighting with a small contact shadow, materials and wear clearly readable, true proportions, no hands, no people, no text, no logos, no watermark, no collage, no extra objects.`;
+export function propShotPrompt(description: string, visualStyle?: string): string {
+  const desc = String(description || '').trim().replace(/\n?画风基线：[\s\S]*$/, '').trim();
+  const base = styleBaseline(visualStyle);
+  const lead = isPhotoreal(visualStyle) ? '写实道具产品照，棚拍单体静物（photorealistic studio product photograph of one object, real materials, not cartoon, not 3D render, not illustration）。' : '单体道具图，采用指定画风，保持单体、四分之三视角与干净背景的要求。';
+  return `${lead}\n【道具】${desc}\n${PROP_SHOT_RULES}\n【视觉风格】${base}\n画风基线：${base}`;
+}
+// 参考图按分区套模板：人物走七视图设定图，场景走空场建立镜头，道具走单体棚拍；产品另有三视图契约，不在这里套
+export type AssetShot = 'character' | 'scene' | 'prop' | null;
+// 质检用的分类比出图模板多一个「产品」（产品走三视图契约，不套道具模板，但门禁要用产品那条）
+export type AssetQAKind = 'character' | 'scene' | 'prop' | 'product' | null;
+export function assetQAKind(group?: string, name?: string): AssetQAKind {
+  const g = String(group || ''), n = String(name || '');
+  if (/产品|商品|product/i.test(g) || /产品图|商品图|三视图/.test(n)) return 'product';
+  return assetShotKind(group, name);
+}
+export function assetShotKind(group?: string, name?: string): AssetShot {
+  if (isCharacterAsset(group, name)) return 'character';
+  const g = String(group || ''), n = String(name || '');
+  if (/场景|环境|地点|外景|内景|scene|location/i.test(g) || /场景图|环境图|外景图|内景图|scene/i.test(n)) return 'scene';
+  if (/道具|物件|prop/i.test(g) || /道具图|物件图|prop/i.test(n)) return 'prop';
+  return null;
+}
+
 // 人物 / 艺人 / 角色类的参考图都按七视图设定图生成
 export const isCharacterAsset = (group?: string, name?: string) => /人物|角色|艺人|character/i.test(String(group || '')) || /人物|角色|艺人|定妆照|形象图|设定图|character/i.test(String(name || ''));
 export const BRIEF_FIELDS: [string, string][] = [['format', '类型'], ['duration', '时长'], ['platform', '平台'], ['ratio', '画幅'], ['audience', '受众'], ['tone', '调性'], ['references', '参考作品'], ['visualStyle', '视觉风格'], ['taboos', '禁忌'], ['notes', '备注']];

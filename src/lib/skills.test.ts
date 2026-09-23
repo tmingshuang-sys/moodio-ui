@@ -101,3 +101,48 @@ describe('ledger', () => {
     expect(prompt.skillBlock()).not.toContain('样例');
   });
 });
+
+// 参考图模板：人物七视图 / 场景空场建立镜头 / 道具单体棚拍，模型只写对象本身的描述
+describe('参考图模板', () => {
+  it('按分区挑模板，场景不许有人、道具只有一件', async () => {
+    const { assetShotKind, scenePlatePrompt, propShotPrompt, characterSheetPrompt } = await import('./guides');
+    expect(assetShotKind('人物', '林晚-形象图')).toBe('character');
+    expect(assetShotKind('场景', '便利店-场景图')).toBe('scene');
+    expect(assetShotKind('道具', '充电宝机柜-道具图')).toBe('prop');
+    expect(assetShotKind('其他', '随手一张')).toBe(null);
+    expect(assetShotKind(undefined, '街口-场景图')).toBe('scene');
+
+    const scene = scenePlatePrompt('24 小时便利店靠窗座位区，深夜，冷白日光灯', '写实真人');
+    expect(scene).toContain('没有人');            // 人由人物设定图提供，场景板必须空场
+    expect(scene).toContain('不分格');
+    expect(scene).toContain('画风基线：');
+    expect(scene).toContain('no people');          // 给 fal 模型的英文摘要
+
+    const prop = propShotPrompt('灰色立式共享充电宝机柜，三排空槽', '写实真人');
+    expect(prop).toContain('只有这一件道具');
+    expect(prop).toContain('四分之三视角');
+    expect(prop).toContain('画风基线：');
+
+    // 模型把画风基线写进描述时不会重复叠加
+    expect(scenePlatePrompt('街口\n画风基线：随便写的', '写实真人').match(/画风基线：/g)!.length).toBe(1);
+    expect(characterSheetPrompt('26 岁女性', '写实真人')).toContain('七视图');
+  });
+  it('场景与道具的验收门禁挂到每一种类型', () => {
+    for (const id of ['ad', 'film', 'series', 'short', 'mv', 'other']) {
+      expect(skills.skillFor(id).imageQA).toContain('场景图门禁');
+      expect(skills.skillFor(id).imageQA).toContain('道具图门禁');
+    }
+  });
+
+  it('每类图只用自己那条门禁，不拿人物要求去审场景道具', async () => {
+    const { assetQAKind } = await import('./guides');
+    const film = skills.skillFor('film');
+    expect(assetQAKind('产品', '音箱-产品图')).toBe('product');
+    const scene = skills.imageGateFor(film, 'scene');
+    expect(scene).toContain('场景图门禁'); expect(scene).not.toContain('七视图'); expect(scene).not.toContain('人物图门禁');
+    const prop = skills.imageGateFor(film, 'prop');
+    expect(prop).toContain('道具图门禁'); expect(prop).not.toContain('七视图');
+    expect(skills.imageGateFor(film, 'character')).toContain('七视图');
+    expect(skills.imageGateFor(film, null)).toBe(skills.COMMON_IMAGE_QA);   // 认不出类型就只用通用门禁
+  });
+});
