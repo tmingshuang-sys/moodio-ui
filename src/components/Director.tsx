@@ -39,7 +39,8 @@ export default function NextStepBar() {
   const step = useNextStep();
   const busy = useAgent(s => s.busy); const live = useAgent(s => s.live);
   const [auto, setAuto] = useState(isAutopilot);
-  const [open, setOpen] = useState(() => { try { return localStorage.getItem(DOCK_KEY) !== '0'; } catch { return true; } });
+  // 默认收起，只有用户点过胶囊展开才记住（用户要求：一上来别占半屏）
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(DOCK_KEY) === '1'; } catch { return false; } });
   useEffect(() => { const fn = () => setAuto(isAutopilot()); window.addEventListener('moodio:director-changed', fn); return () => window.removeEventListener('moodio:director-changed', fn); }, []);
   const brief = useFiles(s => s.brief); const docs = useFiles(s => s.docs); const openInPane = useFiles(s => s.openInPane);
   if (step.kind === 'start') return null;   // 空白页由 ChatPane 的类型选择承担
