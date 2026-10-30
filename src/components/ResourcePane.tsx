@@ -50,6 +50,7 @@ import { confirmDialog, promptDialog, folderDialog } from './Dialogs';
 import { toast } from './Toast';
 import { useT, t } from '../lib/i18n';
 import LedgerView from './LedgerView';
+import ScenePreview from './ScenePreview';
 import { LEDGER_NAME } from '../lib/ledger';
 
 function useMediaUrl(id: string) {
@@ -103,6 +104,7 @@ function MediaCard({ item, view, onOpen, onMenu }: { item: MediaItem; view: 'gri
 }
 
 // 文稿视图：预览（Markdown 渲染）/ 编辑（自动保存）；Agent 写入时实时显示
+export const SCENE_DOC_RE = /^画面-\d+\.json$/;   // 工作区里打开它时渲染成可播放的画面预览，而不是一堆 JSON
 function DocView({ doc, onBack }: { doc: Doc; onBack: () => void }) {
   const t = useT();
   const updateDoc = useFiles(s => s.updateDoc);
@@ -122,7 +124,7 @@ function DocView({ doc, onBack }: { doc: Doc; onBack: () => void }) {
         <button type="button" className="view-title" title="点击重命名" onClick={async () => { const name = await promptDialog({ title: t('重命名'), value: doc.name }); if (name) useFiles.getState().renameDoc(doc.id, name); }}>{doc.name}</button>
         <span className="view-meta">{wordCount(text)} 字 · {timeAgo(doc.updatedAt)}</span>
         <div className="view-tools">
-          {(doc.kind === 'md' || doc.name === LEDGER_NAME) && !writing && (
+          {(doc.kind === 'md' || doc.name === LEDGER_NAME || SCENE_DOC_RE.test(doc.name)) && !writing && (
             <div className="seg" role="tablist"><button type="button" role="tab" aria-selected={mode === 'preview'} className={mode === 'preview' ? 'active' : ''} onClick={() => setMode('preview')}><Eye size={14} />{t('预览')}</button><button type="button" role="tab" aria-selected={mode === 'edit'} className={mode === 'edit' ? 'active' : ''} onClick={() => setMode('edit')}><Pencil size={14} />{t('编辑')}</button></div>
           )}
           <button type="button" className="icon-btn" aria-label={t('下载')} title={t('下载')} onClick={() => downloadText(doc.name, doc.content, doc.kind === 'json' ? 'application/json' : 'text/markdown')}><Download size={17} /></button>
@@ -137,6 +139,8 @@ function DocView({ doc, onBack }: { doc: Doc; onBack: () => void }) {
           <textarea className="doc-editor" value={draft} onChange={e => setDraft(e.target.value)} spellCheck={false} placeholder="在这里写 Markdown…" />
         ) : doc.name === LEDGER_NAME ? (
           <LedgerView doc={doc} />
+        ) : SCENE_DOC_RE.test(doc.name) ? (
+          <ScenePreview doc={doc} />
         ) : doc.kind === 'md' ? (
           <article className="md-body">{text ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown> : <p className="md-empty">（空文稿，切到「编辑」开始写）</p>}{writing && <span className="stream-cursor block" aria-hidden="true" />}</article>
         ) : (

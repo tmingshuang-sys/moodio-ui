@@ -3,10 +3,10 @@ import type { Chat, Doc } from '../types';
 import { useFiles } from '../store';
 import { projects } from '../projects';
 import { docRole, plainText, wordCount, baseName } from '../markdown';
-import { BRIEF_FIELDS, BRIEF_FORMATS, BRIEF_KEY_FIELDS, writingGuideText, formatRulesText, shotGuideText, promptGuideText } from '../guides';
+import { BRIEF_FIELDS, BRIEF_FORMATS, BRIEF_KEY_FIELDS, writingGuideText, formatRulesText, shotGuideText, promptGuideText, narrationGuideText, SCENE_GUIDE, KNOWLEDGE_GUIDE, PLAN_GUIDE } from '../guides';
 import { timeAgo } from '../time';
 import { readLedger, ledgerText } from '../ledger';
-import { skillFor, STAGE_ORDER } from '../skills';
+import { skillFor, stageOrderFor, STAGE_ORDER } from '../skills';
 import type { Ledger } from '../ledger';
 import { currentVideoModel, currentVoiceModel, videoProfile, modelDisplayName } from '../mediagen';
 import { strategyText, strategyLabel, planClipSeconds } from '../strategy';
@@ -30,8 +30,36 @@ export function skillBlock(): string {
   const bank = l.stage === 'brief' ? skill.general : l.stage === 'model' ? skill.modeling : [];
   const pending = bank.filter(q => !l.answers[q.key] && !(q.key === 'duration' && brief.duration) && !(q.key === 'ratio' && brief.ratio) && !(q.key === 'audience' && brief.audience));
   const qJson = pending.length ? JSON.stringify(pending.map(q => ({ key: q.key, text: q.text, type: q.type, options: q.options.map(o => o.hint ? { label: o.label, hint: o.hint } : o.label), placeholder: q.placeholder }))) : '';
+  if (skill.codeRendered) {
+    // 科普类：画面由代码渲染，没有视频模型、没有片段规则；每个阶段只给这一阶段要用的那份规范
+    const guide = l.stage === 'knowledge' ? `${KNOWLEDGE_GUIDE}\n${PLAN_GUIDE}`
+      : l.stage === 'script' ? narrationGuideText()
+        : l.stage === 'scene' ? SCENE_GUIDE
+          : l.stage === 'narrate' ? '配音阶段：对每份画面方案调一次 narrate_scene，它会逐句合成并把真实音频时长写回 beat.seconds，不要自己改 seconds，也不要用 generate_speech 代替。'
+            : l.stage === 'render' ? '渲染阶段：对每份画面方案调一次 render_scene（本地渲染，不计费，几十秒出片）。不满意就改画面方案或口播稿再渲一次，不要用 generate_video。'
+              : '';
+    return `【创作流程 · ${skill.name}（${skill.title}）】\n${ledgerText(l)}\n【画面怎么来】这条流水线的画面由代码渲染（render_scene），不调用任何视频模型：所以渲染不计费、可以反复重来，画面效果取决于「画面-NN.json」写得好不好。\n【声音模型】${modelDisplayName('voice', currentVoiceModel())}（fal 上的 MiniMax，narrate_scene 用它逐句配音）\n阶段推进规则：本阶段产物写完并得到用户确认后，用 update_ledger 把 stage 改成下一阶段的 id（顺序 ${stageOrderFor(skill).join(' → ')}），它不需要确认；不要跳阶段。用户给的信息用 update_ledger 的 answers 记录；渲染完把视频 id 写进 clips（no 用选题的顺序号，shots 写标题）。\n${qJson ? `本阶段问卷（这些题还没回答，可按情况删改或补充，用 ask_user 的同一格式，key 原样带上）：${qJson}\n` : ''}契约（硬规则）：${skill.contracts.map((c, i) => `${i + 1}. ${c}`).join(' ')}\n${guide}`;
+  }
   const modelTemplate = l.stage === 'model' && skill.modelTemplate ? `\n建模文稿冻结格式：${skill.modelTemplate}${skill.samples?.model ? `\n【建模文稿样例（只参考结构与写法，内容按本项目来）】\n${skill.samples.model}` : ''}` : l.stage === 'prompts' && skill.samples?.clip ? `\n【片段提示词样例（只参考结构与写法，内容按本项目来）】\n${skill.samples.clip}` : '';
   return `【创作流程 · ${skill.name}（${skill.title}）】\n${ledgerText(l)}\n${videoModelLine(l.stage, skill.id)}${modelTemplate}\n阶段推进规则：本阶段产物写完并得到用户确认后，用 update_ledger 把 stage 改成下一阶段的 id（顺序 ${STAGE_ORDER.join(' → ')}），可与其他 actions 放在同一批，它不需要确认；不要跳阶段，除非用户明确要求。用户给出的信息用 update_ledger 的 answers 记录（key 用问卷里的 key 或简短英文）；素材阶段把实体和参考图 id 写进 entities；片段方案阶段把每段的序号、秒数、承接镜头和提示词文稿 id 写进 clips，生成后补 mediaId。\n${qJson ? `本阶段问卷（这些题还没回答，可按情况删改或补充，一批最多 8 题，用 ask_user 的同一格式，key 原样带上）：${qJson}\n` : ''}建模文稿写法：${skill.modelGuide}\n脚本要求：${skill.scriptNote}\n契约（硬规则）：${skill.contracts.map((c, i) => `${i + 1}. ${c}`).join(' ')}\n素材实体类型：${skill.entities.join('、')}。片段规则：单段约 ${planClipSeconds(skill, videoProfile())} 秒（上限 ${videoProfile().maxClip} 秒，策略「${strategyLabel(videoProfile())}」，段数可少不可多），片段数 = 总时长 ÷ 单段秒数向上取整，最后一段可短；每段提示词文稿引用它要用的参考图文件名与冻结的外形描述。`;
+}
+
+
+// 生成类工具按创作类型分流：影视类给视频模型那一套，科普类给「转写 → 知识点 → 配音 → 渲染」这一套。
+// 分流不只是省提示词长度：把用不到的工具摆在模型面前，它就会去用（科普片用 generate_video 画图表，又慢又贵又不准）。
+const MEDIA_TOOL_LINES = '- {"tool":"generate_image","args":{"prompt":"画面提示词（方舟模型用中文，fal 用英文）","name":"文件名（不含扩展名）","group":"人物|场景|产品|其他","ratio":"可选 16:9|9:16|1:1|4:3|3:4","no_sheet":false}} 生成图片并存进媒体库。系统按 group 自动套参考图模板，**prompt 只写这个对象本身的描述，不要写视角、构图、背景、光位、画幅**，那些由模板补齐：① 人物 / 艺人 / 角色（或文件名带 人物 / 形象图 / 定妆照）→「七视图人物设定图」，固定 16:9，prompt 写年龄、脸型五官、肤色、发型、体型、服装、鞋子（照抄冻结外形描述与五官锚点）；② 场景（或文件名带 场景图 / 外景图 / 内景图）→「空场建立镜头」，跟纲领画幅，prompt 写地点与时间、前景 / 中景 / 背景各有什么、2–4 个不会变的锚点物件、光源位置与色温、地面墙面主要陈设的材质与颜色，**不要写人**（人由人物设定图提供）；③ 道具 / 物件（或文件名带 道具图）→「单体棚拍」，固定 1:1，prompt 写这件东西的形状、真实尺寸（厘米）、材质与表面处理、颜色、磨损痕迹、开关 / 屏幕 / 指示灯状态，不要写手、人或环境。确实只要一张不套模板的单视角图时加 "no_sheet": true。所有图的画风基线由系统按纲领附上，不用自己写\n- {"tool":"generate_video","args":{"prompt":"英文画面提示词","name":"文件名","group":"分区","ratio":"可选 16:9|9:16|1:1","duration":"可选秒数（不填用智能时长）","from_media_id":"可选，以这张已有图片为首帧做图生视频","from_video_id":"可选，分镜接续：取这段已生成视频的末帧当首帧（工具自动截帧存成关键帧图）","to_media_id":"可选，尾帧图，只有收首尾帧的模型（方舟 Seedance）才用"}} 生成视频并存进媒体库；duration 写片段文稿的时长\n- {"tool":"generate_voice","args":{"entity":"角色名（与台账实体同名，旁白写「旁白」）","description":"音色描述，照抄人物小传的音色行","sample":"试听文本：该角色的一句台词，不超过 120 字"}} 设计音色样本（按次计费）：生成一段试听音频，并自动把样本绑到台账实体的 voice 上；之后合成配音就用它的音色\n- {"tool":"generate_speech","args":{"text":"要念的文本（不超过 2000 字，可用 <#0.5#> 标停顿秒数）","entity":"可选，角色名：用它绑定的音色样本","voice_media_id":"可选，直接指定音色样本的媒体 id","name":"文件名，如 旁白-01","speed":1,"emotion":"可选 happy|sad|angry|fearful|surprised|neutral"}} 合成配音（旁白或台词，按次计费）并存入媒体库，结果带时长；没有音色样本时用预置音色\n- {"tool":"compose_video","args":{"name":"成片","clip_ids":["视频id1","视频id2"],"music_id":"可选，音频媒体id 作配乐","music_volume":0.3,"subtitles":[{"start":0,"end":3.5,"text":"字幕"}],"voices":[{"media_id":"配音音频id","start":0,"volume":1}],"clip_volume":1}} 把已生成的片段按顺序合成一条 MP4 成片（浏览器本地合成，不计费，约需成片总时长的时间）；字幕按成片时间轴给起止秒数（各段时长累加），每条不超过 20 字，取自台词 / 口播 / 字幕列，只写台词本身，不带人物名、括注和音色参考；媒体清单里有音频就可以当配乐（用户上传的），没有就不填；voices 放合成好的配音（generate_speech 的结果），start 是它在成片时间轴上的起点秒数（所在片段的累计起点），配音不要再当配乐；clip_volume 是片段自带声音的音量（MV 用 0 静掉片段自带的人声与音乐，整首歌用 music_id 铺满、music_volume 1）\n  生成类操作按次计费且要等待，一次只安排用户明确要的镜头，不要自作主张批量生成；prompt 用英文写，照抄或改写对应的《视频生成Prompt-xx.md》里的英文段落，把人物外形、光线、镜头语言写具体。用哪个模型由用户在输入框的模型面板里选，你不用管（默认「智能匹配模型」：图片从 Seedream 5.0 起、视频从 Seedance 2.5 起，模型未开通或欠费时系统会自动换成可用的，结果里会写明实际用的模型）；ratio 和 duration 不填就用用户选好的偏好（默认是「智能时长」，系统会按提示词长度自动定秒数），只有用户这次明确指定了画幅或秒数才填。用户开了「自动模式」时，只含生成操作的计划会直接执行、不再等确认，所以更要只生成用户明确要的那几个镜头。\n';
+const EXPLAINER_TOOL_LINES = `- {"tool":"import_transcript","args":{"url":"课程链接（可选）","doc_id":"已上传的字幕 / 文稿 id（可选）","text":"直接粘贴的文字（可选）","title":"课程名","lang":"zh,en"}} 把课程变成带时间码的「转写稿.md」：给 url 时由本机助手用 yt-dlp 抓字幕（YouTube / B 站都行，约 20 秒），三个来源给一个就行
+- {"tool":"extract_points","args":{"doc_id":"转写稿 id"}} 逐段读转写稿、挑出值得单独做一条的知识点，写成「知识点清单.md」。这一步只能用它，不要自己凭印象写清单（它会把整份转写稿分块送进模型，你看不到的部分它也看了）
+- {"tool":"lint_narration","args":{"doc_id":"可选，不填就查全部口播稿"}} 自查口播稿：AI 套话、超过 20 字的句子、冒号破折号、翻案句过多（不需要确认，结果交回给你）
+- {"tool":"lint_scene","args":{"doc_id":"可选，不填就查全部画面方案"}} 自查画面方案：缺字段、一屏条数过多、模板太单一、第一段不是 hook（不需要确认，结果交回给你）
+- {"tool":"narrate_scene","args":{"doc_id":"画面方案 id","voice_media_id":"可选，音色样本","speed":1}} 给画面方案逐句配音（按次计费）：每句单独合成，真实音频时长写回 beat.seconds，声画从此对齐。一次只做一条
+- {"tool":"render_scene","args":{"doc_id":"画面方案 id","name":"可选文件名"}} 用代码把画面方案渲染成 MP4（本地渲染，不计费，几十秒）：画面逐帧画出，配音与字幕一起烧进去。改完方案随时可以重渲
+- {"tool":"generate_image","args":{"prompt":"英文或中文画面提示词","name":"文件名","group":"配图","ratio":"16:9"}} 只在某一段确实需要一张实拍感配图时才用（按次计费）；图表、流程图、对比、公式都由画面方案的模板画出来，不要用生图去做
+- {"tool":"compose_video","args":{"name":"成片","clip_ids":["视频id"],"music_id":"音频媒体id","music_volume":0.2}} 需要把几条拼起来或加配乐时用（本地合成，不计费）
+  渲染不计费、配音按次计费。画面效果取决于「画面-NN.json」：模板选得对不对、字够不够少、有没有数字和对比，比任何提示词都重要。`;
+function mediaToolLines(): string {
+  const brief = useFiles.getState().brief || {};
+  return skillFor(readLedger()?.skill || brief.format).codeRendered ? EXPLAINER_TOOL_LINES : MEDIA_TOOL_LINES;
 }
 
 export function briefMissing(): string[] { const b: Record<string, any> = useFiles.getState().brief || {}; return BRIEF_KEY_FIELDS.filter(k => !String(b[k] || '').trim()).map(k => BRIEF_FIELDS.find(f => f[0] === k)![1]); }
@@ -90,13 +118,7 @@ export function buildSystemPrompt(request: string, chat: Chat): string {
 - {"tool":"lint_clips","args":{}} 校验片段提示词：子镜头时段首尾相接且等于片段时长、片段合计接近纲领总时长、每个已激活卖点至少落在一个片段里（不需要确认，结果交回给你）
 - {"tool":"inspect_image","args":{"id":"图片id","question":"想确认什么"}} 用视觉模型看一张图（不需要确认，描述会交回给你再规划；只有配置了支持看图的模型才可用）。参考图生成完系统会自动用视觉模型逐张质检并把结果展示给用户，你不必再安排检查
 - {"tool":"open_media","args":{"id":"媒体id"}} 查看图片 / 视频；{"tool":"rename_media","args":{"id":"媒体id","name":"新名"}}；{"tool":"tag_media","args":{"id":"媒体id","group":"人物|场景|产品|其他"}}；{"tool":"delete_media","args":{"id":"媒体id"}}
-- {"tool":"generate_image","args":{"prompt":"画面提示词（方舟模型用中文，fal 用英文）","name":"文件名（不含扩展名）","group":"人物|场景|产品|其他","ratio":"可选 16:9|9:16|1:1|4:3|3:4","no_sheet":false}} 生成图片并存进媒体库。系统按 group 自动套参考图模板，**prompt 只写这个对象本身的描述，不要写视角、构图、背景、光位、画幅**，那些由模板补齐：① 人物 / 艺人 / 角色（或文件名带 人物 / 形象图 / 定妆照）→「七视图人物设定图」，固定 16:9，prompt 写年龄、脸型五官、肤色、发型、体型、服装、鞋子（照抄冻结外形描述与五官锚点）；② 场景（或文件名带 场景图 / 外景图 / 内景图）→「空场建立镜头」，跟纲领画幅，prompt 写地点与时间、前景 / 中景 / 背景各有什么、2–4 个不会变的锚点物件、光源位置与色温、地面墙面主要陈设的材质与颜色，**不要写人**（人由人物设定图提供）；③ 道具 / 物件（或文件名带 道具图）→「单体棚拍」，固定 1:1，prompt 写这件东西的形状、真实尺寸（厘米）、材质与表面处理、颜色、磨损痕迹、开关 / 屏幕 / 指示灯状态，不要写手、人或环境。确实只要一张不套模板的单视角图时加 "no_sheet": true。所有图的画风基线由系统按纲领附上，不用自己写
-- {"tool":"generate_video","args":{"prompt":"英文画面提示词","name":"文件名","group":"分区","ratio":"可选 16:9|9:16|1:1","duration":"可选秒数（不填用智能时长）","from_media_id":"可选，以这张已有图片为首帧做图生视频","from_video_id":"可选，分镜接续：取这段已生成视频的末帧当首帧（工具自动截帧存成关键帧图）","to_media_id":"可选，尾帧图，只有收首尾帧的模型（方舟 Seedance）才用"}} 生成视频并存进媒体库；duration 写片段文稿的时长
-- {"tool":"generate_voice","args":{"entity":"角色名（与台账实体同名，旁白写「旁白」）","description":"音色描述，照抄人物小传的音色行","sample":"试听文本：该角色的一句台词，不超过 120 字"}} 设计音色样本（按次计费）：生成一段试听音频，并自动把样本绑到台账实体的 voice 上；之后合成配音就用它的音色
-- {"tool":"generate_speech","args":{"text":"要念的文本（不超过 2000 字，可用 <#0.5#> 标停顿秒数）","entity":"可选，角色名：用它绑定的音色样本","voice_media_id":"可选，直接指定音色样本的媒体 id","name":"文件名，如 旁白-01","speed":1,"emotion":"可选 happy|sad|angry|fearful|surprised|neutral"}} 合成配音（旁白或台词，按次计费）并存入媒体库，结果带时长；没有音色样本时用预置音色
-- {"tool":"compose_video","args":{"name":"成片","clip_ids":["视频id1","视频id2"],"music_id":"可选，音频媒体id 作配乐","music_volume":0.3,"subtitles":[{"start":0,"end":3.5,"text":"字幕"}],"voices":[{"media_id":"配音音频id","start":0,"volume":1}],"clip_volume":1}} 把已生成的片段按顺序合成一条 MP4 成片（浏览器本地合成，不计费，约需成片总时长的时间）；字幕按成片时间轴给起止秒数（各段时长累加），每条不超过 20 字，取自台词 / 口播 / 字幕列，只写台词本身，不带人物名、括注和音色参考；媒体清单里有音频就可以当配乐（用户上传的），没有就不填；voices 放合成好的配音（generate_speech 的结果），start 是它在成片时间轴上的起点秒数（所在片段的累计起点），配音不要再当配乐；clip_volume 是片段自带声音的音量（MV 用 0 静掉片段自带的人声与音乐，整首歌用 music_id 铺满、music_volume 1）
-  生成类操作按次计费且要等待，一次只安排用户明确要的镜头，不要自作主张批量生成；prompt 用英文写，照抄或改写对应的《视频生成Prompt-xx.md》里的英文段落，把人物外形、光线、镜头语言写具体。用哪个模型由用户在输入框的模型面板里选，你不用管（默认「智能匹配模型」：图片从 Seedream 5.0 起、视频从 Seedance 2.5 起，模型未开通或欠费时系统会自动换成可用的，结果里会写明实际用的模型）；ratio 和 duration 不填就用用户选好的偏好（默认是「智能时长」，系统会按提示词长度自动定秒数），只有用户这次明确指定了画幅或秒数才填。用户开了「自动模式」时，只含生成操作的计划会直接执行、不再等确认，所以更要只生成用户明确要的那几个镜头。
-- {"tool":"ask_user","args":{"questions":[{"key":"可选英文键","text":"问题","type":"single|multi|text","options":["选项A",{"label":"选项B","hint":"一行说明"}],"placeholder":"填空题的示例"}]}} 向用户追问：一批最多 5 题、一题只问一件事，能给选项就给选项；options 默认写成纯字符串数组 ["选项A","选项B"]，只有选项本身需要解释时才写成 {"label":"…","hint":"…"}，且这样的选项一题不超过 3 个；需要用户自由填写的用 type text 并给 placeholder；用了它就不要再放其他 actions（save_brief / update_ledger 除外）。用户提交后会以「问题：答案」的形式回来
+${mediaToolLines()}- {"tool":"ask_user","args":{"questions":[{"key":"可选英文键","text":"问题","type":"single|multi|text","options":["选项A",{"label":"选项B","hint":"一行说明"}],"placeholder":"填空题的示例"}]}} 向用户追问：一批最多 5 题、一题只问一件事，能给选项就给选项；options 默认写成纯字符串数组 ["选项A","选项B"]，只有选项本身需要解释时才写成 {"label":"…","hint":"…"}，且这样的选项一题不超过 3 个；需要用户自由填写的用 type text 并给 placeholder；用了它就不要再放其他 actions（save_brief / update_ledger 除外）。用户提交后会以「问题：答案」的形式回来
 - {"tool":"update_ledger","args":{"stage":"可选，推进到的阶段 id","answers":{"key":"值"},"entities":[{"name":"实体名","kind":"产品|人物|场景|道具|风格锚点","ref":"参考图媒体id","voice":"可选，音色样本的音频媒体id","status":"待确认|已确认"}],"clips":[{"no":1,"seconds":15,"shots":"01-04","docId":"提示词文稿id","mediaId":"生成后的视频id","status":"待生成|已生成"}],"notes":"备注"}} 更新台账（不需要确认，只填要改的字段）
 - {"tool":"save_brief","args":{"format":"series|film|short|ad|other","duration":"","platform":"","audience":"","tone":"","references":"","visualStyle":"","taboos":"","notes":""}} 记录用户给出的创作纲领信息（只填有的字段）
 - {"tool":"create_project","args":{"title":"项目名"}}；{"tool":"switch_project","args":{"id":"项目id"}}；{"tool":"rename_project","args":{"id":"项目id","title":"新名称"}}

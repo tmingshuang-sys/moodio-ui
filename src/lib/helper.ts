@@ -9,7 +9,7 @@ export const HELPER_PORT = 17817;
 export const HELPER_URL = `http://127.0.0.1:${HELPER_PORT}`;
 export const HELPER_FILE = '/moodio-helper.py';   // 放在 public/，用户下载后 python3 跑起来
 
-export interface HelperStatus { ok: boolean; version?: string; resolveInstalled?: boolean; resolveRunning?: boolean; dir?: string; }
+export interface HelperStatus { ok: boolean; version?: string; resolveInstalled?: boolean; resolveRunning?: boolean; ytdlp?: boolean; dir?: string; }
 
 let cached: { at: number; status: HelperStatus } | null = null;
 // 探测：默认最多等 1.5 秒，结果缓存 10 秒，免得每次点按钮都等
@@ -24,6 +24,21 @@ export async function pingHelper(timeoutMs = 1500, maxAgeMs = 10_000): Promise<H
   finally { clearTimeout(timer); }
 }
 export const forgetHelper = () => { cached = null; };
+
+// 课程字幕：浏览器没法直接抓 YouTube 字幕（2026 年起 timedtext 要 PoToken），所以交给本机助手的 yt-dlp
+export interface FetchedCaptions { title: string; duration: number; uploader: string; url: string; auto: boolean; captions: string; }
+export async function fetchCaptions(url: string, lang = 'zh,zh-Hans,en', timeoutMs = 300_000): Promise<FetchedCaptions> {
+  const status = await pingHelper();
+  if (!status.ok) throw new Error('本机助手没在运行。下载 moodio-helper.py 后 `python3 moodio-helper.py` 跑起来，就能直接用课程链接导入；也可以把字幕文件（.srt / .vtt）拖进工作区。');
+  if (status.ytdlp === false) throw new Error('本机助手跑起来了，但没找到 yt-dlp（装一个即可：pip install yt-dlp）。也可以把字幕文件（.srt / .vtt）直接拖进工作区。');
+  const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${HELPER_URL}/transcript?url=${encodeURIComponent(url)}&lang=${encodeURIComponent(lang)}`, { signal: ac.signal });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(String(data.error || '没能抓到字幕'));
+    return { title: String(data.title || ''), duration: Number(data.duration) || 0, uploader: String(data.uploader || ''), url: String(data.webpage_url || url), auto: !!data.auto, captions: String(data.captions || '') };
+  } finally { clearTimeout(timer); }
+}
 
 export interface SendResult { message: string; dir?: string; }
 // 把片段按顺序送进达芬奇：先逐段上传，再让助手生成工程并导入

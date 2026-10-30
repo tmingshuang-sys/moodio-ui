@@ -22,7 +22,7 @@ describe('skill packs', () => {
   it('has one pack per creative format with the same eight-stage skeleton', () => {
     for (const id of ['ad', 'film', 'series', 'short', 'mv', 'other']) {
       const s = skills.skillFor(id); expect(s.id).toBe(id);
-      expect(skills.skillStages(s).map(x => x.id)).toEqual(skills.STAGE_ORDER);
+      expect(skills.skillStages(s).map(x => x.id)).toEqual(s.codeRendered ? skills.EXPLAINER_ORDER : skills.STAGE_ORDER);
       expect(s.general.length).toBeGreaterThanOrEqual(3); expect(s.modeling.length).toBeGreaterThanOrEqual(2);
       expect(s.contracts.length).toBeGreaterThanOrEqual(2); expect(s.modelDocs.length).toBeGreaterThanOrEqual(1);
       expect(s.modelTemplate, `${id} needs a frozen modeling template`).toBeTruthy(); expect(s.clipFocus).toBeTruthy();

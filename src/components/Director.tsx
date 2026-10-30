@@ -23,7 +23,7 @@ export function useNextStep(): NextStep {
 
 // 类型选择：六个类型，点一个就建纲领、建台账、弹本地问卷
 // 首页只放四个主类型排成一行（剧集 / 其他仍可通过纲领或对话选择）
-const HOME_FORMATS = ['ad', 'film', 'short', 'mv'];
+const HOME_FORMATS = ['explainer', 'ad', 'film', 'short'];   // 首页只列四个最常用的；MV / 剧集 / 其他仍可在纲领里选
 export function FormatPicker({ compact = false, home = false }: { compact?: boolean; home?: boolean }) {
   const t = useT();
   const entries = Object.entries(BRIEF_FORMATS).filter(([id]) => !home || HOME_FORMATS.includes(id));

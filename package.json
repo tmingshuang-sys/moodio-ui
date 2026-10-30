@@ -17,6 +17,7 @@
   "dependencies": {
     "idb-keyval": "latest",
     "lucide-react": "latest",
+    "mediabunny": "^1.64.0",
     "mp4-muxer": "^5.2.2",
     "react": "latest",
     "react-dom": "latest",

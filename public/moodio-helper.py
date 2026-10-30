@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Moodio 本地助手：让网页里的成片一键进达芬奇。
+"""WoW 本地助手：让网页里的成片一键进达芬奇，并代网页抓课程字幕。
 
 网页没法启动达芬奇（它没注册 URL scheme），也拿不到本机绝对路径，所以由这个小程序代劳：
 它在 127.0.0.1 上听一个端口，收下网页传来的片段，写到 ~/Movies/Moodio/<创作名>/，
@@ -12,12 +12,15 @@
 
 想换端口或存放位置：
     python3 moodio-helper.py --port 17817 --dir ~/Movies/Moodio
+
+抓字幕需要本机装了 yt-dlp（pip install yt-dlp 或 brew install yt-dlp）；要走代理就加 --proxy：
+    python3 moodio-helper.py --proxy http://127.0.0.1:7890
 """
-import argparse, json, os, re, shutil, sys, threading, time, webbrowser
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, threading, time, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 DEFAULT_PORT = 17817
 DEFAULT_DIR = os.path.expanduser("~/Movies/Moodio")
 MAX_FILE = 2 * 1024 * 1024 * 1024          # 单个片段上限 2GB
@@ -31,8 +34,64 @@ RESOLVE_LIBS = [
     "/Applications/DaVinci Resolve.app/Contents/Libraries/Fusion/fusionscript.so",
 ]
 
+# yt-dlp 常见的安装位置：PATH 找不到时按这些路径碰一下（Homebrew、pipx、各种 venv）
+YTDLP_PATHS = [
+    "/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp",
+    os.path.expanduser("~/.local/bin/yt-dlp"),
+    os.path.expanduser("~/Library/Python/3.9/bin/yt-dlp"),
+    os.path.expanduser("~/.agent-reach-venv/bin/yt-dlp"),
+]
+
 def log(*a):
     print(time.strftime("[%H:%M:%S]"), *a, flush=True)
+
+
+def find_ytdlp():
+    found = shutil.which("yt-dlp")
+    if found:
+        return found
+    for p in YTDLP_PATHS:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def fetch_subtitles(url, langs, proxy):
+    """用 yt-dlp 抓字幕：优先人工字幕，没有就用自动字幕。返回 (meta, vtt_text, is_auto)。"""
+    exe = find_ytdlp()
+    if not exe:
+        raise RuntimeError("本机没有 yt-dlp，装一个就能直接抓字幕：pip install yt-dlp 或 brew install yt-dlp")
+    base = [exe, "--no-playlist", "--no-warnings", "--socket-timeout", "30"]
+    if proxy:
+        base += ["--proxy", proxy]
+    meta = json.loads(subprocess.run(base + ["--skip-download", "--dump-single-json", url],
+                                     capture_output=True, text=True, timeout=120).stdout or "{}")
+    if not meta:
+        raise RuntimeError("拿不到视频信息：链接可能无法访问，或者需要代理")
+    # 先按用户给的语言找人工字幕，再找自动字幕；都没有就退到视频自身的语言
+    def pick(table):
+        for want in langs:
+            for code in table:
+                if code == want or code.startswith(want + "-") or code.split("-")[0] == want:
+                    return code
+        return None
+    subs, autos = meta.get("subtitles") or {}, meta.get("automatic_captions") or {}
+    code, auto = pick(subs), False
+    if not code:
+        code, auto = pick(autos), True
+    if not code:
+        raise RuntimeError("这个视频没有可用的字幕（人工和自动都没有）")
+    with tempfile.TemporaryDirectory() as tmp:
+        cmd = base + ["--skip-download", "--sub-format", "vtt/srt/best", "--sub-lang", code,
+                      "--write-auto-sub" if auto else "--write-sub",
+                      "-o", os.path.join(tmp, "cap.%(ext)s"), url]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        files = [f for f in os.listdir(tmp) if f.endswith((".vtt", ".srt"))]
+        if not files:
+            raise RuntimeError("字幕下载失败：" + (r.stderr or r.stdout or "")[-300:])
+        with open(os.path.join(tmp, files[0]), encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    return meta, text, auto
 
 def safe_name(name, fallback="clip"):
     """文件名去掉路径分隔符与危险字符，避免写到目录外面。"""
@@ -256,7 +315,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {
                 "ok": True, "app": "moodio-helper", "version": VERSION,
                 "resolveInstalled": resolve_installed(), "resolveRunning": resolve_app() is not None,
+                "ytdlp": bool(find_ytdlp()),
                 "dir": self.server.work_dir,
+            })
+        if path == "/transcript":
+            q = parse_qs(urlparse(self.path).query)
+            url = (q.get("url") or [""])[0].strip()
+            langs = [x for x in (q.get("lang") or ["zh,zh-Hans,en"])[0].split(",") if x]
+            if not url.startswith(("http://", "https://")):
+                return self._json(400, {"error": "缺少视频链接"})
+            try:
+                meta, text, auto = fetch_subtitles(url, langs, self.server.proxy)
+            except Exception as e:
+                log("抓字幕失败:", e)
+                return self._json(502, {"error": str(e)})
+            log("抓到字幕:", meta.get("title"), len(text), "字节", "自动" if auto else "人工")
+            return self._json(200, {
+                "ok": True, "title": meta.get("title") or "", "duration": meta.get("duration") or 0,
+                "uploader": meta.get("uploader") or "", "webpage_url": meta.get("webpage_url") or url,
+                "auto": auto, "captions": text,
             })
         return self._json(404, {"error": "没有这个接口"})
 
@@ -353,19 +430,26 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200 if ok else 500, {"ok": ok, "message": msg, "dir": d, "srt": srt_path})
 
 def main():
-    ap = argparse.ArgumentParser(description="Moodio 本地助手：把成片一键送进达芬奇")
+    ap = argparse.ArgumentParser(description="WoW 本地助手：成片一键进达芬奇，并代网页抓课程字幕")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--dir", default=DEFAULT_DIR, help="片段存放位置，默认 ~/Movies/Moodio")
+    ap.add_argument("--proxy", default=os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy") or "",
+                    help="抓字幕时 yt-dlp 走的代理，默认读环境变量 HTTPS_PROXY")
     args = ap.parse_args()
     work = os.path.abspath(os.path.expanduser(args.dir))
     os.makedirs(work, exist_ok=True)
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     srv.work_dir = work
-    log("Moodio 助手 %s 已启动" % VERSION)
+    srv.proxy = args.proxy
+    ytdlp = find_ytdlp()
+    log("WoW 助手 %s 已启动" % VERSION)
     log("监听 http://127.0.0.1:%d（只接受本机请求）" % args.port)
     log("片段存放在", work)
     log("达芬奇：" + ("已安装" if resolve_installed() else "没找到，装了达芬奇才能一键导入"))
-    log("现在回到 Moodio 页面，点视频上的导出按钮即可。按 Control-C 退出。")
+    log("yt-dlp：" + (ytdlp if ytdlp else "没找到，装了才能直接抓课程字幕（pip install yt-dlp）"))
+    if args.proxy:
+        log("抓字幕走代理", args.proxy)
+    log("现在回到页面：视频上的导出按钮、以及「导入课程」都会用到我。按 Control-C 退出。")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

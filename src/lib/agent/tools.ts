@@ -16,6 +16,7 @@ import { composeVideos } from '../compose';
 import { askAboutImages } from '../vision';
 import { makeSheet } from '../sheet';
 import { lintClips, lintSummary } from '../lint';
+import { EXPLAINER_TOOLS } from './explainer-tools';
 
 // 按名字找台账实体：先全等，再按去掉括注的前缀对（模型常把「林小满（26 岁…）」简写成「林小满」）
 function matchEntity(name: string) {
@@ -33,8 +34,8 @@ export interface ToolContext {
 }
 export type ToolFn = (args: Record<string, any>, ctx: ToolContext) => Promise<ToolResult | string>;
 
-export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger', 'inspect_image', 'lint_clips']);
-export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'generate_voice', 'generate_speech', 'compose_video']);   // 自动模式下不用确认
+export const NO_CONFIRM_TOOLS = new Set(['read_doc', 'open_doc', 'open_media', 'export_doc', 'save_brief', 'update_ledger', 'inspect_image', 'lint_clips', 'lint_narration', 'lint_scene']);
+export const GENERATE_TOOLS = new Set(['generate_image', 'generate_video', 'generate_voice', 'generate_speech', 'compose_video', 'narrate_scene', 'render_scene']);   // 自动模式下不用确认（render_scene 是本地渲染，不计费）
 export const DESTRUCTIVE_TOOLS = new Set(['delete_doc', 'delete_media']);
 
 function requireDoc(id: unknown) { const d = findDoc(String(id || '').trim()); if (!d) throw new Error(`找不到 id 为「${id}」的文稿，请从文件清单里选择`); return d; }
@@ -221,10 +222,12 @@ export const AGENT_TOOLS: Record<string, ToolFn> = {
   async create_project(args) { const p = projects.create(String(args.title || '新项目')); return `已新建项目「${p.title}」，页面即将重新加载`; },
   async switch_project(args) { const p = projects.list().find(x => x.id === String(args.id || '')); if (!p) throw new Error(`找不到 id 为「${args.id}」的项目`); projects.switchTo(p.id); return `正在切换到项目「${p.title}」`; },
   async rename_project(args) { const p = projects.list().find(x => x.id === String(args.id || '')) || projects.active(); const title = String(args.title || '').trim(); if (!title) throw new Error('缺少新名称'); const old = p.title; projects.rename(p.id, title); return `已把项目「${old}」重命名为「${title}」`; },
+  // ---- 科普流水线：转写 / 知识点 / 自查 / 配音 / 渲染（见 explainer-tools.ts）----
+  ...EXPLAINER_TOOLS,
 };
 
 // ===== 计划卡：把 actions 变成可读的步骤（标题 / 预览 / 图标类别 / 删除标记）=====
-const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', generate_voice: 'audio', generate_speech: 'audio', compose_video: 'video', inspect_image: 'media', make_sheet: 'image', lint_clips: 'doc', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
+const PLAN_KIND: Record<string, string> = { write_doc: 'write', append_doc: 'write', replace_section: 'write', rename_doc: 'doc', delete_doc: 'delete', read_doc: 'doc', open_doc: 'doc', export_doc: 'export', open_media: 'media', rename_media: 'media', tag_media: 'media', delete_media: 'delete', generate_image: 'image', generate_video: 'video', generate_voice: 'audio', generate_speech: 'audio', compose_video: 'video', inspect_image: 'media', make_sheet: 'image', lint_clips: 'doc', lint_narration: 'doc', lint_scene: 'doc', import_transcript: 'write', extract_points: 'write', narrate_scene: 'audio', render_scene: 'video', create_project: 'project', switch_project: 'project', rename_project: 'project', save_brief: 'brief', ask_user: 'brief', update_ledger: 'brief' };
 export function planKind(tool: string) { return PLAN_KIND[tool] || 'other'; }
 
 export function describeAction(a: Action): string {
@@ -237,6 +240,12 @@ export function describeAction(a: Action): string {
     case 'rename_doc': return `把「${docName(g.id)}」重命名为「${g.name || ''}」`;
     case 'delete_doc': return `删除文稿「${docName(g.id)}」（进回收站，可撤销）`;
     case 'read_doc': return `读取「${docName(g.id)}」`;
+    case 'import_transcript': return g.url ? `抓取课程字幕并转写（${String(g.url).slice(0, 48)}）` : g.doc_id ? `把「${docName(g.doc_id)}」转成转写稿` : '把粘贴的内容转成转写稿';
+    case 'extract_points': return `从${g.doc_id ? `「${docName(g.doc_id)}」` : '转写稿'}里梳理知识点`;
+    case 'lint_narration': return g.doc_id ? `自查口播稿「${docName(g.doc_id)}」` : '自查全部口播稿';
+    case 'lint_scene': return g.doc_id ? `自查画面方案「${docName(g.doc_id)}」` : '自查全部画面方案';
+    case 'narrate_scene': return `给「${docName(g.doc_id)}」逐句配音`;
+    case 'render_scene': return `用代码渲染「${docName(g.doc_id)}」`;
     case 'open_doc': return `打开「${docName(g.id)}」`;
     case 'export_doc': return `下载「${docName(g.id)}」`;
     case 'open_media': return `查看「${mediaName(g.id)}」`;

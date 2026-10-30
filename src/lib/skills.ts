@@ -5,7 +5,9 @@
 import type { Question } from './types';
 import { BRIEF_FORMATS } from './guides';
 
-export type StageId = 'brief' | 'model' | 'script' | 'assets' | 'storyboard' | 'prompts' | 'video' | 'deliver';
+// 影视类（广告 / 故事片 / 剧集 / 短片 / MV）走前八个；科普类用自己的一串（见 EXPLAINER_STAGES）
+export type StageId = 'brief' | 'model' | 'script' | 'assets' | 'storyboard' | 'prompts' | 'video' | 'deliver'
+  | 'source' | 'knowledge' | 'scene' | 'narrate' | 'render' | 'compose';
 export interface StageDef { id: StageId; name: string; goal: string; outputs: string; gate: string; }
 export interface QuestionDef extends Question { key: string; briefKey?: 'duration' | 'ratio' | 'audience' | 'tone' | 'platform' | 'visualStyle'; }   // briefKey：答案同时写进创作纲领的哪个字段
 export interface Skill {
@@ -23,9 +25,15 @@ export interface Skill {
   contracts: string[];          // 契约：必须遵守的硬规则
   entities: string[];           // 素材完整性检查的实体类型
   clipSeconds: number;          // 单段视频的默认长度
+  stages?: StageDef[];          // 自带阶段表（科普类的流程和影视类完全不同，不套通用骨架）
+  codeRendered?: boolean;       // 画面由代码渲染而不是视频模型生成
 }
 
 export const STAGE_ORDER: StageId[] = ['brief', 'model', 'script', 'assets', 'storyboard', 'prompts', 'video', 'deliver'];
+export const EXPLAINER_ORDER: StageId[] = ['brief', 'source', 'knowledge', 'script', 'scene', 'narrate', 'render', 'compose', 'deliver'];
+export const ALL_STAGE_IDS: StageId[] = Array.from(new Set([...STAGE_ORDER, ...EXPLAINER_ORDER]));
+// 某个技能的阶段顺序：台账推进、还剩几步都按它算，不要用 STAGE_ORDER 硬写
+export function stageOrderFor(skill: Skill): StageId[] { return skillStages(skill).map(s => s.id); }
 
 // 所有类型共用的契约：建模文稿必须标注证据来源，不知道的写 unknown，不编造
 export const EVIDENCE_CONTRACT = '证据来源契约：建模文稿里每个事实都标注来源——用户确认 / AI 推导 / 品类常识推导 / unknown；不知道的一律写 unknown，不得编造参数、材质、尺寸或背景；AI 推导出的外观要在 message 里提醒用户「可能与真实不符，有图可随时补传校正」。';
@@ -360,6 +368,21 @@ const COMMON_GENERAL: QuestionDef[] = [
   withBrief(single('audience', '主要给谁看？', [opt('18–30 岁都市年轻人'), opt('25–40 岁家庭用户'), opt('学生'), opt('中老年')]), 'audience'),
 ];
 
+
+// ===== 科普 / 知识类的流程：画面由代码渲染，时间轴由口播驱动 =====
+// 和影视类最大的不同：没有「生成视频」这一步——画面是渲染出来的，所以不按次计费、几十秒就出片，可以反复改。
+export const EXPLAINER_STAGES: StageDef[] = [
+  { id: 'brief', name: '需求澄清', goal: '问清素材来源（课程链接 / 字幕文件 / 自己讲）、给谁看、每条多长、画幅与风格模板，答案用 save_brief 记录；信息够了就推进，不要反复追问。', outputs: '创作纲领', gate: '来源、受众、时长、画幅齐全' },
+  { id: 'source', name: '课程转写', goal: '把课程变成带时间码的「转写稿.md」：有链接就用 import_transcript（本机助手抓字幕），用户上传了 .srt / .vtt / .txt 就用 import_transcript 指向那份文稿，什么都没有就请用户粘贴文字。转写稿是后面所有阶段的事实源，不要自己编内容。', outputs: '「转写稿.md」', gate: '转写稿已存在且不是空的' },
+  { id: 'knowledge', name: '知识点梳理', goal: '用 extract_points 从转写稿里逐段提炼知识点，写成「知识点清单.md」；然后和用户一起定下做哪几条，写「选题排期.md」。知识点必须能在转写稿里对回原文时间码，不许凭印象编。', outputs: '「知识点清单.md」「选题排期.md」', gate: '选题排期里至少有一条标了「是」，并经用户确认' },
+  { id: 'script', name: '口播脚本', goal: '按口播文案规范为每条选题写「口播-NN.md」：一行一句，每句不超过 20 字，一句对应一个画面。写完用 lint_narration 自查 AI 味与长句，有问题先改再往下走。', outputs: '每条一份「口播-NN.md」', gate: '每条选题都有口播稿且通过 lint_narration' },
+  { id: 'scene', name: '画面方案', goal: '按画面方案规范把每份口播稿变成「画面-NN.json」：每句口播一个 beat，按内容选模板（有数字上 number、有顺序上 steps、有对比上 compare、有出处上 quote），不要全片 bullets。不要自己填 seconds。写完用 lint_scene 自查。', outputs: '每条一份「画面-NN.json」', gate: '每条都有画面方案且通过 lint_scene' },
+  { id: 'narrate', name: '配音', goal: '用 narrate_scene 给画面方案逐句配音：每句单独合成，真实音频时长直接写回 beat.seconds，声画从此对齐。不想要人声的话用户可以整体跳过。', outputs: '每句一段配音（媒体库「配音」分区）与写回时长的画面方案', gate: '每条的 beats 都有 voiceId，或用户选择了跳过配音' },
+  { id: 'render', name: '渲染画面', goal: '用 render_scene 把每份画面方案渲染成 MP4：画面逐帧由代码画出，配音与字幕一起烧进去。渲染不计费，不满意就改画面方案再渲一次。', outputs: '每条一个视频（媒体库「成片」分区）', gate: '每条选题都有渲染好的视频' },
+  { id: 'compose', name: '成片检查', goal: '把渲染结果交给用户逐条看：画面有没有压字、字幕有没有超框、节奏快不快。要改的改画面方案或口播稿后重渲染；要配乐就用 compose_video 或在画面方案里写 music。', outputs: '确认过的成片', gate: '用户确认全部成片' },
+  { id: 'deliver', name: '交付', goal: '按发布顺序列出每条的标题、钩子、时长与文件，给出发布建议（先发哪条、配什么文案）；需要进剪辑软件再调的，提示可以用「导入到剪辑软件」。', outputs: '交付说明', gate: '用户验收' },
+];
+
 export const SKILLS: Record<string, Skill> = {
   ad: {
     id: 'ad', name: '营销视频大师', title: '广告',
@@ -497,6 +520,34 @@ export const SKILLS: Record<string, Skill> = {
     imageQA: '定妆照门禁：七视图设定图——同一个人的七个视图（左三全身：正面 / 左侧面 / 背面，右四头肩：正面 / 左前 45° / 右前 45° / 左侧面），各视图五官、专属记忆点（痣 / 疤）、发型、打歌服与鞋子一致，不得出现第二个人物或替代服装，视角不缺不重、无头脚裁切、无镜像错误；近白纯色背景无杂物；真实皮肤纹理不磨皮不美颜；无字、无编号、无水印、无 logo、无墨镜遮挡。',
     clipSeconds: 10,
   },
+  explainer: {
+    id: 'explainer', name: '科普主理人', title: '科普 / 知识', stages: EXPLAINER_STAGES, codeRendered: true,
+    modelName: '知识点梳理', modelDocs: ['知识点清单.md', '选题排期.md'], clipFocus: '这一段讲清楚什么',
+    modelGuide: '「知识点清单.md」逐条带来源时间码；「选题排期.md」定下做哪几条、各自的标题与钩子。',
+    scriptNote: '口播稿一行一句、每句不超过 20 字、一句一画面；禁用 AI 套话；术语第一次出现就要有人话解释。',
+    general: [
+      single('source', '素材从哪来？', [opt('一个课程 / 视频链接', 'YouTube、B 站都行，本机助手会把字幕抓下来'), opt('我有字幕或文稿文件', '.srt / .vtt / .txt 拖进工作区'), opt('我直接把内容讲给你听', '在对话里说，或者粘贴一段文字')]),
+      withBrief(single('audience', '给谁看？', [opt('完全零基础', '没接触过这个领域，比喻要特别生活化'), opt('有点基础', '听过名词，但说不清原理'), opt('同行 / 从业者', '可以直接上术语和细节')]), 'audience'),
+      withBrief(single('duration', '每条视频多长？', [opt('60 秒', '一条讲清一个知识点，最通用'), opt('45 秒', '更紧凑，适合纯钩子型'), opt('90 秒', '需要推导或多步骤时')]), 'duration'),
+      withBrief(single('ratio', '画幅选哪种？', [opt('竖屏 9:16', '抖音 / 小红书 / Reels'), opt('横屏 16:9', 'B 站 / YouTube'), opt('方屏 1:1', '公众号 / Instagram')]), 'ratio'),
+      single('theme', '画面风格走哪套？', [opt('墨白', '白底墨字加一点朱红，克制、知识感'), opt('深夜', '近黑底加荧光绿，科技感'), opt('学院', '靛蓝底加明黄，课程感'), opt('纸感', '米白纸底加橙，人文温和'), opt('高饱和', '奶油底加橘红电蓝，网感强')]),
+      single('count', '这一轮做几条？', [opt('先做 1 条看效果'), opt('3 条'), opt('5 条'), opt('把值得做的都做了')]),
+    ],
+    modeling: [
+      single('pick', '挑知识点的标准偏向哪边？', [opt('反常识优先', '推翻观众以为对的事，最容易传播'), opt('实用优先', '看完就能用上'), opt('体系优先', '按课程脉络把一门课拆成一串')]),
+      single('voice', '口播用什么人称？', [opt('「你」直接对观众说', '最像人说话，默认'), opt('「我们」一起推导', '适合推导类'), opt('不要人声，只上字幕', '纯图文卡点')]),
+      text('watermark', '画面上署名写什么？没有就留空', '比如：@某某讲 AI'),
+    ],
+    contracts: [
+      '出处契约：每个知识点在「知识点清单.md」里必须带能对回转写稿的时间码；口播稿里凡是引用课程观点、数字或原话，画面方案要用 quote 模板把出处写出来。转写稿里没有的内容不许当成课程观点讲。',
+      '通俗契约：术语第一次出现，同一句或下一句必须有不超过 15 字的人话解释；不许出现没解释过的英文缩写；打比方只能用观众生活里有的东西，不许用另一个专业概念解释专业概念。',
+      '反 AI 味契约：口播稿不许出现写作规范里列的套话词、冒号破折号、三句以上排比；每句不超过 20 字；写完必须过 lint_narration，有问题先改再进下一阶段。',
+      '一句一画面契约：口播稿的每一句，在画面方案里都有且只有一个 beat，say 字段与口播稿原文逐字相同（字幕直接用它）；不许出现没有口播的 beat，也不许一个 beat 塞两句话。',
+      '画面不计费契约：画面由代码渲染，渲染随时可以重来，所以不满意就改画面方案重渲，不要用生成视频的模型去做科普画面。',
+    ],
+    entities: ['配图', '图表'],
+    clipSeconds: 60,
+  },
   other: {
     id: 'other', name: '通用创作助手', title: '其他',
     modelName: '对象建模', modelDocs: ['创作脑图.md'], modelTemplate: OTHER_TEMPLATE, clipFocus: '重点',
@@ -509,7 +560,7 @@ export const SKILLS: Record<string, Skill> = {
     clipSeconds: 10,
   },
 };
-for (const s of Object.values(SKILLS)) { if (!s.general.some(q => q.key === 'look')) s.general.splice(Math.min(1, s.general.length), 0, LOOK_QUESTION()); }
+for (const s of Object.values(SKILLS)) { if (!s.codeRendered && !s.general.some(q => q.key === 'look')) s.general.splice(Math.min(1, s.general.length), 0, LOOK_QUESTION()); }
 
 // 场景图与道具图的验收门禁（所有类型共用，挂在各自的 imageQA 后面）
 export const SCENE_PROP_QA = '场景图门禁：画面里没有人和动物；单一视角不拼格；地平线水平、无鱼眼与畸变；全局清晰不虚化；前景 / 中景 / 背景层次分明且中景留出可站人的空地；光源位置与色温和文稿一致；锚点物件齐全、位置与文稿一致；无文字招牌乱码、无 logo、无水印、无剧组器材。道具图门禁：只有这一件道具、居中完整不裁切；四分之三视角；浅灰无缝背景加接地阴影；材质、颜色、磨损与开关状态和文稿一致；比例符合写明的真实尺寸；无手无人、无文字与 logo、无多件或多角度拼格。';
@@ -538,6 +589,7 @@ export function skillFor(format?: string): Skill {
   return (extra.length || imageQA !== s.imageQA) ? { ...s, contracts: [...s.contracts, ...extra], imageQA } : s;
 }
 export function skillStages(skill: Skill): StageDef[] {
+  if (skill.stages) return skill.stages;
   const goal: Record<string, string> = {
     ad: '用专项问卷把产品问清楚，然后写「商品模型.md」和「卖点账本.md」；有实拍图先让用户上传。',
     film: '用专项问卷定主角、阻碍、世界与视觉风格，然后写「人物小传.md」和「世界观.md」，人物外形写成可复用的冻结描述。',

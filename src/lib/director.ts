@@ -5,7 +5,7 @@ import type { Brief, Question } from './types';
 import { useFiles, useChats, useAgent, findDocByName, findMedia } from './store';
 import { readLedger, ensureLedger, updateLedger } from './ledger';
 import type { Ledger } from './ledger';
-import { skillFor, skillStages, briefKeyOf, STAGE_ORDER } from './skills';
+import { skillFor, skillStages, briefKeyOf, stageOrderFor, STAGE_ORDER } from './skills';
 import type { Skill, QuestionDef, StageId } from './skills';
 import { lintClips, parseSeconds, voiceDescriptions, CLIP_DOC_RE } from './lint';
 import { docRole } from './markdown';
@@ -14,9 +14,10 @@ import { planClipSeconds, strategyLabel } from './strategy';
 import { isArkLike, presetByName } from './mediamodels';
 import { projects, NEW_PROJECT_TITLE } from './projects';
 import { BRIEF_FORMATS } from './guides';
+import { buildExplainerStep, explainerTickOnce } from './director-explainer';
 
-export type Checkpoint = 'script' | 'assets' | 'prompts' | 'deliver';
-export const CHECKPOINTS: Checkpoint[] = ['script', 'assets', 'prompts', 'deliver'];
+export type Checkpoint = 'script' | 'assets' | 'prompts' | 'deliver' | 'plan' | 'film';   // plan = 科普的选题排期，film = 科普的成片检查
+export const CHECKPOINTS: Checkpoint[] = ['script', 'assets', 'prompts', 'deliver', 'plan', 'film'];
 export interface NextStep {
   stage: StageId; kind: 'start' | 'ask' | 'agent' | 'confirm' | 'upload' | 'done';   // upload = 请用户上传文件（MV 的歌曲），主按钮直接打开文件选择
   label: string; detail: string; prompt?: string; questions?: QuestionDef[]; checkpoint?: Checkpoint; billable?: boolean; accept?: string; remaining: number;
@@ -77,12 +78,14 @@ export function estimateMinutes(clips: number, brief: Brief): number {
 
 export function nextStep(): NextStep {
   const { brief } = useFiles.getState(); const b = brief || {};
-  const remainingOf = (stage: StageId) => STAGE_ORDER.length - 1 - STAGE_ORDER.indexOf(stage);
   if (!has(b.format)) return { stage: 'brief', kind: 'start', label: '开始创作', detail: '先选类型，回答几道题，剩下的交给 Agent', remaining: 8 };
   const skill = skillFor(b.format); const ledger = readLedger();
+  const order = stageOrderFor(skill);
   const stage: StageId = ledger?.stage || 'brief'; const confirmed = ledger?.confirmed || [];
-  const stages = skillStages(skill); const cur = stages.find(s => s.id === stage)!; const remaining = remainingOf(stage);
+  const stages = skillStages(skill); const cur = stages.find(s => s.id === stage) || stages[0];
+  const remaining = Math.max(0, order.length - 1 - order.indexOf(stage));
   const base = { stage, remaining };
+  if (skill.codeRendered) return buildExplainerStep({ skill, ledger, b, stages, cur, base, confirmed }, unansweredQuestions);
   switch (stage) {
     case 'brief': {
       const missing = unansweredQuestions(skill, skill.general, ledger, b);
@@ -158,16 +161,18 @@ export function nextStep(): NextStep {
 // 阶段推进：完成条件满足且检查点已确认时，把台账推到下一阶段；能连跳几个就连跳（比如广告脚本已是分镜表，分镜阶段直接过）
 export function tick(): boolean {
   let moved = false;
-  for (let i = 0; i < STAGE_ORDER.length && tickOnce(); i++) moved = true;
+  for (let i = 0; i < 12 && tickOnce(); i++) moved = true;
   return moved;
 }
 function tickOnce(): boolean {
   const { brief } = useFiles.getState(); if (!has(brief?.format)) return false;
   const ledger = readLedger() || ensureLedger(brief!.format).ledger; const skill = skillFor(ledger.skill);
   const advance = (to: StageId) => { updateLedger({ stage: to }); emit(); return true; };
+  // 需求澄清对两条流水线是一样的：通用问卷答完就进各自的下一阶段
+  if (ledger.stage === 'brief') return unansweredQuestions(skill, skill.general, ledger, brief!).length ? false : advance(stageOrderFor(skill)[1]);
+  if (skill.codeRendered) return explainerTickOnce(ledger, advance);
   const idx = STAGE_ORDER.indexOf(ledger.stage); const next = STAGE_ORDER[idx + 1]; if (!next) return false;
   switch (ledger.stage) {
-    case 'brief': return unansweredQuestions(skill, skill.general, ledger, brief!).length ? false : advance('model');
     case 'model': return skill.modelDocs.every(n => docByName(n)) && !unansweredQuestions(skill, skill.modeling, ledger, brief!).length ? advance('script') : false;
     case 'script': return scriptDoc() && ledger.confirmed.includes('script') ? advance('assets') : false;
     case 'assets': { const req = requiredEntities(ledger); return ledger.entities.length > 0 && req.every(e => e.ref) && ledger.confirmed.includes('assets') ? advance('storyboard') : false; }

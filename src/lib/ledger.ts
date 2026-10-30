@@ -1,7 +1,7 @@
 // ===== 运行时台账：每次创作一份「台账.json」文稿，记录流程包、当前阶段、问卷答案、实体与参考图、片段清单 =====
 // Agent 每轮都能在系统提示里看到它，多轮对话靠它接续；阶段推进由 Agent 调 update_ledger（免确认）完成。
 import { useFiles, findDocByName } from './store';
-import { skillFor, skillStages, STAGE_ORDER } from './skills';
+import { skillFor, skillStages, stageOrderFor, ALL_STAGE_IDS } from './skills';
 import type { StageId } from './skills';
 
 export const LEDGER_NAME = '台账.json';
@@ -9,7 +9,7 @@ export interface LedgerEntity { name: string; kind: string; ref?: string; voice?
 export interface LedgerClip { no: number; seconds: number; shots?: string; docId?: string; mediaId?: string; status?: string; }
 export interface Ledger { skill: string; stage: StageId; done: StageId[]; answers: Record<string, string>; entities: LedgerEntity[]; clips: LedgerClip[]; notes: string; confirmed: string[]; flags: Record<string, boolean>; updatedAt: number; }   // confirmed：用户点过的检查点（script / assets / prompts / deliver）；flags：skipLint 等开关
 
-const isStage = (s: unknown): s is StageId => STAGE_ORDER.includes(s as StageId);
+const isStage = (s: unknown): s is StageId => ALL_STAGE_IDS.includes(s as StageId);
 
 export function readLedger(): Ledger | null {
   const doc = findDocByName(LEDGER_NAME); if (!doc) return null;
@@ -49,7 +49,8 @@ export function ensureLedger(format?: string): { ledger: Ledger; created: boolea
 export function updateLedger(patch: Record<string, any>): Ledger {   // 补丁字段都可省略、可只填一部分，所以按 any 收
   const cur = readLedger() || ensureLedger(useFiles.getState().brief?.format).ledger;
   const next: Ledger = { ...cur, updatedAt: Date.now() };
-  if (isStage(patch.stage)) { next.stage = patch.stage; const idx = STAGE_ORDER.indexOf(patch.stage); next.done = Array.from(new Set([...cur.done, ...STAGE_ORDER.slice(0, idx)])); }
+  // 推进到某个阶段时，这个技能自己的阶段表里排在它前面的都算做完了（科普和影视的阶段表不一样，不能用同一串）
+  if (isStage(patch.stage)) { next.stage = patch.stage; const order = stageOrderFor(skillFor(patch.skill || cur.skill)); const idx = order.indexOf(patch.stage); next.done = Array.from(new Set([...cur.done, ...(idx > 0 ? order.slice(0, idx) : [])])); }
   if (Array.isArray(patch.done)) next.done = Array.from(new Set([...next.done, ...patch.done.filter(isStage)]));
   if (patch.answers && typeof patch.answers === 'object') next.answers = { ...cur.answers, ...Object.fromEntries(Object.entries(patch.answers).map(([k, v]) => [k, String(v)])) };
   // 按名字 / 序号合并：补丁里没写或为空的字段保留原值

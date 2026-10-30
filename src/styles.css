@@ -748,3 +748,30 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .review-acts .review-fix { margin-top: 0; }
 .review-acts button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 .review-done { margin: 8px 0 0; color: var(--ink-3); font-size: 12px; }
+
+/* ===== 画面方案预览（工作区里打开「画面-NN.json」）：左边画布 + 时间轴，右边逐段清单 ===== */
+.scene-preview { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; padding: 4px 2px 10px; }
+.scene-stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.scene-canvas { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: block; box-shadow: 0 2px 10px rgb(0 0 0 / 7%); }
+.scene-canvas.tall { height: min(46vh, 420px); width: auto; }
+.scene-canvas.wide { width: 100%; max-width: 520px; height: auto; }
+.scene-canvas.square { height: min(38vh, 340px); width: auto; }
+.scene-controls { display: flex; align-items: center; gap: 10px; width: 100%; }
+.scene-controls input[type="range"] { flex: 1; accent-color: var(--accent); }
+.scene-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 78px; text-align: right; }
+.scene-side { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.scene-meta { display: flex; flex-direction: column; gap: 2px; }
+.scene-meta b { font-size: 15px; }
+.scene-meta span { font-size: 12px; color: var(--muted); }
+.scene-issues { margin: 0; padding: 8px 10px; list-style: none; background: var(--warn-soft, #fdf6e8); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; gap: 5px; }
+.scene-issues li { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--warn, #8a6400); line-height: 1.45; }
+.scene-issues svg { flex: 0 0 auto; margin-top: 2px; }
+.scene-beats { margin: 0; padding: 0; list-style: none; overflow: auto; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+.scene-beats li { display: grid; grid-template-columns: 26px 64px 1fr 40px; gap: 8px; align-items: center; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 12px; cursor: pointer; }
+.scene-beats li:hover { background: var(--hover); }
+.scene-beats li.on { background: var(--accent-soft); }
+.beat-no { color: var(--muted); font-variant-numeric: tabular-nums; }
+.beat-tpl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
+.beat-say { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beat-sec { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.scene-bad { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
