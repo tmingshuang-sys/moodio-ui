@@ -84,6 +84,7 @@ export function assetShotKind(group?: string, name?: string): AssetShot {
 export const isCharacterAsset = (group?: string, name?: string) => /人物|角色|艺人|character/i.test(String(group || '')) || /人物|角色|艺人|定妆照|形象图|设定图|character/i.test(String(name || ''));
 export const BRIEF_FIELDS: [string, string][] = [['format', '类型'], ['duration', '时长'], ['platform', '平台'], ['ratio', '画幅'], ['audience', '受众'], ['tone', '调性'], ['references', '参考作品'], ['visualStyle', '视觉风格'], ['taboos', '禁忌'], ['notes', '备注']];
 export const BRIEF_KEY_FIELDS = ['format', 'duration', 'audience', 'tone'];
+export const briefKeyFieldsFor = (format?: string) => (format === 'explainer' ? ['format', 'duration', 'audience'] : BRIEF_KEY_FIELDS);   // 科普不问调性，问了反而逼模型凑一个
 
 interface Guide { name: string; structure: string; format: string; dialogue: string; checklist: string; }
 const WRITING_GUIDES: Record<string, Guide> = {
@@ -131,6 +132,7 @@ const WRITING_GUIDES: Record<string, Guide> = {
   },
 };
 export function writingGuideText(format?: string): string {
+  if (format === 'explainer') return NARRATION_GUIDE + '\n' + NARRATION_CHECKLIST;   // 科普类写的是口播稿，不是剧本：别把 INT./EXT. 那套格式塞给它
   const g = WRITING_GUIDES[format || ''] || WRITING_GUIDES.other;
   return `【${g.name}写作规范】结构：${g.structure}\n格式：${g.format}\n对白与节奏：${g.dialogue}\n自查清单（写完逐条核对，不合格就改）：${g.checklist}`;
 }

@@ -584,6 +584,7 @@ export function imageGateFor(skill: Skill, kind: 'character' | 'scene' | 'prop' 
 
 export function skillFor(format?: string): Skill {
   const s = SKILLS[String(format || '')] || SKILLS.other;
+  if (s.codeRendered) return s;   // 科普类自己那几条契约就够了：证据来源 / 段落衔接 / 场景道具门禁说的都是影视流水线里的东西
   const extra = [EVIDENCE_CONTRACT, CONTINUITY_CONTRACT].filter(c => !s.contracts.includes(c));   // 证据来源与段落衔接是所有类型共用的契约
   const imageQA = s.imageQA?.includes('场景图门禁') ? s.imageQA : [s.imageQA, SCENE_PROP_QA].filter(Boolean).join('');   // 场景 / 道具门禁所有类型共用
   return (extra.length || imageQA !== s.imageQA) ? { ...s, contracts: [...s.contracts, ...extra], imageQA } : s;

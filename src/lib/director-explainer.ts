@@ -18,6 +18,9 @@ const docs = () => useFiles.getState().docs;
 export const transcriptDoc = () => docs().find(d => /^转写稿/.test(d.name)) || null;
 export const pointsDoc = () => findDocByName('知识点清单.md');
 export const planDoc = () => findDocByName('选题排期.md');
+export const styleDoc = () => findDocByName('风格模板.json');
+// 用户拖进来的参考视频：不是我们渲染出来的、也不是本地合成的那些
+export const referenceVideo = () => useFiles.getState().media.find(m => m.kind === 'video' && m.model !== '代码渲染' && m.model !== '本地合成') || null;
 const twoDigit = (n: number) => String(n).padStart(2, '0');
 export const narrationDoc = (no: number) => docs().find(d => d.name === `口播-${twoDigit(no)}.md`) || null;
 export const sceneDoc = (no: number) => docs().find(d => d.name === `画面-${twoDigit(no)}.json`) || null;
@@ -101,10 +104,13 @@ export function buildExplainerStep({ skill, ledger, b, stages, cur, base, confir
       return push('scene', '进入画面方案', '按画面方案规范把第 1 份口播稿变成「画面-01.json」');
     }
     case 'scene': {
+      // 用户拖了参考视频进来又还没分析过：先把配色与节奏抠出来，后面每一条都照着它写
+      const ref = referenceVideo();
+      if (ref && !styleDoc()) return { ...base, kind: 'agent', label: '分析参考视频', detail: `${ref.name.slice(0, 18)}（配色与节奏）`, prompt: `用户给了参考视频「${ref.name}」（id ${ref.id}），先用 analyze_reference 把它的配色、节奏与字幕位置抠出来写成「风格模板.json」，再按它写画面方案。` };
       const missing = topics.find(t => !sceneDoc(t.no));
       if (missing) {
         const n = narrationDoc(missing.no);
-        return { ...base, kind: 'agent', label: `写第 ${missing.no} 条画面方案`, detail: missing.title.slice(0, 20), prompt: `按画面方案规范写「画面-${twoDigit(missing.no)}.json」，口播稿是${n ? `「${n.name}」（id ${n.id}）` : `「口播-${twoDigit(missing.no)}.md」`}。每句口播一个 beat，say 与口播稿原文逐字相同；按内容选模板（有数字上 number、有顺序上 steps、有对比上 compare、有出处上 quote），连着两段不要用同一个模板；第一段必须是 hook，最后一段必须是 endcard；不要自己填 seconds。title 写「${missing.title}」，no 写 ${missing.no}，ratio 与 theme 按纲领。写完用 lint_scene 自查。` };
+        return { ...base, kind: 'agent', label: `写第 ${missing.no} 条画面方案`, detail: missing.title.slice(0, 20), prompt: `按画面方案规范写「画面-${twoDigit(missing.no)}.json」，口播稿是${n ? `「${n.name}」（id ${n.id}）` : `「口播-${twoDigit(missing.no)}.md」`}。每句口播一个 beat，say 与口播稿原文逐字相同；按内容选模板（有数字上 number、有顺序上 steps、有对比上 compare、有出处上 quote），连着两段不要用同一个模板；第一段必须是 hook，最后一段必须是 endcard；不要自己填 seconds。title 写「${missing.title}」，no 写 ${missing.no}，${styleDoc() ? 'ratio / theme / palette / subtitle 原样抄「风格模板.json」里的值' : 'ratio 与 theme 按纲领'}。写完用 lint_scene 自查。` };
       }
       for (const t of topics) {
         const d = sceneDoc(t.no)!; const spec = parseSpec(d.content);

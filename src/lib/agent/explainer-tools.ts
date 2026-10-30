@@ -9,6 +9,8 @@ import { lintNarration, KNOWLEDGE_GUIDE } from '../guides';
 import { callModel, chatCfg, modelCfg, parsePlanJSON } from '../model';
 import { lintSpec, normalizeSpec, parseSpec, timelineOf, estimateSeconds, type Beat, type SceneSpec } from '../render/spec';
 import { renderScene } from '../render/video';
+import { analyzeReference, grabFrames, styleFromAnalysis } from '../render/reference';
+import { visionCfg } from '../model';
 import { generateSpeech, mediaReadyReason, DEFAULT_VOICE_ID } from '../mediagen';
 import type { ToolContext, ToolFn, ToolResult } from './tools';
 
@@ -159,6 +161,47 @@ ${KNOWLEDGE_GUIDE}`;
       summary: `「${doc.name}」配好 ${done} 句，按真实语速全片 ${Math.round(total)} 秒`,
       actions: [openDocAction(doc.id, doc.name)],
       content: `每句的时长已写回画面方案，画面会按它排，声画对齐。全片 ${total.toFixed(1)} 秒。`,
+    };
+  },
+
+  // ---- 参考视频复刻：从像素里算出配色与节奏，模型只补说不清的那部分 ----
+  async analyze_reference(args, ctx): Promise<ToolResult> {
+    const item = findMedia(String(args.media_id || '').trim());
+    if (!item) throw new Error(`找不到媒体 ${args.media_id}；先把参考视频拖进工作区`);
+    if (item.kind !== 'video') throw new Error(`「${item.name}」不是视频`);
+    const blob = await (await import('../storage')).getBlob(item.id);
+    if (!blob) throw new Error(`「${item.name}」的文件不在本机媒体库里`);
+    let a!: Awaited<ReturnType<typeof analyzeReference>>;
+    await ctx.step(`分析参考视频「${item.name}」的配色与节奏`, async () => {
+      a = await analyzeReference(blob, { onProgress: text => ctx.live(text), signal: ctx.signal });
+    });
+    const style = styleFromAnalysis(a);
+    // 视觉模型（配了才有）补一句「它为什么好看」：字多不多、有没有人出镜、画面靠什么撑
+    let notes = '';
+    if (visionCfg(modelCfg())) {
+      await ctx.step('让视觉模型看几帧，总结画面风格', async () => {
+        ctx.live('看参考帧…');
+        const images = await grabFrames(blob, 4);
+        const cfg = visionCfg(modelCfg())!;
+        const out = parsePlanJSON(await callModel({ ...cfg }, '你在看一条短视频的几张代表帧，总结它的画面做法，只输出 JSON：{"look":"一句话说整体观感","text":"画面上的文字多还是少，排在哪里","people":"有没有真人出镜","carry":"画面主要靠什么撑（大字/图表/实拍/插画/录屏）","advice":"要复刻它，画面方案该多用哪几个模板（从 hook/bullets/term/compare/number/steps/chart/formula/quote/image/diagram 里选）"}', '这几帧来自同一条视频，按顺序是开头到结尾。', { images, signal: ctx.signal }));
+        notes = [out?.look, out?.text, out?.people, out?.carry, out?.advice].filter(Boolean).map(String).join('；').slice(0, 400);
+      });
+    }
+    const spec = {
+      来源: `${item.name}（${Math.round(a.duration)} 秒，${a.width}×${a.height}）`,
+      ratio: style.ratio, theme: style.theme, palette: style.palette, subtitle: style.subtitle,
+      节奏: `平均 ${a.avgShot} 秒一刀，整条片子 ${a.cuts.length} 个切点`,
+      建议每段秒数: style.pacing,
+      字幕位置: a.textBand === 'bottom' ? '底部' : a.textBand === 'center' ? '画面中部' : '没有常驻字幕',
+      视觉模型的观察: notes || '（没有配置能看图的模型，这一项留空）',
+      怎么用: '写画面方案时，把 ratio / theme / palette / subtitle 原样抄进「画面-NN.json」的顶层字段；每个 beat 的口播长度按「建议每段秒数」控制。',
+    };
+    const doc = await writeDoc(ctx, '风格模板', JSON.stringify(spec, null, 2), 'json');
+    useFiles.getState().openInPane(doc.id);
+    return {
+      summary: `已从「${item.name}」里提取风格：${style.ratio}、底色 ${style.palette.bg}、强调色 ${style.palette.accent}、平均 ${a.avgShot} 秒一刀`,
+      actions: [openDocAction(doc.id, doc.name)], artifact: docArtifact(doc.id, doc.name),
+      content: `配色与节奏是直接从画面像素里算出来的（采样 ${a.frames} 帧），不是猜的。${notes ? '视觉模型补充：' + notes : ''}\n写画面方案时把「风格模板.json」里的 ratio / theme / palette / subtitle 原样抄到顶层。`,
     };
   },
 

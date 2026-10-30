@@ -24,6 +24,7 @@ export function collectClipIds(mediaId?: string): string[] {
   const target = mediaId ? findMedia(mediaId) : null;
   const composed = (target?.compose?.clips || []).filter(id => findMedia(id));
   if (composed.length) return composed;
+  if (target?.model === '代码渲染') return [target.id];   // 科普的每一条是独立的一期，不要把整批串成一条时间线
   const ledger = readLedger();
   const fromLedger = (ledger?.clips || []).filter(c => c.mediaId && findMedia(c.mediaId)).sort((a, b) => a.no - b.no).map(c => c.mediaId!);
   if (target && target.model !== '本地合成' && !fromLedger.includes(target.id)) return [target.id];
