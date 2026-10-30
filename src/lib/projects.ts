@@ -54,7 +54,7 @@ export const projects = {
     const p = index!.projects.find(x => x.id === id); const next = String(title || '').trim();
     if (!p || !next) return false;
     p.title = next; p.updatedAt = Date.now(); write(index!); notify();
-    if (id === index!.active) document.title = `${next} · Moodio`;
+    if (id === index!.active) document.title = `${next} · WoW`;
     return true;
   },
   remove(id: string, { reload = true } = {}) {
@@ -71,4 +71,4 @@ export const projects = {
   subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },
 };
 
-document.title = `${projects.active().title} · Moodio`;
+document.title = `${projects.active().title} · WoW`;

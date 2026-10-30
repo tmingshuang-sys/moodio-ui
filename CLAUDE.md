@@ -1,8 +1,8 @@
-# Moodio UI · 项目约定（给 Claude 和其他 AI 会话）
+# WoW（原 Moodio）· 项目约定（给 Claude 和其他 AI 会话）
 
 ## 这是什么
 
-Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局）：左侧导航（创作 / 资源 / 创作历史；创作纲领入口已按要求去掉，纲领仍由 Agent 的 save_brief 与问卷写入）、中间与 Agent 对话、右侧是文件工作区。
+WoW（产品名，2026-10-30 由 Moodio 改名）的「对话 + 文件工作区」创作原型（参考小云雀的布局）：左侧导航（创作 / 资源 / 创作历史；创作纲领入口已按要求去掉，纲领仍由 Agent 的 save_brief 与问卷写入）、中间与 Agent 对话、右侧是文件工作区。
 所有产物都是文件：剧本、分镜表、视频生成提示词、人物小传、营销文案等是 Markdown 文稿（.md，也支持 .json / .txt），图片和视频在媒体区单独分区。旧版的剧本稿纸、资产板块、创作画布已整体去掉（保留在分支 `main` / `split-workspace`）。
 
 技术栈：**Vite + React 19 + TypeScript**，状态用 zustand，Markdown 渲染用 react-markdown + remark-gfm，媒体 blob 用 idb-keyval 存 IndexedDB，图标用 lucide-react。没有后端：数据只在浏览器本地（localStorage + IndexedDB）。
@@ -13,7 +13,7 @@ Moodio 的「对话 + 文件工作区」创作原型（参考小云雀的布局�
 - `src/lib/` 逻辑层：`types.ts` 数据模型；`projects.ts` 项目层（索引 `moodio-projects-v1`，数据键 = 基础键 `::` 项目id）；`store.ts` 状态仓库（`useFiles` 文稿 / 媒体 / 回收站 / 纲领 / 界面偏好，`useChats` 对话，`useAgent` 运行态）；`storage.ts` localStorage / IndexedDB / 下载；`markdown.ts` 章节切分、按标题替换、纯文本、文件名；`guides.ts` 写作规范 / 剧本格式硬规则 / 分镜规范 / 提示词规范；`model.ts` 文本模型调用（Claude 直连 / OpenAI 兼容，流式）；`mediagen.ts` 图片 / 视频生成（经网关调 fal.ai）；`migrate.ts` 旧版数据迁移；`sample.ts` 新项目示例文稿；`upload.ts` 上传；`i18n.ts` 中 / EN；`time.ts`
 - `src/lib/agent/`：`tools.ts` 工具层与计划卡步骤；`prompt.ts` 系统提示（MD 约定、文件清单、相关文稿上下文）；`planner.ts` 模型规划、追问、下一步建议；`runner.ts` 回复流程、确认执行、逐步状态、逐行写入、自审
 - `src/components/`：`Sidebar` `ChatPane` `MessageList`（消息、计划卡、追问卡、自审卡、下一步）`Composer` `ResourcePane`（分区网格 / 列表、文稿预览与编辑、媒体预览、拖拽上传）`Dialogs`（确认 / 输入 / 模型设置 / 创作纲领）`Menu` `Toast` `AgentLive`（流光与状态胶囊）
-- `src/styles.css` 全部样式；`public/moodio-logo.svg` logo（矢量、透明底，侧栏与页面图标共用）；`*.test.ts` 与源码同目录（Vitest）
+- `src/styles.css` 全部样式；`public/wow-logo.svg` logo（纯墨色矢量、透明底，侧栏与 favicon 共用：一笔写成的 W，中间峰上浮一个点＝名字里的 o；16px 下仍可辨）；`*.test.ts` 与源码同目录（Vitest）
 - `gateway/` Cloudflare Worker 模型网关（持有真实 API key）：文本走 OpenAI 兼容的 `/v1/chat/completions`，图片 / 视频走 `/fal/*` 透传到 fal.ai 队列接口、`/media?url=` 代下载结果；`site/` 页面发布配置（静态资源 Worker，目录 `dist`）
 - `dist/` 构建产物，已 gitignore；`scripts/postbuild.mjs` 构建后把 index.html 复制一份为旧链接的文件名
 
@@ -83,6 +83,7 @@ npm run build          # vite build → dist/
 - **创作 = 项目**（`session.ts`）：侧栏「创作」按钮调 `startCreation()`：新建一个空白项目并**热切换**过去（`flushStores()` 先把挂起的保存写进旧项目，再 `projects.create(...,{reload:false})` + 两个仓库 `reload()`，不刷新页面），新项目没有示例文稿、工作区默认收起（`ui.paneOpen=false`，有产物时 `openInPane()` 自动打开）、标题先叫「新创作」，第一句话发出后 `push()` 把项目名改成对话标题。当前创作还是空白时再点「创作」只聚焦输入框。「创作历史」= 当前项目的对话（内存）+ 其他项目里有内容的对话（`otherProjectsHistory()` 读 localStorage，只在项目变动时重算），点一条 `switchProject(项目id, 对话id)`；条目菜单里「重命名」同步项目名，「删除」在项目只有这一条对话时是删整个创作（`deleteCreation()`：连文件一起删，删当前项目就切到最近改动的另一个，只剩一个时清空成新创作），否则只删对话。Agent 执行中（`useAgent.busy`）拒绝切换。Agent 工具 `create_project` / `switch_project` 仍走整页刷新（它们在计划执行中途调用，热切换会让执行器丢失消息引用）。
 - **素材库（侧栏「资源」）**：`useNav.page = 'library'` 时主区整个换成 `Library.tsx`（布局参考小云雀素材库：顶部「素材库 / 资产库」标签 + 搜索，工具行「平铺 / 列表视图」「AI 生成 / 我上传的」「筛选 / 排序 / 展示尺寸」，正方形灰底卡片，视频角标时长，点开深色大图预览）。数据由 `library.ts` 的 `allMedia()` 汇总：当前项目取内存里的 `useFiles.media`（随生成实时更新），其他项目读各自的 `moodio-files-v1::<id>`；改名 / 删除 / 撤销对非当前项目直接改它的存储键（`renameLibraryMedia` / `deleteLibraryMedia` / `restoreLibraryMedia`），「打开所在创作」`openInCreation()` 先 `switchProject()` 再 `openInPane()`。「资产库」标签按分区（人物 / 场景 / 产品 / 道具 / 其他）分组显示同一批媒体。视图与尺寸偏好存 localStorage `moodio-library-prefs`。素材库只收图片与视频，文稿仍只在各自创作的工作区里。
 - **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；`projects.create()` 建的项目都带 `moodio-project-fresh::<id>` 标记，首次加载为空白且工作区收起。
+- **改名（WoW）**：用户可见的名字都改了——`index.html` 标题与 favicon、侧栏 `sb-brand`、`document.title` 的「… · WoW」（projects.ts / session.ts）、弹窗里的「WoW 网关」、系统提示开头「你是 WoW 的创作 Agent」、导出片段的文件夹名、FCPXML 的 event 名。**没动的**（动了会丢数据或换线上地址，要改先说）：localStorage / IndexedDB 的键（`moodio-files-v1` `moodio-agent-chats` `moodio-agent-model` `moodio-tasks` 等）、Cloudflare Worker 名与域名（`moodio-ui.moodio-ui.workers.dev`、`moodio-gateway…`）、仓库目录名、本地助手 `moodio-helper.py` 与它写入的 `~/Movies/Moodio/`、代码里的内部标识符（如 `isMoodioGateway`）。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude <当前模型名> <noreply@anthropic.com>`。
 - **不要提交** `dist/`、`node_modules/`、`.wrangler/`；不要编辑 `~/Downloads` 里的旧副本。
 

@@ -121,12 +121,12 @@ function ModelDialog() {
   return (
     <Frame title="Agent 模型设置" onClose={close} footer={<><button type="button" className="btn" onClick={close}>取消</button><button type="button" className="btn" onClick={runTest} disabled={test?.state === 'pending'}>测试连接</button>{modelCfg()?.apiKey && <button type="button" className="btn" onClick={() => { saveModelCfg(null); close(); toast('已断开模型'); }}>断开</button>}<button type="button" className="btn primary" onClick={save}>保存</button></>}>
       <p>对话与写作都用这里的模型。密钥仅保存在当前浏览器中。</p>
-      <label>服务商<select value={prov} onChange={e => setProvider(e.target.value as 'claude' | 'openai')}><option value="claude">Claude（Anthropic）</option><option value="openai">Moodio 网关 / OpenAI 兼容</option></select></label>
+      <label>服务商<select value={prov} onChange={e => setProvider(e.target.value as 'claude' | 'openai')}><option value="claude">Claude（Anthropic）</option><option value="openai">WoW 网关 / OpenAI 兼容</option></select></label>
       <label>Base URL<input value={cfg.baseUrl || ''} onChange={e => setCfg({ ...cfg, baseUrl: e.target.value })} /></label>
       <label>API Key<input type="password" value={cfg.apiKey || ''} placeholder={pd.placeholder} onChange={e => setCfg({ ...cfg, apiKey: e.target.value })} /></label>
-      <small className="note">用 Moodio 网关时，这里填部署网关时设定的「访问口令」，不是 DeepSeek 等服务商的 API Key；只有 Base URL 直连服务商时才填它的 Key。</small>
+      <small className="note">用 WoW 网关时，这里填部署网关时设定的「访问口令」，不是 DeepSeek 等服务商的 API Key；只有 Base URL 直连服务商时才填它的 Key。</small>
       <label>模型<input value={cfg.model || ''} placeholder="auto / deepseek-flash / kimi-k3" onChange={e => setCfg({ ...cfg, model: e.target.value })} /></label>
-      <small className="note">auto = 智能匹配（规划用 DeepSeek Flash、写作用 DeepSeek V4 Pro、看图用 Kimi K3，不可用时自动换）；也可在输入框下方的模型面板「推理模型」里选。走 Moodio 网关时按模型名分流：kimi-* 走 Moonshot，deepseek-* 走 DeepSeek。</small>
+      <small className="note">auto = 智能匹配（规划用 DeepSeek Flash、写作用 DeepSeek V4 Pro、看图用 Kimi K3，不可用时自动换）；也可在输入框下方的模型面板「推理模型」里选。走 WoW 网关时按模型名分流：kimi-* 走 Moonshot，deepseek-* 走 DeepSeek。</small>
       <label>思考模式<select value={cfg.thinking || ''} onChange={e => setCfg({ ...cfg, thinking: e.target.value })}><option value="">跟随模型默认（不发送参数）</option><option value="off">关闭</option><option value="low">开启 · low</option><option value="high">开启 · high</option><option value="max">开启 · max</option></select></label>
       <label>写作模型（可选）<input value={cfg.writerModel || ''} placeholder="例如 deepseek-v4-pro（留空同上）" onChange={e => setCfg({ ...cfg, writerModel: e.target.value })} /></label>
       <label>写作思考模式<select value={cfg.writerThinking || ''} onChange={e => setCfg({ ...cfg, writerThinking: e.target.value })}><option value="">同上</option><option value="off">关闭</option><option value="low">开启 · low</option><option value="high">开启 · high</option><option value="max">开启 · max</option></select></label>
@@ -135,7 +135,7 @@ function ModelDialog() {
       <small className="note">参考图生成后自动用它逐张质检，Agent 也能按需看图。DeepSeek 不支持图片输入，配 kimi-k3 即可。</small>
       {test && <p className={`model-test ${test.state}`}>{test.text}</p>}
       <h3 className="dialog-section">图片 / 视频生成</h3>
-      <p>经 Moodio 网关调用 fal.ai；真实的 fal key 存在网关的 Worker 密钥里，页面只带访问口令。留空则沿用上面的网关地址与 API Key。{mediaOn ? '' : ' 当前还不可用。'}</p>
+      <p>经 WoW 网关调用 fal.ai；真实的 fal key 存在网关的 Worker 密钥里，页面只带访问口令。留空则沿用上面的网关地址与 API Key。{mediaOn ? '' : ' 当前还不可用。'}</p>
       <label>网关地址<input value={cfg.mediaBaseUrl || ''} placeholder={MEDIA_DEFAULTS.baseUrl} onChange={e => setCfg({ ...cfg, mediaBaseUrl: e.target.value })} /></label>
       <label>访问口令<input type="password" value={cfg.mediaToken || ''} placeholder="留空 = 同上面的 API Key" onChange={e => setCfg({ ...cfg, mediaToken: e.target.value })} /></label>
       <small className="note">具体用哪个图片 / 视频模型、画面比例和时长，在输入框下方的模型按钮里选，那里能看到每个模型的特点。</small>

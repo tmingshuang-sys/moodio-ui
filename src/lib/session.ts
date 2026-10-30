@@ -14,7 +14,7 @@ const readChats = (projectId: string): Chat[] => { const saved = readJSON<any>(`
 
 function afterSwitch() {
   useAgent.getState().set({ live: '', glow: false, writing: null });
-  document.title = `${projects.active().title} · Moodio`;
+  document.title = `${projects.active().title} · WoW`;
   emit('moodio:project-changed'); emit('moodio:focus-composer');
 }
 function blockedByAgent(): boolean {

@@ -1,4 +1,4 @@
-// ===== 模型调用：Claude（Anthropic Messages API，浏览器直连）或 OpenAI 兼容 Chat Completions（默认走 Moodio 网关）=====
+// ===== 模型调用：Claude（Anthropic Messages API，浏览器直连）或 OpenAI 兼容 Chat Completions（默认走 WoW 网关）=====
 // 两条通道都支持 {signal,onText,onReasoning} 流式回调；OpenAI 兼容通道按 cfg.thinking 发送 DeepSeek 的 thinking / reasoning_effort。
 // 密钥只存 localStorage moodio-agent-model。从旧版 src/11-agent.js 移植，逻辑保持一致。
 import type { ModelConfig } from './types';
@@ -18,7 +18,7 @@ const CREATIVE_RE = /(写|续写|改写|润色|扩写|重写|台词|对白|一�
 export function isCreativeRequest(text: string): boolean { const t = String(text || ''); return CREATIVE_RE.test(t) && !/^(删除|重命名|导出|切换|打开|列出|读取|恢复|合并)/.test(t.trim()); }
 export function writerCfg(cfg: ModelConfig): ModelConfig { const model = String(cfg.writerModel || '').trim(); if (!model) return cfg; return { ...cfg, model, thinking: cfg.writerThinking || cfg.thinking }; }
 
-// ===== 推理（对话）模型目录：都经 Moodio 网关，按模型名分流到 DeepSeek 或 Moonshot =====
+// ===== 推理（对话）模型目录：都经 WoW 网关，按模型名分流到 DeepSeek 或 Moonshot =====
 export interface ChatPreset { id: string; name: string; hint: string; vendor: 'DeepSeek' | 'Kimi'; verified?: boolean; vision?: boolean; }
 export const CHAT_AUTO_ID = 'auto';
 export const CHAT_MODELS: ChatPreset[] = [
@@ -278,7 +278,7 @@ export async function callModel(cfg: ModelConfig & { candidates?: string[] }, sy
 
 export function explainModelError(e: any): Error {
   if (e instanceof TypeError || /Failed to fetch|Load failed|NetworkError/i.test(e?.message || '')) return new Error('未能连接模型服务。请检查网络、API 地址和服务的浏览器跨域访问设置，然后重试。');
-  if (/访问口令不正确/.test(e?.message || '')) return new Error(e.message + '。Moodio 网关的 API Key 位置填的是网关的访问口令，不是 DeepSeek 的 key。');
+  if (/访问口令不正确/.test(e?.message || '')) return new Error(e.message + '。WoW 网关的 API Key 位置填的是网关的访问口令，不是 DeepSeek 的 key。');
   return e instanceof Error ? e : new Error(String(e?.message || e));
 }
 

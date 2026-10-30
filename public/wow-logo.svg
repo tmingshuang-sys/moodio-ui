@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" role="img" aria-label="WoW">
+  <!-- WoW 的标：一笔写成的 W，中间的峰上浮着一个点——那是名字里的 o。纯墨色、无底色，16px 下也认得出 -->
+  <path d="M5 9 L10.5 24 L16 14 L21.5 24 L27 9" stroke="#1d1d1f" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="16" cy="8" r="2.9" fill="#1d1d1f" />
+</svg>

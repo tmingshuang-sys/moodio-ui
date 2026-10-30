@@ -1,4 +1,4 @@
-// ===== 图片 / 视频生成：经 Moodio 网关调用 fal.ai 队列接口，结果下载进媒体库 =====
+// ===== 图片 / 视频生成：经 WoW 网关调用 fal.ai 队列接口，结果下载进媒体库 =====
 // 网关持有真实的 fal key（Worker secret FAL_KEY），页面只带访问口令；模型与偏好在输入框的「模型」面板里选，存在 localStorage moodio-agent-model。
 import type { MediaItem, ModelConfig } from './types';
 import { uid } from './types';

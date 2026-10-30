@@ -64,7 +64,7 @@ export interface ExportResult { mode: 'direct' | 'zip'; folder: string; clips: n
 export async function exportToJianying(mediaId?: string, onProgress?: (t: string) => void): Promise<ExportResult> {
   const ids = collectClipIds(mediaId); if (!ids.length) throw new Error('没有可导出的片段');
   const root = canWriteDirectly() ? await pickExportDir() : null;   // 选目录 / 询问权限必须紧跟用户的点击
-  const title = projects.active().title || '创作'; const folder = safeFolderName(`${title} · Moodio 片段`);
+  const title = projects.active().title || '创作'; const folder = safeFolderName(`${title} · WoW 片段`);
   onProgress?.('读取片段…');
   const files: { file: string; name: string; seconds?: number; width?: number; height?: number; blob: Blob }[] = [];
   for (let i = 0; i < ids.length; i++) {

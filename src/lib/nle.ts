@@ -44,7 +44,7 @@ export function buildFcpxml(opts: NleOptions): string {
 ${assets}
   </resources>
   <library>
-    <event name="Moodio">
+    <event name="WoW">
       <project name="${esc(opts.title)}">
         <sequence format="r0" duration="${at(offset)}" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">
           <spine>

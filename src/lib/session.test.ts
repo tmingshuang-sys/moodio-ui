@@ -39,7 +39,7 @@ describe('creation session', () => {
 
     store.useChats.getState().push(store.useChats.getState().chat().id, user('帮我写一个 3 分钟短片'));
     expect(projects.active().title).toBe('帮我写一个 3 分钟短片');                        // 项目名跟着第一句话走
-    expect(document.title).toBe('帮我写一个 3 分钟短片 · Moodio');
+    expect(document.title).toBe('帮我写一个 3 分钟短片 · WoW');
   });
   it('switches back to an earlier creation with its files and chat intact, and reuses a blank creation instead of adding another', () => {
     const [first, second] = projects.list();

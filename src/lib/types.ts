@@ -106,7 +106,7 @@ export interface ModelConfig {
   writerThinking?: string;
   visionModel?: string;          // 看图用的模型（如 kimi-k3）；留空时若主模型本身支持图片输入就用主模型
   temperature?: number;          // 调用时按用途临时设置（chatCfg），不持久化
-  // 图片 / 视频生成：走 Moodio 网关的 /fal 通道（见 lib/mediagen.ts），留空则沿用上面的网关地址与口令
+  // 图片 / 视频生成：走 WoW 网关的 /fal 通道（见 lib/mediagen.ts），留空则沿用上面的网关地址与口令
   mediaBaseUrl?: string;
   mediaToken?: string;
   imageModel?: string;
