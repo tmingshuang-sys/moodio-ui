@@ -31,7 +31,7 @@ npm run build          # vite build → dist/
 每次改完代码：`npm run check` 和 `npm test` 必须通过；改 UI 后在浏览器里实际看一眼再交付；改 Agent 逻辑后用真实模型发一条消息验证。
 
 发布：`npm run site:deploy`（页面）、`npm run gateway:deploy`（网关）。这台电脑上访问 GitHub / Cloudflare / npm 需要代理：
-`export HTTPS_PROXY=http://127.0.0.1:7897 HTTP_PROXY=http://127.0.0.1:7897`。仓库已设置 `git config http.proxy`。端口以 Clash Verge 当前监听的为准（`scutil --proxy` 能看到），代理换端口后同步改这里、`.git/config` 和 `.claude/launch.json`，否则 push 会报「Failed to connect to 127.0.0.1 port …」。Cloudflare 与 api.moonshot.cn 不走代理也能连，GitHub 必须走代理。
+`export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890`。仓库已设置 `git config http.proxy`。端口以 Clash Verge 当前监听的为准（`scutil --proxy` 能看到），代理换端口后同步改这里、`.git/config` 和 `.claude/launch.json`，否则 push 会报「Failed to connect to 127.0.0.1 port …」。Cloudflare 与 api.moonshot.cn 不走代理也能连，GitHub 必须走代理。
 
 ## 修改约定
 
