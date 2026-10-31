@@ -107,6 +107,20 @@ function explain(status, text) {
   return `HTTP ${status}${code ? ' ' + code : ''}${msg ? '（' + msg + '）' : ''}`;
 }
 
+// 解析 ListObjectsV2 的 XML。只取 Key / Size / LastModified 三项和翻页标记，不引入 XML 库
+const unxml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+export function parseList(xml) {
+  const objects = [];
+  for (const m of String(xml).matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+    const block = m[1];
+    const pick = tag => unxml(new RegExp(`<${tag}>([^<]*)</${tag}>`).exec(block)?.[1] || '');
+    objects.push({ key: pick('Key'), size: Number(pick('Size') || 0), lastModified: pick('LastModified') });
+  }
+  const truncated = /<IsTruncated>true<\/IsTruncated>/.test(xml);
+  const next = unxml(/<NextContinuationToken>([^<]*)<\/NextContinuationToken>/.exec(xml)?.[1] || '');
+  return { objects, truncated, next };
+}
+
 export function createOss({ bucket, region, endpoint, accessKeyId, accessKeySecret, role, credentials }) {
   if (!bucket || !region) throw new Error('OSS 配置不全：bucket 和 region 都要有');
   const creds = credentials || (role ? instanceRoleCredentials(role) : (accessKeyId && accessKeySecret ? staticCredentials({ accessKeyId, accessKeySecret }) : null));
@@ -132,8 +146,8 @@ export function createOss({ bucket, region, endpoint, accessKeyId, accessKeySecr
   return {
     kind: 'oss',
     bucket, region, host, auth: role ? 'role' : 'ak',
-    async put(key, buf, mime = 'application/octet-stream') {
-      const res = await call('PUT', key, { body: buf, headers: { 'Content-Type': mime } });
+    async put(key, buf, mime = 'application/octet-stream', extraHeaders = {}) {
+      const res = await call('PUT', key, { body: buf, headers: { 'Content-Type': mime, ...extraHeaders } });
       if (!res.ok) await fail(res, '上传');
       return key;
     },
@@ -152,6 +166,20 @@ export function createOss({ bucket, region, endpoint, accessKeyId, accessKeySecr
       if (res.status === 404) return null;
       if (!res.ok) await fail(res, '查询');
       return { size: +(res.headers.get('content-length') || 0) };
+    },
+    // 列对象（ListObjectsV2）。给状态页和备份脚本用：数一数有多少、多大。最多翻 pages 页，没翻完就标 truncated
+    async list(prefix = '', { pages = 20 } = {}) {
+      const objects = []; let token = '';
+      for (let i = 0; i < pages; i++) {
+        const query = { 'list-type': '2', 'max-keys': '1000', ...(prefix ? { prefix } : {}), ...(token ? { 'continuation-token': token } : {}) };
+        const res = await call('GET', '', { query });
+        if (!res.ok) await fail(res, '列目录');
+        const page = parseList(await res.text());
+        objects.push(...page.objects);
+        if (!page.truncated || !page.next) return { objects, truncated: false };
+        token = page.next;
+      }
+      return { objects, truncated: true };
     },
     // 探活：HEAD bucket。通了返回 ok；没通把原因翻成人话（AK 不对 / 没权限 / bucket 或区域不对）
     async ping() {

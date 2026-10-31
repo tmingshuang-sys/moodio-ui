@@ -10,8 +10,16 @@ export interface ServerHealth {
   setup: boolean;                       // true = 还没有任何账号，要先初始化
   deepseek: boolean; kimi: boolean; fal: boolean; ark: boolean; byteplus: boolean;
 }
-export interface ServerUser { id: string; email: string; name: string; isAdmin?: boolean }
+export interface ServerUser { id: string; email: string; name: string; isAdmin?: boolean; disabled?: boolean }
 export interface AdminUser extends ServerUser { createdAt: string; lastLogin: string | null }
+// 管理员看的系统状态（/api/admin/status）。拿不到的项是 null，界面写「未知」
+export interface SystemStatus {
+  disk: { total: number; free: number; used: number } | null;
+  backup: { file: string; size: number; at: string; ossKey: string } | null;
+  storage: StorageHealth & { auth?: 'role' | 'ak'; objects?: number; bytes?: number; truncated?: boolean; backups?: number; lastBackupKey?: string | null; lastBackupAt?: string | null; listError?: string };
+  db: { users: number; disabled: number; projects: number; docs: number; media: number; media_pending_purge: number; render_active: number; render_failed_7d: number } | null;
+  service: { startedAt: string; node: string; commit: string; load1: number; memFree: number; memTotal: number };
+}
 export interface SettingRow {
   key: string; label: string; hint: string; secret: boolean;
   group: 'model' | 'storage' | 'account';
@@ -72,8 +80,16 @@ export const resetPasswordServer = (token: string, password: string) =>
 export const resetTokenFromUrl = () => { try { return new URLSearchParams(location.search).get('reset') || ''; } catch { return ''; } };
 export const clearResetFromUrl = () => { try { const u = new URL(location.href); u.searchParams.delete('reset'); history.replaceState(null, '', u.toString()); } catch { /* 无所谓 */ } };
 
-// 管理员：账号列表、给某个邮箱生成重置链接
+// 自己的账号：改称呼、改密码（要当前密码；改完其他设备上的登录全部失效）
+export const updateMe = (name: string) => call<{ user: ServerUser }>('/api/me', { method: 'PUT', body: JSON.stringify({ name }) });
+export const changeMyPassword = (current: string, password: string) =>
+  call<{ ok: true }>('/api/me/password', { method: 'POST', body: JSON.stringify({ current, password }) });
+
+// 管理员：账号列表、停用 / 启用、给某个邮箱生成重置链接、系统状态
 export const adminUsers = () => call<{ users: AdminUser[] }>('/api/admin/users');
+export const adminSetDisabled = (id: string, disabled: boolean) =>
+  call<{ users: AdminUser[] }>(`/api/admin/users/${id}/${disabled ? 'disable' : 'enable'}`, { method: 'POST' });
+export const adminStatus = () => call<SystemStatus>('/api/admin/status');
 export const adminResetLink = (email: string) =>
   call<{ email: string; url: string; expiresAt: string }>('/api/admin/reset-link', { method: 'POST', body: JSON.stringify({ email }) });
 

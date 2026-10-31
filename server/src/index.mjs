@@ -7,7 +7,9 @@ import http from 'http';
 import { randomUUID } from 'crypto';
 import { handleGateway, corsHeaders, gatewayHealth, readBody } from './gateway.mjs';
 import { db, hasDb, migrate } from './db.mjs';
-import { userFor, login, logout, createUser, newId, validEmail, safeEqual, createResetToken, resetPassword, listUsers, userByEmail } from './auth.mjs';
+import { userFor, login, logout, createUser, newId, validEmail, safeEqual, createResetToken, resetPassword, listUsers, userByEmail, changePassword, updateName, setDisabled } from './auth.mjs';
+import { schedulePurge } from './purge.mjs';
+import { systemStatus } from './status.mjs';
 import { ensureProject, listProjects, pull, push } from './sync.mjs';
 import { blobs, blobDir, mediaKey, blobsHealth } from './store.mjs';
 import { SETTING_KEYS, settingsStatus, saveSettings, effectiveEnv, needsSetup, ensureSetupToken, consumeSetupToken } from './settings.mjs';
@@ -109,6 +111,7 @@ async function handleApi(req, res, url, cors) {
     const wait = Math.max(loginByIp.retryAfter(ip), loginByEmail.retryAfter(mail));
     if (wait) return tooMany(res, wait);
     const r = b && await login(b.email, b.password);
+    if (r?.disabled) return json(res, 403, { error: { message: '这个账号已被停用，找管理员' } }, cors);
     if (!r) {
       loginByIp.fail(ip); loginByEmail.fail(mail);
       return json(res, 401, { error: { message: '邮箱或密码不对' } }, cors);
@@ -161,7 +164,25 @@ async function handleApi(req, res, url, cors) {
   const user = await userFor(req);
   if (!user) return json(res, 401, { error: { message: '没登录' } }, cors);
 
-  if (p === '/api/me') return json(res, 200, { user }, cors);
+  if (p === '/api/me' && req.method === 'GET') return json(res, 200, { user }, cors);
+  if (p === '/api/me' && req.method === 'PUT') {
+    const b = await body();
+    await updateName(user.id, b?.name);
+    return json(res, 200, { user: await userFor(req) }, cors);
+  }
+  // 自己改密码：验当前密码；猜错按邮箱计数（和登录同一个桶），改成功后其他会话全部作废
+  if (p === '/api/me/password' && req.method === 'POST') {
+    const wait = loginByEmail.retryAfter(user.email);
+    if (wait) return tooMany(res, wait);
+    const b = await body();
+    if (!b?.current || !b?.password) return json(res, 400, { error: { message: '要填当前密码和新密码' } }, cors);
+    if (String(b.password).length < 8) return json(res, 400, { error: { message: '新密码至少 8 位' } }, cors);
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
+    const ok = await changePassword(user.id, String(b.current), String(b.password), token);
+    if (!ok) { loginByEmail.fail(user.email); return json(res, 401, { error: { message: '当前密码不对' } }, cors); }
+    loginByEmail.clear(user.email);
+    return json(res, 200, { ok: true }, cors);
+  }
 
   // 下面这些只有管理员能碰：模型 key、邀请码、OSS、账号列表、别人的密码重置链接
   const adminOnly = () => json(res, 403, { error: { message: '只有管理员能做这个' } }, cors);
@@ -178,6 +199,18 @@ async function handleApi(req, res, url, cors) {
   if (p === '/api/admin/users' && req.method === 'GET') {
     if (!user.isAdmin) return adminOnly();
     return json(res, 200, { users: await listUsers() }, cors);
+  }
+  const du = /^\/api\/admin\/users\/([\w-]+)\/(disable|enable)$/.exec(p);
+  if (du && req.method === 'POST') {
+    if (!user.isAdmin) return adminOnly();
+    if (du[1] === user.id) return json(res, 400, { error: { message: '不能停用自己' } }, cors);
+    await setDisabled(du[1], du[2] === 'disable');
+    return json(res, 200, { users: await listUsers() }, cors);
+  }
+  // 系统状态：磁盘、上次备份、OSS 用量、库里有多少东西、服务跑了多久
+  if (p === '/api/admin/status' && req.method === 'GET') {
+    if (!user.isAdmin) return adminOnly();
+    return json(res, 200, await systemStatus(), cors);
   }
   if (p === '/api/admin/reset-link' && req.method === 'POST') {
     if (!user.isAdmin) return adminOnly();
@@ -307,6 +340,7 @@ if (hasDb()) {
   if (stuck.length) console.log(`把 ${stuck.length} 个中断的渲染任务标成了失败`);
   const setupToken = await ensureSetupToken().catch(() => null);
   if (setupToken) console.log(`还没有任何账号。打开页面后用这个一次性口令创建第一个：${setupToken}`);
+  schedulePurge();     // 删掉超过 30 天的媒体，把文件从存储里清掉（启动一分钟后一次，之后每天一次）
 } else {
   console.log('没有 DATABASE_URL：只提供模型网关，数据与渲染接口返回 503');
 }

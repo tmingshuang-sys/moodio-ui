@@ -130,3 +130,21 @@ test('客户端：有角色名就不要求 AccessKey；两者都没有才报错'
 test('静态凭证：原样返回，没有 token', async () => {
   assert.deepEqual(await staticCredentials({ accessKeyId: 'i', accessKeySecret: 's' })(), { accessKeyId: 'i', accessKeySecret: 's', token: '' });
 });
+
+// ---- ListObjectsV2 的 XML 解析 ----
+import { parseList } from '../src/oss.mjs';
+test('parseList：取 Key / Size / LastModified 与翻页标记，XML 实体要还原', () => {
+  const xml = `<?xml version="1.0"?><ListBucketResult><Name>b</Name><Prefix>backups/</Prefix><IsTruncated>true</IsTruncated>
+    <NextContinuationToken>abc&amp;def</NextContinuationToken>
+    <Contents><Key>backups/wow-20261101-033000.tar.gz</Key><LastModified>2026-11-01T03:30:12.000Z</LastModified><ETag>"x"</ETag><Size>12345</Size><StorageClass>Standard</StorageClass></Contents>
+    <Contents><Key>u_1/a&amp;b.png</Key><LastModified>2026-10-31T10:00:00.000Z</LastModified><Size>7</Size></Contents>
+  </ListBucketResult>`;
+  const r = parseList(xml);
+  assert.deepEqual(r.objects, [
+    { key: 'backups/wow-20261101-033000.tar.gz', size: 12345, lastModified: '2026-11-01T03:30:12.000Z' },
+    { key: 'u_1/a&b.png', size: 7, lastModified: '2026-10-31T10:00:00.000Z' },
+  ]);
+  assert.equal(r.truncated, true);
+  assert.equal(r.next, 'abc&def');
+  assert.deepEqual(parseList('<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>'), { objects: [], truncated: false, next: '' });
+});

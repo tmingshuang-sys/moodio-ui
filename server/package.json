@@ -17,7 +17,9 @@
     "db:migrate": "node scripts/migrate.mjs",
     "test": "node --test test/*.test.mjs",
     "reset:link": "node --env-file=.env scripts/reset-link.mjs",
-    "blobs:migrate": "node --env-file=.env scripts/migrate-blobs.mjs"
+    "blobs:migrate": "node --env-file=.env scripts/migrate-blobs.mjs",
+    "purge": "node --env-file=.env scripts/purge.mjs",
+    "oss:backups": "node --env-file=.env scripts/oss-backup.mjs list"
   },
   "dependencies": {
     "playwright-core": "^1.63.0",

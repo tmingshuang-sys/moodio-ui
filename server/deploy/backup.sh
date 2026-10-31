@@ -5,8 +5,8 @@
 # ⚠️ 备份文件里有密钥：模型 key 存在库的 settings 表里（明文，见 db/002_settings.sql），
 #    .env 里有数据库密码和网关口令。所以文件权限是 600，拿到本机之后也别随手放进公开目录。
 #
-# ⚠️ 只存在这台机器上的备份，防的是「删错了 / 库坏了」，防不了「机器没了」。
-#    真正的异地备份是在自己电脑上跑 npm run backup，它会把最新一份拉回本机。
+# 本机那份防的是「删错了 / 库坏了」；配了 OSS 之后每份还会传一份到 bucket 的 backups/ 下（30 天过期），
+#    那才防得了「机器没了」。自己电脑上 npm run backup 仍然可以再拉一份回本机。
 set -euo pipefail
 
 APP_DIR=${APP_DIR:-/opt/wow}
@@ -41,6 +41,24 @@ chmod 600 "$OUT"
 
 # 轮转：只留最近 KEEP 份
 ls -1t "$OUT_DIR"/wow-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+
+# 传一份到 OSS（配了 OSS 才传）——和数据库不在同一台机器上，这才算异地备份；生命周期规则 30 天自动过期。
+# 失败不影响本机那份，只在输出里提醒。备份里有密钥，所以脚本会要求 OSS 服务端加密，bucket 也是私有的
+NODE=${NODE:-/usr/local/bin/node}; command -v "$NODE" >/dev/null || NODE=$(command -v node || true)
+OSS_KEY=""
+if grep -q '^OSS_BUCKET=.\+' "$APP_DIR/server/.env" 2>/dev/null && [ -n "$NODE" ]; then
+  if OSS_KEY=$("$NODE" --env-file="$APP_DIR/server/.env" "$APP_DIR/server/scripts/oss-backup.mjs" upload "$OUT" 2>/tmp/wow-backup-oss.err); then
+    echo "已上传 OSS：$OSS_KEY"
+  else
+    echo "⚠️ 上传 OSS 失败：$(tail -1 /tmp/wow-backup-oss.err 2>/dev/null)（本机那份还在）"; OSS_KEY=""
+  fi
+fi
+
+# 给网页「服务器设置 → 系统状态」看的：上次备份什么时候、多大、有没有传到 OSS。
+# 服务跑在 wow 用户下读不了 700 的备份目录，所以单独写一份可读的状态文件
+STATUS_FILE="$APP_DIR/server/.backup-status.json"
+printf '{"file":"%s","size":%s,"at":"%s","ossKey":"%s"}\n' "$OUT" "$(stat -c %s "$OUT")" "$(date -u +%FT%TZ)" "$OSS_KEY" > "$STATUS_FILE"
+chmod 644 "$STATUS_FILE"; chown "$APP_USER" "$STATUS_FILE" 2>/dev/null || true
 
 # 这一行是给脚本解析的，路径后面不许再跟别的东西（backup.mjs 按 BACKUP_FILE= 取）
 echo "BACKUP_FILE=$OUT"

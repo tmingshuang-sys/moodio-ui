@@ -4,17 +4,44 @@
 // 账号这块没有邮件服务：注册靠邀请码（管理员设，留空 = 不开放），忘了密码靠管理员生成一条 24 小时有效的
 // 重置链接（/?reset=…）发给对方，对方打开后自己设新密码。只有管理员（第一个账号）能改这里的设置。
 import { useEffect, useState } from 'react';
-import { Check, CloudDownload, Copy, KeyRound, Loader2, RefreshCw, Server, X } from 'lucide-react';
+import { Check, CloudDownload, Copy, KeyRound, Loader2, RefreshCw, Server, UserCheck, UserX, X } from 'lucide-react';
 import {
-  adminResetLink, adminUsers, clearResetFromUrl, getSettings, listJobs, loginServer, logoutServer, probeServer, putSettings,
-  registerServer, resetPasswordServer, resetTokenFromUrl, serverToken, setServerToken, setupServer, whoami,
-  type AdminUser, type RenderJob, type ServerHealth, type ServerUser, type SettingRow,
+  adminResetLink, adminSetDisabled, adminStatus, adminUsers, changeMyPassword, clearResetFromUrl, getSettings, listJobs, loginServer, logoutServer,
+  probeServer, putSettings, registerServer, resetPasswordServer, resetTokenFromUrl, serverToken, setServerToken, setupServer, updateMe, whoami,
+  type AdminUser, type RenderJob, type ServerHealth, type ServerUser, type SettingRow, type SystemStatus,
 } from '../lib/server';
 import { pullAllProjects, startAutoSync, syncNow, useSync } from '../lib/sync';
 import { switchProject, deleteCreation } from '../lib/session';
 import { toast } from './Toast';
 
 type Phase = 'probing' | 'none' | 'setup' | 'login' | 'register' | 'reset' | 'ready';
+
+const fmtBytes = (n?: number | null) => n == null ? '未知' : n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(0)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+const ago = (iso?: string | null) => {
+  if (!iso) return '';
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return m < 60 ? `${Math.max(m, 0)} 分钟前` : m < 48 * 60 ? `${Math.round(m / 60)} 小时前` : `${Math.round(m / 1440)} 天前`;
+};
+
+// 系统状态：每格一个数，红色就是要管的。阈值：磁盘 ≥ 85%、备份超过 36 小时没跑或没传到 OSS、OSS 连不上
+function StatusBlock({ s }: { s: SystemStatus }) {
+  const disk = s.disk; const pct = disk ? Math.round((disk.used / disk.total) * 100) : null;
+  const backupAt = s.backup?.at || s.storage.lastBackupAt || null;
+  const backupStale = !backupAt || Date.now() - Date.parse(backupAt) > 36 * 3600_000;
+  const cells: { k: string; v: string; sub?: string; bad?: boolean }[] = [
+    { k: '磁盘', v: disk ? `${pct}%` : '未知', sub: disk ? `${fmtBytes(disk.used)} / ${fmtBytes(disk.total)}` : '', bad: pct != null && pct >= 85 },
+    { k: '上次备份', v: backupAt ? ago(backupAt) : '还没跑过', sub: s.backup ? `${fmtBytes(s.backup.size)} · ${s.backup.ossKey ? '已传 OSS' : '只在本机'}` : (s.storage.backups ? `OSS 里 ${s.storage.backups} 份` : ''), bad: backupStale || (!!s.backup && !s.backup.ossKey) },
+    { k: '存储', v: s.storage.kind === 'oss' ? (s.storage.ok ? `OSS ${s.storage.objects != null ? s.storage.objects + ' 个' : ''}` : 'OSS 连不上') : '本机磁盘', sub: s.storage.kind === 'oss' && s.storage.ok ? `${fmtBytes(s.storage.bytes)}${s.storage.truncated ? '+' : ''} · ${s.storage.auth === 'role' ? '实例角色' : 'AccessKey'}` : (s.storage.error || ''), bad: s.storage.kind === 'oss' && !s.storage.ok },
+    { k: '账号 / 创作', v: s.db ? `${s.db.users} / ${s.db.projects}` : '未知', sub: s.db ? `${s.db.docs} 份文稿 · ${s.db.media} 个媒体${s.db.disabled ? ` · ${s.db.disabled} 个已停用` : ''}${s.db.media_pending_purge ? ` · ${s.db.media_pending_purge} 个待清理` : ''}` : '' },
+    { k: '渲染任务', v: s.db ? `${s.db.render_active} 在跑` : '未知', sub: s.db ? `7 天内失败 ${s.db.render_failed_7d}` : '', bad: !!s.db && s.db.render_failed_7d > 0 },
+    { k: '服务', v: `运行 ${ago(s.service.startedAt).replace('前', '')}`, sub: `${s.service.commit ? '版本 ' + s.service.commit + ' · ' : ''}负载 ${s.service.load1.toFixed(2)} · 内存剩 ${fmtBytes(s.service.memFree)}` },
+  ];
+  return (
+    <div className="sv-stats">
+      {cells.map(c => <div key={c.k} className={'sv-stat' + (c.bad ? ' bad' : '')}><small>{c.k}</small><b>{c.v}</b>{c.sub && <span>{c.sub}</span>}</div>)}
+    </div>
+  );
+}
 
 export default function ServerDialog({ onClose }: { onClose: () => void }) {
   const [phase, setPhase] = useState<Phase>('probing');
@@ -38,8 +65,15 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [resetLink, setResetLink] = useState<{ email: string; url: string; expiresAt: string } | null>(null);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
+  const [status, setStatus] = useState<SystemStatus | null>(null);
   const sync = useSync();
   const [pulling, setPulling] = useState('');
+
+  // 我的账号：改称呼、改密码
+  const [myName, setMyName] = useState('');
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwNew2, setPwNew2] = useState('');
 
   const refresh = async () => {
     const h = await probeServer();
@@ -60,9 +94,11 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
     }
   };
   const loadReady = async (user: ServerUser | null) => {
+    setMyName(user?.name || '');
     if (user?.isAdmin) {
       try { setRows((await getSettings()).settings); } catch (e: any) { setErr(String(e.message)); }
       try { setUsers((await adminUsers()).users); } catch { /* 列表拿不到就不显示 */ }
+      try { setStatus(await adminStatus()); } catch { setStatus(null); }
     }
     try { setJobs((await listJobs()).jobs); } catch { /* 没任务就算了 */ }
   };
@@ -99,6 +135,17 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
   });
   const giveUpReset = () => { clearResetFromUrl(); setResetToken(''); setErr(''); setPhase('login'); };
   const doResetLink = (mail: string) => run(async () => { setResetLink(null); setResetLink(await adminResetLink(mail)); });
+  const doToggleDisabled = (u: AdminUser) => run(async () => {
+    setUsers((await adminSetDisabled(u.id, !u.disabled)).users);
+    toast(u.disabled ? `已启用 ${u.email}` : `已停用 ${u.email}，它所有登录都已失效`);
+  });
+  const doSaveName = () => run(async () => { const r = await updateMe(myName); setMe(r.user); toast('称呼已改'); });
+  const doChangePassword = () => run(async () => {
+    if (pwNew !== pwNew2) throw new Error('两次输入的新密码不一样');
+    await changeMyPassword(pwCurrent, pwNew);
+    setPwCurrent(''); setPwNew(''); setPwNew2('');
+    toast('密码已改，其他设备上的登录已失效');
+  });
   const copy = async (text: string) => {
     try { await navigator.clipboard.writeText(text); toast('已复制'); } catch { toast('复制失败，手动选中复制吧'); }
   };
@@ -207,8 +254,26 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
           <CloudDownload size={13} />{pulling || '取回服务端的全部创作'}
         </button>
 
+        <h3>我的账号</h3>
+        <div className="sv-form sv-account">
+          <div className="sv-inline">
+            <label>称呼<input value={myName} onChange={e => setMyName(e.target.value)} placeholder="显示在账号列表里" /></label>
+            <button type="button" className="btn" disabled={busy || myName === (me?.name || '')} onClick={() => void doSaveName()}>保存</button>
+          </div>
+          <div className="sv-inline">
+            <label>当前密码<input type="password" autoComplete="current-password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} /></label>
+            <label>新密码<input type="password" autoComplete="new-password" value={pwNew} onChange={e => setPwNew(e.target.value)} placeholder="至少 8 位" /></label>
+            <label>再输一次<input type="password" autoComplete="new-password" value={pwNew2} onChange={e => setPwNew2(e.target.value)} onKeyDown={onEnter(doChangePassword)} /></label>
+            <button type="button" className="btn" disabled={busy || !pwCurrent || pwNew.length < 8 || !pwNew2} onClick={() => void doChangePassword()}>改密码</button>
+          </div>
+          <p className="muted sv-note">改完密码，其他设备上的登录会全部失效，当前这个保留。</p>
+        </div>
+
         {me?.isAdmin ? (
           <>
+            <h3>系统状态 <button type="button" className="icon-btn" onClick={() => void adminStatus().then(setStatus).catch(() => setStatus(null))} aria-label="刷新状态"><RefreshCw size={13} /></button></h3>
+            {status ? <StatusBlock s={status} /> : <p className="muted">状态拿不到（后端版本太旧，或者接口报错）。</p>}
+
             <h3>模型 key</h3>
             <p className="muted">填完立刻生效，不用重启。留空表示不改；填一个空格再保存表示清掉它。
               已配置的不会回显——后端只告诉界面「配没配」，不回传值本身。</p>
@@ -225,11 +290,17 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
             {users.length > 0 && (
               <ul className="sv-users">
                 {users.map(u => (
-                  <li key={u.id}>
+                  <li key={u.id} className={u.disabled ? 'off' : ''}>
                     <b>{u.email}{u.name ? ` · ${u.name}` : ''}</b>
                     {u.isAdmin && <span className="tag">管理员</span>}
+                    {u.disabled && <span className="tag off">已停用</span>}
                     <small>{u.lastLogin ? `上次登录 ${new Date(u.lastLogin).toLocaleDateString()}` : '还没登录过'}</small>
                     <button type="button" className="icon-btn" title="生成密码重置链接" aria-label={`给 ${u.email} 生成密码重置链接`} disabled={busy} onClick={() => void doResetLink(u.email)}><KeyRound size={13} /></button>
+                    {u.id !== me?.id && (
+                      <button type="button" className="icon-btn" title={u.disabled ? '启用这个账号' : '停用这个账号（登不进、已登录的全部失效，数据保留）'} aria-label={`${u.disabled ? '启用' : '停用'} ${u.email}`} disabled={busy} onClick={() => void doToggleDisabled(u)}>
+                        {u.disabled ? <UserCheck size={13} /> : <UserX size={13} />}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

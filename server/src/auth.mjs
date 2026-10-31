@@ -44,7 +44,7 @@ export const normalizeEmail = e => String(e || '').toLowerCase().trim();
 // 重置 token 入库前先哈希：库里存的东西拿出来也用不了
 export const hashToken = t => crypto.createHash('sha256').update(String(t)).digest('hex');
 
-const publicUser = u => ({ id: u.id, email: u.email, name: u.name, isAdmin: !!u.is_admin });
+const publicUser = u => ({ id: u.id, email: u.email, name: u.name, isAdmin: !!u.is_admin, disabled: !!u.disabled_at });
 
 export async function createUser({ email, password, name = '', isAdmin = false }) {
   const s = db();
@@ -57,6 +57,7 @@ export async function login(email, password) {
   const s = db();
   const [u] = await s`select * from users where email = ${normalizeEmail(email)}`;
   if (!u || !verifyPassword(password, u.password_hash)) return null;
+  if (u.disabled_at) return { disabled: true };          // 密码对但账号被停用：告诉他找管理员，而不是装作密码错
   const token = crypto.randomBytes(32).toString('base64url');
   const expires = new Date(Date.now() + SESSION_DAYS * 864e5);
   await s`insert into sessions (token, user_id, expires_at) values (${token}, ${u.id}, ${expires})`;
@@ -74,8 +75,8 @@ export async function userFor(req) {
   if (!token) return null;
   const s = db();
   const [row] = await s`
-    select u.id, u.email, u.name, u.is_admin from sessions s join users u on u.id = s.user_id
-    where s.token = ${token} and s.expires_at > now()`;
+    select u.id, u.email, u.name, u.is_admin, u.disabled_at from sessions s join users u on u.id = s.user_id
+    where s.token = ${token} and s.expires_at > now() and u.disabled_at is null`;
   return row ? publicUser(row) : null;
 }
 
@@ -87,10 +88,33 @@ export async function userByEmail(email) {
 // 管理员看的账号列表：谁、什么时候建的、最近一次登录
 export async function listUsers() {
   const rows = await db()`
-    select u.id, u.email, u.name, u.is_admin, u.created_at,
+    select u.id, u.email, u.name, u.is_admin, u.disabled_at, u.created_at,
            (select max(created_at) from sessions where user_id = u.id) as last_login
     from users u order by u.created_at`;
   return rows.map(r => ({ ...publicUser(r), createdAt: r.created_at, lastLogin: r.last_login }));
+}
+
+// 自己改密码：要先验当前密码。改完把这个人**其他**会话都踢掉，只留正在用的这一个
+export async function changePassword(userId, current, next, keepToken = '') {
+  const s = db();
+  const [u] = await s`select password_hash from users where id = ${userId}`;
+  if (!u || !verifyPassword(current, u.password_hash)) return false;
+  await s.begin(async t => {
+    await t`update users set password_hash = ${hashPassword(next)} where id = ${userId}`;
+    await t`delete from sessions where user_id = ${userId} and token <> ${keepToken}`;
+  });
+  return true;
+}
+export async function updateName(userId, name) {
+  await db()`update users set name = ${String(name || '').trim().slice(0, 60)} where id = ${userId}`;
+}
+// 停用 = 登不进、已登录的会话全部作废；数据原样留着，随时能恢复。不是删除
+export async function setDisabled(userId, disabled) {
+  const s = db();
+  await s.begin(async t => {
+    await t`update users set disabled_at = ${disabled ? new Date() : null} where id = ${userId}`;
+    if (disabled) await t`delete from sessions where user_id = ${userId}`;
+  });
 }
 
 // 生成一条重置链接的 token。返回明文 token（只在这一刻出现一次），库里只留哈希
