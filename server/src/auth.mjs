@@ -18,8 +18,14 @@ export function hashPassword(password) {
 export function verifyPassword(password, stored) {
   const [scheme, saltB64, keyB64] = String(stored || '').split('$');
   if (scheme !== 'scrypt' || !saltB64 || !keyB64) return false;
+  const salt = Buffer.from(saltB64, 'base64');
   const key = Buffer.from(keyB64, 'base64');
-  const got = crypto.scryptSync(password, Buffer.from(saltB64, 'base64'), key.length, SCRYPT);
+  // 长度必须对得上，**这一行是安全要害**：Buffer.from(垃圾, 'base64') 会悄悄得到空 Buffer，
+  // 然后 scryptSync(..., keylen=0) 也产出空 Buffer，timingSafeEqual(空, 空) 返回 true——
+  // 也就是说库里只要有一条哈希写坏了，那个账号就变成「任何密码都能登」。
+  // 正常写入的哈希一定是 16 字节盐 + 64 字节密钥，对不上就直接判错，不去算 scrypt
+  if (key.length !== SCRYPT.keylen || salt.length !== 16) return false;
+  const got = crypto.scryptSync(password, salt, SCRYPT.keylen, SCRYPT);
   return crypto.timingSafeEqual(key, got);
 }
 

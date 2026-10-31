@@ -12,6 +12,13 @@ import { ensureProject, listProjects, pull, push } from './sync.mjs';
 import { blobs, mediaKey } from './store.mjs';
 import { SETTING_KEYS, settingsStatus, saveSettings, effectiveEnv, needsSetup, ensureSetupToken, consumeSetupToken } from './settings.mjs';
 import { prepareJob, renderVideo, readcheck, runtimeReady } from './render/job.mjs';
+import { createLimiter, clientIp } from './ratelimit.mjs';
+
+// 猜口令的限流。只对失败计数，正常请求完全不受影响（见 ratelimit.mjs 开头的说明）。
+// 登录按 IP 和按邮箱各限一次：只按 IP 挡不住换着 IP 刷同一个账号，只按邮箱挡不住拿一堆邮箱试弱密码。
+const loginByIp = createLimiter({ limit: 8, windowMs: 10 * 60_000, blockMs: 15 * 60_000 });
+const loginByEmail = createLimiter({ limit: 8, windowMs: 10 * 60_000, blockMs: 15 * 60_000 });
+const setupByIp = createLimiter({ limit: 5, windowMs: 10 * 60_000, blockMs: 60 * 60_000 });
 
 const PORT = +(process.env.PORT || 8787);
 const env = process.env;
@@ -71,20 +78,37 @@ async function handleApi(req, res, url, cors) {
 
   const body = async () => { try { return JSON.parse(await readBody(req) || '{}'); } catch { return null; } };
 
+  const ip = clientIp(req);
+  const tooMany = (res, secs) => json(res, 429, { error: { message: `试得太频繁了，${Math.ceil(secs / 60)} 分钟后再来` } }, { ...cors, 'Retry-After': String(secs) });
+
   if (p === '/api/auth/setup' && req.method === 'POST') {
+    const wait = setupByIp.retryAfter(ip);
+    if (wait) return tooMany(res, wait);
     const b = await body();
     if (!b?.email || !b?.password) return json(res, 400, { error: { message: '要填邮箱和密码' } }, cors);
     if (String(b.password).length < 8) return json(res, 400, { error: { message: '密码至少 8 位' } }, cors);
     try {
       await consumeSetupToken(b.token);
       await createUser({ email: b.email, password: b.password, name: b.name || '' });
+      setupByIp.clear(ip);
       return json(res, 200, await login(b.email, b.password), cors);
-    } catch (e) { return json(res, 400, { error: { message: String(e.message) } }, cors); }
+    } catch (e) {
+      setupByIp.fail(ip);      // 一次性口令猜错也要计数，否则它就成了另一个可以慢慢猜的密码
+      return json(res, 400, { error: { message: String(e.message) } }, cors);
+    }
   }
   if (p === '/api/auth/login' && req.method === 'POST') {
     const b = await body();
+    const mail = String(b?.email || '').toLowerCase().trim();
+    const wait = Math.max(loginByIp.retryAfter(ip), loginByEmail.retryAfter(mail));
+    if (wait) return tooMany(res, wait);
     const r = b && await login(b.email, b.password);
-    return r ? json(res, 200, r, cors) : json(res, 401, { error: { message: '邮箱或密码不对' } }, cors);
+    if (!r) {
+      loginByIp.fail(ip); loginByEmail.fail(mail);
+      return json(res, 401, { error: { message: '邮箱或密码不对' } }, cors);
+    }
+    loginByIp.clear(ip); loginByEmail.clear(mail);   // 密码记错一次不该留下痕迹
+    return json(res, 200, r, cors);
   }
   if (p === '/api/auth/logout' && req.method === 'POST') {
     const auth = (req.headers.authorization || '').replace(/^Bearer\s+/, '');

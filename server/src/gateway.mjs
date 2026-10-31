@@ -2,6 +2,23 @@
 // 搬到自己的服务器上有两个原因：① workers.dev 在国内被 DNS 污染并按 SNI 掐 TLS，页面连不稳；
 // ② 以后渲染、存储、网关在同一台机器上，生成的素材不用再绕一圈公网。
 // 真实 key 只在服务端环境变量里，页面仍然只带 ACCESS_TOKEN。
+import crypto from 'crypto';
+import { createLimiter, clientIp } from './ratelimit.mjs';
+
+// 网关口令猜错的限流。口令对了的请求一次都不计——视频生成要每隔一两秒轮询，正常用量就是很密集。
+//
+// 这里刻意比登录宽松得多（30 次 / 5 分钟，只挡 2 分钟），因为两者要防的根本不是一回事：
+// 密码是人取的、真的能猜中，所以登录必须掐死；而 ACCESS_TOKEN 是 32 位十六进制随机串，
+// 128 位熵，再宽松的限流也不影响「猜不中」这个事实。限流在这里只是防日志刷屏和白费资源。
+// 换成严格值反而会制造真实故障：在「服务器设置」里改了网关口令之后，页面还拿着旧口令自动重试，
+// 一轮视频轮询就能攒够失败次数，于是改对了也要被关在外面半小时。2 分钟就自己好了。
+const tokenByIp = createLimiter({ limit: 30, windowMs: 5 * 60_000, blockMs: 2 * 60_000 });
+
+// 等长比较，别让回答快慢泄露口令前缀
+function sameToken(a, b) {
+  const x = Buffer.from(String(a || '')), y = Buffer.from(String(b || ''));
+  return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
+}
 const DEFAULT_UPSTREAM = 'https://api.deepseek.com/v1';
 const KIMI_BASE = 'https://api.moonshot.cn/v1';
 const FAL_QUEUE = 'https://queue.fal.run';
@@ -93,9 +110,26 @@ export async function handleGateway(req, res, url, env) {
     || ['/fal', '/ark', '/byteplus'].some(x => p === x || p.startsWith(x + '/'));
   if (!isGatewayPath) return false;
 
+  // 先比口令再看限流，顺序很重要：口令对的请求**永远不该**被挡。
+  // 反过来写（先看限流）会制造自锁——改了网关口令之后页面拿着旧口令重试攒满了次数，
+  // 等你把口令改对，自己也进不来了。实测过，40 次正确口令全被 429。
+  // 这个顺序不会削弱防护：比对一个 32 字节 Buffer 是常数时间、不花钱也不泄露信息，
+  // 没有口令的人照样在下面被挡住。
+  const ip = clientIp(req);
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  if (!env.ACCESS_TOKEN || token !== env.ACCESS_TOKEN) { fail(res, 401, '访问口令不正确', cors); return true; }
+  if (env.ACCESS_TOKEN && sameToken(token, env.ACCESS_TOKEN)) {
+    tokenByIp.clear(ip);          // 口令对了就把之前攒的失败一笔勾销
+  } else {
+    const wait = tokenByIp.retryAfter(ip);
+    if (wait) {
+      res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'Retry-After': String(wait), ...cors });
+      res.end(JSON.stringify({ error: { message: `口令错太多次了，${Math.ceil(wait / 60)} 分钟后再来` } }));
+      return true;
+    }
+    tokenByIp.fail(ip);
+    fail(res, 401, '访问口令不正确', cors); return true;
+  }
 
   const proxied = ['POST', 'GET', 'PUT', 'DELETE'].includes(req.method);
   const route = (prefix, base, key, name) => {
