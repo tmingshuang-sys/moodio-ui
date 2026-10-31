@@ -31,7 +31,9 @@ log(`   ${head} 已推送`);
 log('== 4/5 服务器拉代码、重新构建、重启');
 // setup.sh 跑到一半会把自己 git reset 掉，所以先拉代码、再从 /tmp 的副本跑（脚本自己也有这层保护）
 const cmd = [
-  `su - wow -c "cd ${HOST.appDir} && git fetch --depth 1 origin ${BRANCH} -q && git reset --hard -q origin/${BRANCH}"`,
+  // FETCH_HEAD 而不是 origin/<分支>：机器上是浅克隆，只配了一个分支的 refspec，
+  // 换分支时 origin/<分支> 不存在，reset 会报 ambiguous argument（踩过）
+  `su - wow -c "cd ${HOST.appDir} && git remote set-branches origin '*' && git fetch --depth 1 origin ${BRANCH} -q && git reset --hard -q FETCH_HEAD && git checkout -q -B ${BRANCH} FETCH_HEAD"`,
   `cp ${HOST.appDir}/server/deploy/setup.sh /tmp/wow-setup-run.sh`,
   `bash /tmp/wow-setup-run.sh --domain ${HOST.domain} --branch ${BRANCH}`,
 ].join(' && ');

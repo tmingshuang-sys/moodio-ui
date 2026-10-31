@@ -97,7 +97,10 @@ mkdir -p "$APP_DIR"; chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 if [ "${WOW_SKIP_GIT:-0}" = 1 ]; then
   echo "跳过取代码（WOW_SKIP_GIT=1，容器里验证脚本时用）"
 elif [ -d "$APP_DIR/.git" ]; then
-  su - "$APP_USER" -c "cd $APP_DIR && git fetch --depth 1 origin $BRANCH && git reset --hard origin/$BRANCH"
+  # 用 FETCH_HEAD 而不是 origin/$BRANCH：浅克隆（--depth 1 -b xxx）只给 origin 配了那一个分支的
+  # refspec，换分支时 origin/$BRANCH 这个远程跟踪引用根本不存在，reset 会报 ambiguous argument。
+  # FETCH_HEAD 是刚 fetch 回来的那个，不依赖任何 refspec 配置
+  su - "$APP_USER" -c "cd $APP_DIR && git remote set-branches origin '*' && git fetch --depth 1 origin $BRANCH && git reset --hard FETCH_HEAD && git checkout -B $BRANCH FETCH_HEAD"
 else
   su - "$APP_USER" -c "git clone --depth 1 -b $BRANCH $REPO $APP_DIR"
 fi
