@@ -3,15 +3,22 @@
 // 没有后端的时候（本机 vite、或页面托管在别处）所有调用都会失败，调用方按「没有后端」处理即可。
 const TOKEN_KEY = 'wow-server-token';
 
+export interface StorageHealth { kind: 'local' | 'oss'; ok: boolean; error?: string; bucket?: string; region?: string; dir?: string }
 export interface ServerHealth {
   ok: boolean; service: string; db: boolean; render: boolean; blobs: string;
+  storage?: StorageHealth;              // 媒体文件存哪、通不通
   setup: boolean;                       // true = 还没有任何账号，要先初始化
   deepseek: boolean; kimi: boolean; fal: boolean; ark: boolean; byteplus: boolean;
 }
+export interface ServerUser { id: string; email: string; name: string; isAdmin?: boolean }
+export interface AdminUser extends ServerUser { createdAt: string; lastLogin: string | null }
 export interface SettingRow {
   key: string; label: string; hint: string; secret: boolean;
+  group: 'model' | 'storage' | 'account';
+  value: string;                        // 只有非敏感项（bucket / 区域）回传当前值，敏感项永远是空串
   set: boolean; from: 'db' | 'env' | null; updatedAt: string | null;
 }
+type Session = { token: string; user: ServerUser };
 export interface RenderJob {
   id: string; title: string; status: 'queued' | 'running' | 'done' | 'failed' | 'canceled';
   stage: string; progress: number; error: string | null;
@@ -48,17 +55,34 @@ export async function probeServer(): Promise<ServerHealth | null> {
 }
 
 export const setupServer = (p: { token: string; email: string; password: string; name?: string }) =>
-  call<{ token: string; user: { id: string; email: string; name: string } }>('/api/auth/setup', { method: 'POST', body: JSON.stringify(p) });
+  call<Session>('/api/auth/setup', { method: 'POST', body: JSON.stringify(p) });
 
 export const loginServer = (email: string, password: string) =>
-  call<{ token: string; user: { id: string; email: string; name: string } }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  call<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+
+// 用邀请码注册（邀请码由管理员在服务器设置里设，没设就是不开放）
+export const registerServer = (p: { email: string; password: string; name?: string; invite: string }) =>
+  call<Session>('/api/auth/register', { method: 'POST', body: JSON.stringify(p) });
+
+// 拿重置链接里的 token 设新密码，成功直接是登录态
+export const resetPasswordServer = (token: string, password: string) =>
+  call<Session>('/api/auth/reset', { method: 'POST', body: JSON.stringify({ token, password }) });
+
+// 重置链接长这样：https://站点/?reset=<token>。页面打开时看一眼有没有，有就直接进「设新密码」
+export const resetTokenFromUrl = () => { try { return new URLSearchParams(location.search).get('reset') || ''; } catch { return ''; } };
+export const clearResetFromUrl = () => { try { const u = new URL(location.href); u.searchParams.delete('reset'); history.replaceState(null, '', u.toString()); } catch { /* 无所谓 */ } };
+
+// 管理员：账号列表、给某个邮箱生成重置链接
+export const adminUsers = () => call<{ users: AdminUser[] }>('/api/admin/users');
+export const adminResetLink = (email: string) =>
+  call<{ email: string; url: string; expiresAt: string }>('/api/admin/reset-link', { method: 'POST', body: JSON.stringify({ email }) });
 
 export async function logoutServer() {
   try { await call('/api/auth/logout', { method: 'POST' }); } catch { /* 本地清掉就行 */ }
   setServerToken('');
 }
 
-export const whoami = () => call<{ user: { id: string; email: string; name: string } }>('/api/me');
+export const whoami = () => call<{ user: ServerUser }>('/api/me');
 export const getSettings = () => call<{ settings: SettingRow[] }>('/api/settings');
 export const putSettings = (settings: Record<string, string>) =>
   call<{ changed: string[]; settings: SettingRow[] }>('/api/settings', { method: 'PUT', body: JSON.stringify({ settings }) });

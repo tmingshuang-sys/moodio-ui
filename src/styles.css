@@ -815,3 +815,17 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .sv-ready > p.sv-sync { margin-bottom: 8px; min-height: 20px; }
 .sv-ready > p.sv-sync .bad { color: var(--danger); }
 .sv-ready > .btn { margin-bottom: 4px; gap: 6px; }
+
+/* 服务器设置：登录 / 注册 / 重置之间切换的文字按钮、提示小字、账号列表、重置链接 */
+.sv-link { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12.5px; cursor: pointer; justify-self: start; text-decoration: underline; text-underline-offset: 3px; }
+.sv-form .sv-note, .sv-ready .sv-note { margin: 0; font-size: 12px; line-height: 1.6; }
+.sv-users { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.sv-users li { display: flex; align-items: center; gap: 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; }
+.sv-users li b { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-users li .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+.sv-users li small { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+.sv-reset-link { display: grid; gap: 6px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--panel); font-size: 12.5px; line-height: 1.6; }
+.sv-reset-link .row { display: flex; gap: 6px; }
+.sv-reset-link input { flex: 1; min-width: 0; height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font: inherit; font-size: 12px; color: var(--ink); }
+.sv-reset-link .btn { gap: 4px; }
+.sv-ready code { padding: 1px 5px; border-radius: 4px; background: var(--panel); font-size: 12px; }

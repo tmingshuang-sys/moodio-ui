@@ -6,11 +6,12 @@ import ResourcePane, { PaneHandle } from './components/ResourcePane';
 import Library from './components/Library';
 import { ToastHost } from './components/Toast';
 import { MenuHost } from './components/Menu';
-import { DialogHost } from './components/Dialogs';
+import { DialogHost, openServerSettings } from './components/Dialogs';
 import AgentLive from './components/AgentLive';
 import { useFiles, useNav } from './lib/store';
 import { useLayout } from './lib/layout';
 import { resumeOnLoad } from './lib/session';
+import { resetTokenFromUrl } from './lib/server';
 import { useLang } from './lib/i18n';
 
 const MIN_CHAT = 380, MIN_PANE = 420;
@@ -25,6 +26,8 @@ export default function App() {
   const mainRef = useRef<HTMLDivElement>(null);
   useEffect(() => { document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN'; }, [lang]);
   useEffect(() => { resumeOnLoad(); }, []);
+  // 密码重置链接（/?reset=…）：一进来就打开服务器设置，那里会直接进「设新密码」
+  useEffect(() => { if (resetTokenFromUrl()) openServerSettings(); }, []);
   // 文件掉在没有接收区的地方时，浏览器默认会直接打开它、把页面顶掉（未保存的输入也就没了），统一拦下来
   useEffect(() => {
     const swallow = (e: DragEvent) => { if (Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault(); };

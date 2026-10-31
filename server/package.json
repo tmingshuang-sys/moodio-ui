@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "WoW 后端：模型网关、数据持久化、服务端渲染（playwright + ffmpeg）",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "setup": "node scripts/sync-vendor.mjs && npm run build:renderer && npx playwright-core install chromium-headless-shell",
     "sync:vendor": "node scripts/sync-vendor.mjs",
@@ -13,7 +15,9 @@
     "start": "node src/index.mjs",
     "db:up": "docker compose up -d db",
     "db:migrate": "node scripts/migrate.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "reset:link": "node --env-file=.env scripts/reset-link.mjs",
+    "blobs:migrate": "node --env-file=.env scripts/migrate-blobs.mjs"
   },
   "dependencies": {
     "playwright-core": "^1.63.0",

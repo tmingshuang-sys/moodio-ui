@@ -1,7 +1,7 @@
 // 密码哈希。这块错了不会报错，只会「谁都能登进来」或者「谁都登不进来」，必须有用例守着。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashPassword, verifyPassword, newId } from '../src/auth.mjs';
+import { hashPassword, verifyPassword, newId, validEmail, safeEqual, hashToken } from '../src/auth.mjs';
 
 test('对的密码能验过，错的验不过', () => {
   const stored = hashPassword('正确的密码 correct-horse');
@@ -38,4 +38,25 @@ test('newId 带前缀、够随机、URL 安全', () => {
   const ids = new Set(Array.from({ length: 500 }, () => newId('u')));
   assert.equal(ids.size, 500, '500 个 id 不该撞');
   for (const id of ids) assert.match(id, /^u_[A-Za-z0-9_-]{12}$/);
+});
+
+test('邮箱格式：挡住明显写错的', () => {
+  for (const ok of ['a@b.co', 'first.last+tag@example.com', '  x@y.org  ']) assert.equal(validEmail(ok), true, ok);
+  for (const bad of ['', 'nope', 'a@b', 'a b@c.d', '@x.com', 'a@', null, undefined]) assert.equal(validEmail(bad), false, String(bad));
+});
+
+test('safeEqual：相同为真，不同或长度不同为假，不抛错', () => {
+  assert.equal(safeEqual('邀请码-abc', '邀请码-abc'), true);
+  assert.equal(safeEqual('abc', 'abd'), false);
+  assert.equal(safeEqual('abc', 'abcd'), false);
+  assert.equal(safeEqual('', ''), true);
+  assert.equal(safeEqual(null, ''), true, 'null 当空串');
+});
+
+test('重置 token 入库前哈希：同样的 token 同样的哈希，哈希里看不出 token', () => {
+  const t = 'some-token-value';
+  assert.equal(hashToken(t), hashToken(t));
+  assert.match(hashToken(t), /^[0-9a-f]{64}$/);
+  assert.ok(!hashToken(t).includes(t));
+  assert.notEqual(hashToken(t), hashToken(t + 'x'));
 });

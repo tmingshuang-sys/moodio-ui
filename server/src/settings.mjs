@@ -10,6 +10,14 @@ export const SETTING_KEYS = [
   { key: 'FAL_KEY', label: 'fal.ai', hint: '图片 / 视频 / 配音，形如 id:secret', secret: true },
   { key: 'BYTEPLUS_API_KEY', label: 'BytePlus', hint: 'Seedance 出视频', secret: true },
   { key: 'ACCESS_TOKEN', label: '网关口令', hint: '页面调模型接口时带的口令；改了要在模型设置里同步', secret: true },
+  // 账号
+  { key: 'INVITE_CODE', label: '邀请码', hint: '留空 = 不开放注册；填了之后别人拿着它才能注册账号', secret: true, group: 'account' },
+  // 媒体存储。bucket / 区域 / endpoint 不是秘密，会把当前值回给界面；两把 key 和模型 key 一样只往上送
+  { key: 'OSS_BUCKET', label: 'OSS Bucket', hint: '阿里云 OSS 的 bucket 名。填了媒体文件就存 OSS，留空存服务器本机磁盘', secret: false, group: 'storage' },
+  { key: 'OSS_REGION', label: 'OSS 区域', hint: '如 oss-cn-hongkong（bucket 概览页「地域」那一栏，带 oss- 前缀）', secret: false, group: 'storage' },
+  { key: 'OSS_ENDPOINT', label: 'OSS Endpoint（可选）', hint: '不填按区域自动拼；bucket 与服务器同区域时填内网地址 oss-cn-hongkong-internal.aliyuncs.com 更快且不计流量', secret: false, group: 'storage' },
+  { key: 'OSS_ACCESS_KEY_ID', label: 'OSS AccessKey ID', hint: 'RAM 子账号的 AccessKey，只给它这个 bucket 的读写权限', secret: true, group: 'storage' },
+  { key: 'OSS_ACCESS_KEY_SECRET', label: 'OSS AccessKey Secret', hint: '', secret: true, group: 'storage' },
 ];
 const KEY_SET = new Set(SETTING_KEYS.map(k => k.key));
 
@@ -40,7 +48,9 @@ export async function settingsStatus(env) {
   const when = Object.fromEntries(rows.map(r => [r.key, r.updated_at]));
   return SETTING_KEYS.map(d => ({
     ...d,
+    group: d.group || 'model',
     set: !!(s[d.key] || env[d.key]),
+    value: d.secret ? '' : (s[d.key] || env[d.key] || ''),     // 只有非敏感项回传值
     from: s[d.key] ? 'db' : env[d.key] ? 'env' : null,
     updatedAt: when[d.key] || null,
   }));

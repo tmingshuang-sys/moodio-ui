@@ -7,9 +7,9 @@ import http from 'http';
 import { randomUUID } from 'crypto';
 import { handleGateway, corsHeaders, gatewayHealth, readBody } from './gateway.mjs';
 import { db, hasDb, migrate } from './db.mjs';
-import { userFor, login, logout, createUser, newId } from './auth.mjs';
+import { userFor, login, logout, createUser, newId, validEmail, safeEqual, createResetToken, resetPassword, listUsers, userByEmail } from './auth.mjs';
 import { ensureProject, listProjects, pull, push } from './sync.mjs';
-import { blobs, mediaKey } from './store.mjs';
+import { blobs, blobDir, mediaKey, blobsHealth } from './store.mjs';
 import { SETTING_KEYS, settingsStatus, saveSettings, effectiveEnv, needsSetup, ensureSetupToken, consumeSetupToken } from './settings.mjs';
 import { prepareJob, renderVideo, readcheck, runtimeReady } from './render/job.mjs';
 import { createLimiter, clientIp } from './ratelimit.mjs';
@@ -19,6 +19,9 @@ import { createLimiter, clientIp } from './ratelimit.mjs';
 const loginByIp = createLimiter({ limit: 8, windowMs: 10 * 60_000, blockMs: 15 * 60_000 });
 const loginByEmail = createLimiter({ limit: 8, windowMs: 10 * 60_000, blockMs: 15 * 60_000 });
 const setupByIp = createLimiter({ limit: 5, windowMs: 10 * 60_000, blockMs: 60 * 60_000 });
+// 注册（猜邀请码）与密码重置（猜链接）也是「拿着一串字符来试」的接口，和初始化口令同一个待遇
+const registerByIp = createLimiter({ limit: 5, windowMs: 10 * 60_000, blockMs: 60 * 60_000 });
+const resetByIp = createLimiter({ limit: 5, windowMs: 10 * 60_000, blockMs: 60 * 60_000 });
 
 const PORT = +(process.env.PORT || 8787);
 const env = process.env;
@@ -27,6 +30,8 @@ const json = (res, status, body, cors = {}) => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
   res.end(JSON.stringify(body));
 };
+// 对象存储（OSS）出错：原因写进响应，前端能照着改配置；笼统的 500 谁也看不出是 OSS 的事
+const storageError = (res, e, cors) => { console.error('[storage]', e.message); return json(res, 502, { error: { message: `媒体存储出错：${e.message}` } }, cors); };
 
 // 渲染任务队列：同一时间只跑一个，渲染很吃 CPU，排队比并发稳。
 // 进程重启会丢掉内存里的队列，所以 queued / running 的任务在启动时统一标成 failed，让前端能重试，
@@ -62,7 +67,7 @@ async function pump() {
     });
     const buf = await (await import('fs/promises')).readFile(out.path);
     const key = mediaKey(job.user_id, job.id, '.mp4');
-    await blobs.put(key, buf);
+    await blobs.put(key, buf, 'video/mp4');
     await s`update render_jobs set status = 'done', stage = '', progress = 1, object_key = ${key}, finished_at = now() where id = ${job.id}`;
   } catch (e) {
     await s`update render_jobs set status = 'failed', error = ${String(e?.message || e).slice(0, 2000)}, finished_at = now() where id = ${job.id}`.catch(() => {});
@@ -86,10 +91,11 @@ async function handleApi(req, res, url, cors) {
     if (wait) return tooMany(res, wait);
     const b = await body();
     if (!b?.email || !b?.password) return json(res, 400, { error: { message: '要填邮箱和密码' } }, cors);
+    if (!validEmail(b.email)) return json(res, 400, { error: { message: '邮箱格式不对' } }, cors);
     if (String(b.password).length < 8) return json(res, 400, { error: { message: '密码至少 8 位' } }, cors);
     try {
       await consumeSetupToken(b.token);
-      await createUser({ email: b.email, password: b.password, name: b.name || '' });
+      await createUser({ email: b.email, password: b.password, name: b.name || '', isAdmin: true });   // 第一个账号就是管理员
       setupByIp.clear(ip);
       return json(res, 200, await login(b.email, b.password), cors);
     } catch (e) {
@@ -110,6 +116,42 @@ async function handleApi(req, res, url, cors) {
     loginByIp.clear(ip); loginByEmail.clear(mail);   // 密码记错一次不该留下痕迹
     return json(res, 200, r, cors);
   }
+  // 注册：邀请码在服务器设置里（INVITE_CODE），没设就是不开放。邀请码猜错按 IP 计数
+  if (p === '/api/auth/register' && req.method === 'POST') {
+    const wait = registerByIp.retryAfter(ip);
+    if (wait) return tooMany(res, wait);
+    const b = await body();
+    if (!b?.email || !b?.password) return json(res, 400, { error: { message: '要填邮箱和密码' } }, cors);
+    if (!validEmail(b.email)) return json(res, 400, { error: { message: '邮箱格式不对' } }, cors);
+    if (String(b.password).length < 8) return json(res, 400, { error: { message: '密码至少 8 位' } }, cors);
+    const expected = (await effectiveEnv(env)).INVITE_CODE;
+    if (!expected) return json(res, 403, { error: { message: '这台后端没有开放注册。让管理员在「服务器设置 → 账号」里设一个邀请码' } }, cors);
+    if (!safeEqual(String(b.invite || '').trim(), expected)) { registerByIp.fail(ip); return json(res, 403, { error: { message: '邀请码不对' } }, cors); }
+    try {
+      await createUser({ email: b.email, password: b.password, name: String(b.name || '').slice(0, 60) });
+    } catch (e) {
+      if (e.code === '23505') return json(res, 409, { error: { message: '这个邮箱已经注册过了，直接登录' } }, cors);
+      throw e;
+    }
+    registerByIp.clear(ip);
+    return json(res, 200, await login(b.email, b.password), cors);
+  }
+  // 拿重置链接改密码。链接由管理员生成（或服务器上的 scripts/reset-link.mjs），24 小时有效、用一次作废
+  if (p === '/api/auth/reset' && req.method === 'POST') {
+    const wait = resetByIp.retryAfter(ip);
+    if (wait) return tooMany(res, wait);
+    const b = await body();
+    if (!b?.token || !b?.password) return json(res, 400, { error: { message: '缺少重置链接或新密码' } }, cors);
+    if (String(b.password).length < 8) return json(res, 400, { error: { message: '密码至少 8 位' } }, cors);
+    try {
+      const u = await resetPassword(String(b.token), String(b.password));
+      resetByIp.clear(ip);
+      return json(res, 200, await login(u.email, b.password), cors);
+    } catch (e) {
+      resetByIp.fail(ip);
+      return json(res, 400, { error: { message: String(e.message) } }, cors);
+    }
+  }
   if (p === '/api/auth/logout' && req.method === 'POST') {
     const auth = (req.headers.authorization || '').replace(/^Bearer\s+/, '');
     if (auth) await logout(auth);
@@ -121,13 +163,29 @@ async function handleApi(req, res, url, cors) {
 
   if (p === '/api/me') return json(res, 200, { user }, cors);
 
+  // 下面这些只有管理员能碰：模型 key、邀请码、OSS、账号列表、别人的密码重置链接
+  const adminOnly = () => json(res, 403, { error: { message: '只有管理员能做这个' } }, cors);
   if (p === '/api/settings') {
+    if (!user.isAdmin) return adminOnly();
     if (req.method === 'GET') return json(res, 200, { settings: await settingsStatus(env) }, cors);
     if (req.method === 'PUT') {
       const b = await body();
       const changed = await saveSettings(b?.settings || {}, user.id);
       return json(res, 200, { changed, settings: await settingsStatus(env) }, cors);
     }
+  }
+
+  if (p === '/api/admin/users' && req.method === 'GET') {
+    if (!user.isAdmin) return adminOnly();
+    return json(res, 200, { users: await listUsers() }, cors);
+  }
+  if (p === '/api/admin/reset-link' && req.method === 'POST') {
+    if (!user.isAdmin) return adminOnly();
+    const b = await body();
+    const target = await userByEmail(b?.email);
+    if (!target) return json(res, 404, { error: { message: '没有这个邮箱的账号' } }, cors);
+    const r = await createResetToken(target.id);
+    return json(res, 200, { email: target.email, url: '/?reset=' + r.token, expiresAt: r.expiresAt }, cors);
   }
 
   // 渲染任务列表：看到在跑什么、失败的是哪一条
@@ -169,7 +227,8 @@ async function handleApi(req, res, url, cors) {
     if (!row) return json(res, 404, { error: { message: '没有这个媒体，或者它不属于你' } }, cors);
     if (req.method === 'GET') {
       if (!row.object_key) return json(res, 404, { error: { message: '这个媒体还没上传文件' } }, cors);
-      const buf = await blobs.get(row.object_key);
+      let buf;
+      try { buf = await blobs.get(row.object_key); } catch (e) { return storageError(res, e, cors); }
       if (!buf) return json(res, 404, { error: { message: '文件不在存储里' } }, cors);
       res.writeHead(200, { 'Content-Type': row.mime || 'application/octet-stream', 'Content-Length': buf.length, ...cors });
       return res.end(buf);
@@ -180,7 +239,7 @@ async function handleApi(req, res, url, cors) {
       const buf = Buffer.concat(chunks);
       const ext = (/\.([a-z0-9]{2,4})$/i.exec(row.name) || [, ''])[1];
       const key = mediaKey(user.id, id, ext ? '.' + ext.toLowerCase() : '');
-      await blobs.put(key, buf);
+      try { await blobs.put(key, buf, row.mime || 'application/octet-stream'); } catch (e) { return storageError(res, e, cors); }
       await s`update media set object_key = ${key}, size = ${buf.length}, updated_at = now() where id = ${id}`;
       return json(res, 200, { ok: true, key, size: buf.length }, cors);
     }
@@ -209,7 +268,8 @@ async function handleApi(req, res, url, cors) {
   if (rf && req.method === 'GET') {
     const [row] = await db()`select object_key from render_jobs where id = ${rf[1]} and user_id = ${user.id}`;
     if (!row?.object_key) return json(res, 404, { error: { message: '成片还没好' } }, cors);
-    const buf = await blobs.get(row.object_key);
+    let buf;
+    try { buf = await blobs.get(row.object_key); } catch (e) { return storageError(res, e, cors); }
     if (!buf) return json(res, 404, { error: { message: '文件不在存储里' } }, cors);
     res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': buf.length, ...cors });
     return res.end(buf);
@@ -225,7 +285,8 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
       const e = await effectiveEnv(env);
-      return json(res, 200, { ok: true, service: 'wow-server', db: hasDb(), render: runtimeReady().length === 0, blobs: blobs.kind,
+      const storage = await blobsHealth();
+      return json(res, 200, { ok: true, service: 'wow-server', db: hasDb(), render: runtimeReady().length === 0, blobs: storage.kind, storage,
         setup: hasDb() ? await needsSetup().catch(() => false) : false, ...gatewayHealth(e) }, cors);
     }
     if (await handleGateway(req, res, url, await effectiveEnv(env))) return;
@@ -251,4 +312,8 @@ if (hasDb()) {
 }
 const missing = runtimeReady();
 if (missing.length) console.log('渲染环境还没装好：' + missing.join('、'));
+const storage = await blobsHealth();
+console.log(storage.kind === 'oss'
+  ? (storage.ok ? `媒体文件存 OSS：${storage.bucket}（${storage.region}）` : `OSS 配了但连不上：${storage.error}（上传与下载会失败，直到修好或清掉 OSS_BUCKET）`)
+  : `媒体文件存本机磁盘：${blobDir}`);
 server.listen(PORT, () => console.log(`wow-server http://127.0.0.1:${PORT}`));

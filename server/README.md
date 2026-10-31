@@ -72,8 +72,9 @@ window.EV         // 段落 cue，给混音
 
 ## 库表
 
-`db/001_init.sql`。四条贯穿全表的约定写在文件开头，改表前先读：所有业务表挂 `user_id`、主键沿用前端的字符串 id、
-`updated_at` 是同步依据、删除一律软删。
+`db/001_init.sql`（业务表）、`002_settings.sql`（服务端配置与一次性口令）、`003_accounts.sql`（管理员、密码重置）。
+迁移按文件名顺序在进程启动时自动跑，跑过的记在 `migrations` 表里。四条贯穿全表的约定写在 001 开头，改表前先读：
+所有业务表挂 `user_id`、主键沿用前端的字符串 id、`updated_at` 是同步依据、删除一律软删。
 
 同步是 last-write-wins：推上来的比库里新才覆盖，冲突不在服务端猜，由前端提示用户。
 
@@ -84,7 +85,12 @@ window.EV         // 段落 cue，给混音
 - **ECS**：渲染吃 CPU，2 核起步、4 核舒服；3D 与着色器风格以后要 GPU 实例。要装 Node 20+、ffmpeg 7+、Python 3.11+。
   ffmpeg 必须 7 以上：6.x 在 `loudnorm` 下会少报音频长度，`mux.sh` 会据此判定文件被截断而拒绝。
 - **RDS PostgreSQL**：把 `DATABASE_URL` 指过去，迁移在进程启动时自动跑。
-- **OSS**：建好 bucket 后在 `src/store.mjs` 把 `oss` 那个实现补上，配 `OSS_BUCKET`。
-  故意没有「没配就退回本机磁盘」的兜底——那样线上会悄悄写进容器临时盘，重启就没了，这种错最难查。
+- **OSS**：`src/oss.mjs` 是自写的最小客户端（V4 签名，`test/oss.test.mjs` 用官方 SDK 的测试向量钉着，不装 ali-oss），
+  `store.mjs` 每次调用按当前配置（库 > .env）选 OSS 或本机磁盘，配置在网页「服务器设置 → 媒体存储」里填。
+  配了 OSS 就只往 OSS 写，写不进去直接报错——故意没有「退回本机磁盘」的兜底，那样文件会散在两处、重装机器就丢。
+  读的时候 OSS 里没有才看本机（过渡期），`scripts/migrate-blobs.mjs` 把老文件搬过去。
+- **账号**：第一个账号是管理员（`users.is_admin`），`/api/settings`、`/api/admin/*` 只有它能用。注册靠设置项 `INVITE_CODE`
+  （空 = 不开放），密码重置靠管理员生成的 `/?reset=<token>` 链接（`password_resets` 存 SHA-256、24 小时、一次性），
+  管理员自己忘了用 `npm run reset:link -- 邮箱`。没有邮件服务，链接是人传人。
 - 渲染任务只在内存里排队，进程重启时会把 `queued` / `running` 的任务标成失败让前端重试，
   而不是让它们永远停在「渲染中」。要多机器跑的时候，这里换成数据库队列或消息队列。
