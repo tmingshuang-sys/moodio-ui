@@ -12,6 +12,15 @@
 #   Caddy         反向代理 + 自动签 HTTPS 证书（域名必须已经解析到这台机器，否则签不下来）
 set -euo pipefail
 
+# 这个脚本在「应用账号与代码」那一步会把自己 git reset 掉。bash 是按字节偏移边读边执行的，
+# 文件在运行中变了长度就会跳到错位置——实测表现是装完打出的是上一版的文案。所以先拷一份到 /tmp 再跑。
+SELF=$(readlink -f "$0" 2>/dev/null || echo "$0")
+if [ "${WOW_REEXEC:-}" != 1 ] && [ -f "$SELF" ]; then
+  cp "$SELF" /tmp/wow-setup-running.sh
+  export WOW_REEXEC=1
+  exec bash /tmp/wow-setup-running.sh "$@"
+fi
+
 DOMAIN=""
 REPO="${WOW_REPO:-git@github.com:tmingshuang-sys/moodio-ui.git}"
 BRANCH="${WOW_BRANCH:-redesign}"
@@ -170,19 +179,28 @@ if [ -n "$DOMAIN" ]; then
 fi
 
 if [ -n "$DOMAIN" ]; then SITE_URL="https://$DOMAIN"; else SITE_URL="http://<这台机器的IP>:8787"; fi
+
+# 还没有账号时后端会备一个一次性口令，拿着它在页面上创建第一个账号（用完即失效）
+SETUP_TOKEN=$(su - postgres -c "psql -d wow -tAc \"select token from setup_tokens where used_at is null order by created_at desc limit 1\"" 2>/dev/null | tr -d ' ' || true)
+if [ -n "$SETUP_TOKEN" ]; then
+  ACCOUNT_LINE="首次初始化口令   $SETUP_TOKEN
+                 打开页面 → 侧栏底部设置 → 服务器设置，用它创建第一个账号（用完即失效）"
+else
+  ACCOUNT_LINE="账号             已创建过，页面上登录即可"
+fi
+
 cat <<EOF
 
 ================ 装好了 ================
 打开这个地址就能用   ${SITE_URL}（页面与接口同源）
 网关口令   $(grep '^ACCESS_TOKEN=' "$ENV_FILE" | cut -d= -f2)
+$ACCOUNT_LINE
 配置文件   $ENV_FILE
 看日志     journalctl -u wow-server -f
 重启       systemctl restart wow-server
 更新代码   sudo bash $APP_DIR/server/deploy/setup.sh${DOMAIN:+ --domain $DOMAIN}
-改口令     编辑配置文件里的 ACCESS_TOKEN 再 systemctl restart wow-server
 
-模型 key 还没填（网关那几条路会回 503）。要填就编辑上面那个配置文件再
-systemctl restart wow-server；在那之前页面继续用原来的 Cloudflare 网关，
-渲染和数据同步不受影响。
+模型 key 和网关口令都在页面上改：侧栏底部设置 → 服务器设置。填完即时生效，
+不用再进终端、不用重启。在填好之前网关那几条路会回 503，渲染和数据同步不受影响。
 ========================================
 EOF
