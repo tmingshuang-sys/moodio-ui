@@ -32,22 +32,14 @@ zone 在哪个账号只影响「把 Cloudflare Worker 绑到域名」，给一�
 - 类型 `A`，名称 `api`，内容填机器的公网 IP
 - **代理状态必须是「仅限 DNS」（灰云）**，不要开橙色代理——开了的话 Let's Encrypt 的验证会打到 Cloudflare 而不是这台机器，证书签不下来
 
-## 第 3 件：在网页终端里粘两段
+## 第 3 件：在网页终端里粘一条命令
 
 ECS 实例列表 → 远程连接 → 用 root 登录，然后：
 
-**第一段**（建账号、生成部署密钥、打印公钥）：
+仓库已经是公开的，所以取代码不用配任何凭据，一条命令装完（约 10 分钟）：
 
 ```bash
-sudo bash -c 'useradd --system --create-home --shell /bin/bash wow 2>/dev/null; install -d -m700 -o wow -g wow /home/wow/.ssh; sudo -u wow ssh-keygen -t ed25519 -N "" -f /home/wow/.ssh/id_ed25519 -q </dev/null; sudo -u wow bash -c "ssh-keyscan github.com >> ~/.ssh/known_hosts" 2>/dev/null; mkdir -p /opt/wow; chown wow:wow /opt/wow; echo; echo "把下面这一行整个复制："; echo; cat /home/wow/.ssh/id_ed25519.pub'
-```
-
-把打印出来的那一行公钥，粘到 GitHub：仓库 → Settings → Deploy keys → Add deploy key（标题随便写，**不要勾** Allow write access）。
-
-**第二段**（取代码并全自动安装，约 10 分钟）：
-
-```bash
-sudo -u wow git clone --depth 1 -b redesign git@github.com:tmingshuang-sys/moodio-ui.git /opt/wow && sudo bash /opt/wow/server/deploy/setup.sh --domain api.moodio.art
+sudo useradd --system --create-home --shell /bin/bash wow 2>/dev/null; sudo mkdir -p /opt/wow && sudo chown wow:wow /opt/wow && sudo -u wow git clone --depth 1 -b redesign https://github.com/tmingshuang-sys/moodio-ui.git /opt/wow && sudo bash /opt/wow/server/deploy/setup.sh --domain api.moodio.art
 ```
 
 跑完会打印后端地址和网关口令。把那串口令发我，我接着把前端接过去。
@@ -93,7 +85,14 @@ sudo bash /opt/wow/server/deploy/setup.sh --domain api.moodio.art
 正解是把字体随页面一起发（`.woff2`，按用到的字做子集，上游 `core/fonts/` 就是这么做的），
 还没做。在那之前，**以服务端渲染出来的成片为准**，浏览器里的预览当排版草稿看。
 
-## 如果不想用部署密钥
+## 没有域名也能先跑起来
 
-两个替代：把仓库设为公开（里面没有密钥，`.env` 和 `vendor` 的产物都已 gitignore），
-或者告诉我，我把一份可部署的压缩包发给你，用控制台的文件上传放上去，再跑同一个 `setup.sh`。
+Cloudflare 一时登不上、DNS 加不了的话，用 `sslip.io`：它把 IP 直接编进域名里解析回那个 IP，
+不用注册、不用配置，Let's Encrypt 也签得下来。把 `--domain` 换成机器 IP 的横杠写法即可，
+比如 IP 是 `47.52.1.2` 就写：
+
+```bash
+sudo bash /opt/wow/server/deploy/setup.sh --domain 47-52-1-2.sslip.io
+```
+
+以后 DNS 能加了，再跑一次 `setup.sh --domain api.moodio.art` 换过去就行。
