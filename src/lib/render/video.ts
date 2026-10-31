@@ -10,6 +10,7 @@ import { getBlob, putBlob, cacheUrl } from '../storage';
 import { subtitlesOf, timelineOf, type SceneSpec } from './spec';
 import { layoutFor, themeFor } from './theme';
 import { drawFrame, type Stage } from './paint';
+import { loadRenderFont, fontReady } from './fonts';
 
 const SAMPLE_RATE = 48000;
 export interface RenderOptions { name?: string; onProgress?: (text: string, ratio: number) => void; signal?: AbortSignal; group?: string; }
@@ -65,6 +66,12 @@ export async function renderScene(spec: SceneSpec, opts: RenderOptions = {}): Pr
   const stop = () => { if (signal?.aborted) throw new DOMException('已停止', 'AbortError'); };
   const layout = layoutFor(spec.ratio);
   onProgress?.('准备素材…', 0);
+
+  // 字体必须在画第一帧之前加载完：canvas 用没加载好的字体不会报错，会悄悄退回系统字体，
+  // 于是这一条片子的字和预览里的不一样，而且没有任何提示
+  await loadRenderFont();
+  if (!fontReady()) console.warn('自带字体没加载成功，这次渲染会用系统字体，成片可能和预览不一致');
+  stop();
 
   const images = await loadImages(spec); stop();
   const canvas = document.createElement('canvas'); canvas.width = layout.w; canvas.height = layout.h;
@@ -136,6 +143,7 @@ export async function renderScene(spec: SceneSpec, opts: RenderOptions = {}): Pr
 
 // 预览：把某一时刻画到给定 canvas 上（工作区的画面方案预览用，不编码）
 export async function previewFrame(spec: SceneSpec, canvas: HTMLCanvasElement, t: number, images?: Map<string, ImageBitmap>) {
+  await loadRenderFont();      // 第一次会真的下载，之后是同一个 Promise，不重复
   const layout = layoutFor(spec.ratio);
   canvas.width = layout.w; canvas.height = layout.h;
   const ctx = canvas.getContext('2d', { alpha: false }); if (!ctx) return;

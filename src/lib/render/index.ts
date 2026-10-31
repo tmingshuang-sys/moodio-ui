@@ -4,3 +4,4 @@ export * from './theme';
 export * from './text';
 export { renderScene, previewFrame, renderSupported } from './video';
 export { drawFrame, PAINTERS } from './paint';
+export { loadRenderFont, fontReady, ensureFontFace, RENDER_FONT } from './fonts';

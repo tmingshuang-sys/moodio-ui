@@ -16,8 +16,10 @@ export interface Palette {
 }
 export interface Theme { id: string; name: string; palette: Palette; grain: number; display: string; body: string; mono: string; }
 
-// 中英混排都用系统字体：Mac 上 PingFang 的字重齐，不依赖网络字体（离线也能渲染，不会出现字体没加载完就开始画的闪烁）
-const DISPLAY = '"PingFang SC","Hiragino Sans GB","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif';
+// 排第一的是我们自带的字体（public/fonts/，见 render/fonts.ts）。这样浏览器预览和服务端成片
+// 用的是同一个文件，字形和**字宽**都一致——字宽一致才保证折行位置一致，否则预览里排好的版
+// 到成片上可能多出一行。后面那串系统字体是兜底：字体没加载成功时还能出画面，只是两边会不一致。
+const DISPLAY = '"WoW Sans","PingFang SC","Hiragino Sans GB","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif';
 const BODY = DISPLAY;
 const MONO = '"SF Mono","JetBrains Mono",ui-monospace,"Menlo",monospace';
 

@@ -12,6 +12,7 @@ dist/
 server/node_modules/
 server/runtime/core/
 server/runtime/wow/renderer.js
+server/runtime/wow/fonts/        # 构建时从 public/fonts/ 拷过来的，不要提交两份
 server/jobs/
 server/blobs/
 server/.pgdata/

@@ -6,7 +6,7 @@
 //   window.EV       声音 / 卡点事件，给混音用
 // 上游 core/render/ 下的 video.mjs / still.mjs / readcheck.mjs / events.mjs 认的就是这几个全局，
 // 所以它们不用改一行就能跑我们的内容；以后模型自己写的风格页只要也满足这份契约，走的是同一条管线。
-import { normalizeSpec, timelineOf, slotAt, subtitlesOf, layoutFor, themeFor, drawFrame } from '/wow/renderer.js';
+import { normalizeSpec, timelineOf, slotAt, subtitlesOf, layoutFor, themeFor, drawFrame, loadRenderFont, fontReady } from '/wow/renderer.js';
 
 const qs = new URLSearchParams(location.search);
 const specUrl = qs.get('spec') || 'spec.json';
@@ -53,6 +53,15 @@ window.TEXTS = t => {
 window.EV = tl.slots.map((s, i) => ({ t: s.start, type: 'beat', i, template: s.beat.template, voiceId: s.beat.voiceId || null }));
 window.SUBTITLES = spec.subtitle ? subtitlesOf(spec, tl) : [];
 
+// 字体要显式加载。document.fonts.ready 在这里**不够**：它只等排版引擎请求过的字体，
+// 而我们整页只有一个 canvas，没有任何排版，所以它会立刻 resolve，然后第一帧用系统字体画出来。
+// 上游的 video.mjs 是等 window.READY 才开始截帧的，所以必须在这之前把字体落实。
+await loadRenderFont();
 await document.fonts.ready;
+if (!fontReady()) {
+  // 服务端这边必须喊出来：悄悄用系统字体渲完，成片和用户预览的不一样，而且没人会发现
+  console.error('[wow] 自带字体没加载成功，这一条会用系统字体，和浏览器预览不一致');
+  window.FONT_MISSING = true;
+}
 window.render(0);
 window.READY = true;
