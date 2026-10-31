@@ -23,6 +23,8 @@ WoW（产品名，2026-10-30 由 Moodio 改名）的「对话 + 文件工作区�
 
 **这两个 workers.dev 域名在国内被墙**（2026-10-31 实测）：本地 DNS 返回污染地址（网关查到 `4.78.139.50` / `118.193.202.219`，真实是 `104.21.53.124` / `172.67.212.212`），就算用 `--resolve` 指到正确 IP，TLS 也在 Client Hello 被重置，所以是按 SNI 拦的。不挂代理必失败；挂 Clash 能通但时断时续（一轮 4 次失败 2 次、每次卡 5 秒，下一轮 10 次全通），请求正好掉在断的那几秒，界面上就是「模型连接失败」。
 根治是把网关与页面绑到自有域名——`moodio.art` 托在 Cloudflare（NS `brady`/`grannbo.ns.cloudflare.com`）**且没有被污染，不挂代理直连就通**。两个 wrangler.toml 里已经写好 `routes`（网关 `gw.moodio.art`、页面 `wow.moodio.art`，`app.moodio.art` 被 Vercel 占着）但注释掉了：**`moodio.art` 的 zone 不在当前部署账号（tmingshuang@gmail.com / `8c5f52bdea253c19925cd69a4458daf0`）下**，deploy 会报 `10083 zone does not exist`。把 zone 挪进这个账号（或把 Worker 部署到持有 zone 的那个账号）之后，去掉注释再 deploy 即可，DNS 记录 wrangler 自己建；同时把 `model.ts` 的 `GATEWAY_BASE` 换成新地址，并加一段把旧 baseUrl 改写过去的一次性迁移。在那之前靠 `callModel()` 的三次重试（退避 0.6s / 2s）扛。
+**绕开它最稳的办法是本地跑网关**：`cp gateway/.dev.vars.example gateway/.dev.vars` 填好 key（`.dev.vars*` 已 gitignore），`npm run gateway:dev` 起在 `http://localhost:8787`，界面「模型设置」里 Base URL 改成 `http://localhost:8787/v1`、API Key 填 `.dev.vars` 里的 `ACCESS_TOKEN`。媒体网关地址留空会自动跟着 Base URL 走（`mediaEndpoint()` 去掉 `/v1` 复用），所以图片 / 视频 / 配音一起切过去，一处改全套生效。本地网关直连 api.deepseek.com / api.moonshot.cn / fal / 方舟，这几家都没被墙。2026-10-31 实测整条链路通（浏览器 5174 → 本地网关 8787 → DeepSeek，CORS 正常，假 key 时上游如实回 401）；`ALLOWED_ORIGINS` 里已经加了 `http://localhost:5174`。
+**另外实测：DeepSeek / Moonshot / fal 三家都回放 `Access-Control-Allow-Origin`，浏览器可以直连。** 所以临时应急还有一条更省事的路——Base URL 直接填 `https://api.deepseek.com/v1`、API Key 填自己的 DeepSeek key，文本完全不经过网关；代价是图片 / 视频 / 配音的 key 在网关里，那部分仍要网关。
 
 ## 运行与验证
 
