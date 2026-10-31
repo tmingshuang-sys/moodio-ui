@@ -78,7 +78,7 @@ if ! ffmpeg -version 2>/dev/null | head -1 | grep -qE 'version n?([7-9]|[1-9][0-
   install -m755 "$tmp"/ffmpeg-*/bin/ffprobe /usr/local/bin/ffprobe
   rm -rf "$tmp"
 fi
-ffmpeg -version | head -1
+ffmpeg -version 2>/dev/null | head -1 || true   # 同样别让 head 的 SIGPIPE 掀翻整个脚本
 
 say "PostgreSQL"
 systemctl enable --now postgresql >/dev/null 2>&1 || service postgresql start || true
@@ -160,7 +160,10 @@ if [ "${WOW_SKIP_SERVICES:-0}" != "1" ]; then
   cp "$APP_DIR/server/deploy/wow-backup.timer" /etc/systemd/system/wow-backup.timer
   systemctl daemon-reload
   systemctl enable --now wow-backup.timer >/dev/null
-  systemctl list-timers wow-backup.timer --no-pager | head -2
+  # 别写成 `| head -2`：head 读够就关管道，systemctl 收到 SIGPIPE 退出非零，
+  # 在 set -euo pipefail 下整个脚本会在这里悄无声息地结束——后面的 Caddy 和自检全都不跑了。
+  # 实测踩过一次，表现是「装完了但没打总结」，而服务其实已经起来，最难察觉的那种半截成功
+  systemctl list-timers wow-backup.timer --no-pager --no-legend || true
 
   if [ -n "$DOMAIN" ]; then
     say "Caddy + HTTPS（$DOMAIN）"
