@@ -145,7 +145,10 @@ if [ "${WOW_SKIP_SERVICES:-0}" != "1" ]; then
   say "systemd"
   sed -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@APP_USER@#$APP_USER#g" "$APP_DIR/server/deploy/wow-server.service" > /etc/systemd/system/wow-server.service
   systemctl daemon-reload
-  systemctl enable --now wow-server
+  systemctl enable wow-server >/dev/null
+  # 必须是 restart 而不是 enable --now：对已经在跑的服务 --now 什么都不做，
+  # 重复跑（= 更新代码）时新代码根本不会生效，连库迁移都不会跑
+  systemctl restart wow-server
   sleep 3
   systemctl --no-pager --lines=12 status wow-server || true
 
