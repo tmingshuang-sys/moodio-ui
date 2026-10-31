@@ -85,6 +85,13 @@ sudo bash /opt/wow/server/deploy/setup.sh --domain api.moodio.art
 正解是把字体随页面一起发（`.woff2`，按用到的字做子集，上游 `core/fonts/` 就是这么做的），
 还没做。在那之前，**以服务端渲染出来的成片为准**，浏览器里的预览当排版草稿看。
 
+## 页面和接口同源
+
+Caddy 把同一个域名拆成两半：`/api/*`、`/v1/*`、`/fal/*`、`/ark/*`、`/byteplus/*`、`/media`、`/health`
+反代到后端，其余交给 `dist/` 里的页面（单页应用，找不到的路径回 `index.html`）。
+前端构建时带 `VITE_API_BASE=/v1`，页面调接口走相对路径——**同源之后不存在跨域**，
+`ALLOWED_ORIGINS`、预检这些都用不上了。旧配置里存着 workers.dev 网关地址的，首次打开会自动改成同源。
+
 ## 没有域名也能先跑起来
 
 Cloudflare 一时登不上、DNS 加不了的话，用 `sslip.io`：它把 IP 直接编进域名里解析回那个 IP，

@@ -8,7 +8,12 @@ export const MODEL_KEY = 'moodio-agent-model';
 //（实测一轮 4 次里失败 2 次，每次卡 5 秒后重置）。根治要把网关绑到没被污染的自有域名上，
 // 但 moodio.art 的 zone 在另一个 Cloudflare 账号下，当前登录的账号绑不了（见 gateway/wrangler.toml 的说明）。
 // 在那之前靠下面 callModel 的多次重试扛过去。
-export const GATEWAY_BASE = 'https://moodio-gateway.moodio-ui.workers.dev/v1';
+// 自建后端把页面和接口发在同一个源下时，构建时传 VITE_API_BASE=/v1，这里就变成相对路径：
+// 同源之后不需要 CORS，也不用再维护来源白名单。没传就还是原来的 Cloudflare 网关（本机开发、
+// 以及页面仍托管在 Cloudflare 上的情况）。server/deploy/setup.sh 构建前端时会传。
+const LEGACY_GATEWAY = 'https://moodio-gateway.moodio-ui.workers.dev/v1';
+export const GATEWAY_BASE = (import.meta.env?.VITE_API_BASE as string | undefined) || LEGACY_GATEWAY;
+export const SAME_ORIGIN_API = GATEWAY_BASE.startsWith('/');
 export const PROVIDER_DEFAULTS = {
   claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-opus-5', placeholder: 'sk-ant-...' },
   openai: { baseUrl: GATEWAY_BASE, model: 'deepseek-flash', placeholder: '访问口令（或该服务的 API Key）' },
@@ -43,7 +48,12 @@ export const CHAT_AUTO: Record<ChatKind, string[]> = {
 // 温度按用途：规划与编译要稳，写作要有创造力，看图要准
 export const CHAT_TEMPERATURE: Record<ChatKind, number> = { plan: 0.3, compile: 0.4, write: 0.7, vision: 0.2 };
 export function isAutoModel(cfg: ModelConfig | null | undefined): boolean { const m = String(cfg?.model || '').trim(); return !m || m === CHAT_AUTO_ID; }
-export function isMoodioGateway(cfg: ModelConfig | null | undefined): boolean { return modelProvider(cfg) === 'openai' && (!cfg?.baseUrl || /moodio-gateway|workers\.dev|gw\.moodio\.art/i.test(String(cfg.baseUrl))); }
+// 是不是我们自家的网关（决定能不能用智能匹配那套候选链）：同源的相对路径也算
+export function isMoodioGateway(cfg: ModelConfig | null | undefined): boolean {
+  if (modelProvider(cfg) !== 'openai') return false;
+  const base = String(cfg?.baseUrl || '').trim();
+  return !base || base.startsWith('/') || /moodio-gateway|workers\.dev|sslip\.io|moodio\.art/i.test(base);
+}
 export function chatModelName(id: string | undefined): string { return isAutoModel({ model: id }) ? '智能匹配' : CHAT_MODELS.find(m => m.id === id)?.name || String(id); }
 // 按用途取实际要调的配置：候选链放在 candidates 里，callModel 遇到「模型不可用」就换下一个
 export function chatCfg(cfg: ModelConfig, kind: ChatKind): ModelConfig & { candidates?: string[] } {
@@ -57,6 +67,10 @@ export function chatCfg(cfg: ModelConfig, kind: ChatKind): ModelConfig & { candi
 }
 const MODEL_UNAVAILABLE_RE = /返回 (404|503)|not exist|not found|不存在|未配置|无法用|invalid model|model_not_found|does not exist/i;
 // 旧配置里存的是默认的具体模型名：第一次带智能匹配的版本启动时改成智能匹配（只做一次），之后用户手选的不再改
+// 同源部署下，把旧配置里存的 workers.dev 网关地址改成同源（口令不变，但换机器后口令也会变，所以只改地址）
+(() => { try { if (!SAME_ORIGIN_API || typeof localStorage === 'undefined') return; const cfg = modelCfg();
+  if (cfg && String(cfg.baseUrl || '').includes('moodio-gateway.moodio-ui.workers.dev')) saveModelCfg({ ...cfg, baseUrl: GATEWAY_BASE });
+} catch { /* ignore */ } })();
 (() => { try { if (typeof localStorage === 'undefined' || localStorage.getItem('moodio-chat-prefs-v2')) return; const cfg = modelCfg(); if (cfg && modelProvider(cfg) === 'openai' && (!cfg.model || cfg.model === PROVIDER_DEFAULTS.openai.model)) localStorage.setItem(MODEL_KEY, JSON.stringify({ ...cfg, model: CHAT_AUTO_ID })); localStorage.setItem('moodio-chat-prefs-v2', '1'); } catch { /* ignore */ } })();
 
 export interface CallOptions { signal?: AbortSignal; onText?: (text: string) => void; onReasoning?: (text: string) => void; images?: string[]; }   // images：data URL，交给支持图片输入的模型

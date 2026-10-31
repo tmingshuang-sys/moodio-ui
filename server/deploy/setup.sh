@@ -97,6 +97,9 @@ fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
 say "安装与构建"
+# 前端：VITE_API_BASE=/v1 让页面走相对路径，和后端同源，不需要 CORS
+su - "$APP_USER" -c "cd $APP_DIR && npm install --no-audit --no-fund"
+su - "$APP_USER" -c "cd $APP_DIR && VITE_API_BASE=/v1 npm run build"
 su - "$APP_USER" -c "cd $APP_DIR/server && npm install --no-audit --no-fund"
 su - "$APP_USER" -c "cd $APP_DIR/server && npm run sync:vendor && npm run build:renderer"
 # 无头 Chrome 的系统依赖要 root 装，浏览器本身装进应用账号的缓存
@@ -139,6 +142,7 @@ if [ "${WOW_SKIP_SERVICES:-0}" != "1" ]; then
 
   if [ -n "$DOMAIN" ]; then
     say "Caddy + HTTPS（$DOMAIN）"
+    chmod o+rx /opt /opt/wow 2>/dev/null || true   # caddy 以自己的账号读 dist/，路径上要能穿过去
     if ! command -v caddy >/dev/null; then
       apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https >/dev/null
       curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -154,13 +158,14 @@ say "自检"
 sleep 2
 curl -fsS --noproxy '*' http://127.0.0.1:8787/health | tee /tmp/wow-health.json; echo
 if [ -n "$DOMAIN" ]; then
-  echo "外网："; curl -fsS "https://$DOMAIN/health" || echo "  （还签不下证书：确认 $DOMAIN 的 A 记录已经指到这台机器、而且是灰云 DNS only，然后 systemctl reload caddy）"
+  echo -n "外网接口："; curl -fsS "https://$DOMAIN/health" && echo || echo "  （还签不下证书：确认 $DOMAIN 解析到这台机器、80 和 443 已放行，然后 systemctl reload caddy）"
+  echo -n "外网页面："; curl -fsS -o /dev/null -w "HTTP %{http_code}\n" "https://$DOMAIN/" || true
 fi
 
 cat <<EOF
 
 ================ 装好了 ================
-后端地址   ${DOMAIN:+https://$DOMAIN}${DOMAIN:-http://本机:8787}
+打开这个地址就能用   ${DOMAIN:+https://$DOMAIN}${DOMAIN:-http://本机:8787}（页面与接口同源）
 网关口令   $(grep '^ACCESS_TOKEN=' "$ENV_FILE" | cut -d= -f2)
 配置文件   $ENV_FILE
 看日志     journalctl -u wow-server -f

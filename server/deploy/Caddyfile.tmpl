@@ -1,15 +1,28 @@
-# 自动签 HTTPS 证书并反代到本机的后端。
-# 前提：@DOMAIN@ 的 A 记录已经指到这台机器，而且在 Cloudflare 里是灰云（DNS only）——
-# 开了橙色代理的话 Let's Encrypt 的验证会打到 Cloudflare 而不是这台机器，签不下来。
+# 页面和接口发在同一个源下：没有跨域，也就不需要 CORS 白名单、预检这一整套。
+# 前提：@DOMAIN@ 解析到这台机器（用 sslip.io 的话天然满足；用自己的域名要灰云 DNS only，
+# 开了橙色代理 Let's Encrypt 的验证会打到代理而不是这台机器，证书签不下来）。
 @DOMAIN@ {
 	encode zstd gzip
-	# 成片几十 MB，上传媒体更大，默认的超时不够
-	reverse_proxy 127.0.0.1:8787 {
-		transport http {
-			read_timeout 600s
-			write_timeout 600s
+
+	# 后端：模型网关 + 数据同步 + 渲染任务
+	@api path /api/* /v1/* /fal/* /ark/* /byteplus/* /media /health
+	handle @api {
+		reverse_proxy 127.0.0.1:8787 {
+			# 成片几十 MB，渲染一等几分钟，默认超时不够
+			transport http {
+				read_timeout 900s
+				write_timeout 900s
+			}
 		}
 	}
+
+	# 页面：构建产物，单页应用找不到的路径回 index.html
+	handle {
+		root * /opt/wow/dist
+		try_files {path} /index.html
+		file_server
+	}
+
 	request_body {
 		max_size 512MB
 	}
