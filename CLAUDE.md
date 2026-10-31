@@ -21,6 +21,9 @@ WoW（产品名，2026-10-30 由 Moodio 改名）的「对话 + 文件工作区�
 
 线上地址：页面 https://moodio-ui.moodio-ui.workers.dev ，网关 https://moodio-gateway.moodio-ui.workers.dev
 
+**这两个 workers.dev 域名在国内被墙**（2026-10-31 实测）：本地 DNS 返回污染地址（网关查到 `4.78.139.50` / `118.193.202.219`，真实是 `104.21.53.124` / `172.67.212.212`），就算用 `--resolve` 指到正确 IP，TLS 也在 Client Hello 被重置，所以是按 SNI 拦的。不挂代理必失败；挂 Clash 能通但时断时续（一轮 4 次失败 2 次、每次卡 5 秒，下一轮 10 次全通），请求正好掉在断的那几秒，界面上就是「模型连接失败」。
+根治是把网关与页面绑到自有域名——`moodio.art` 托在 Cloudflare（NS `brady`/`grannbo.ns.cloudflare.com`）**且没有被污染，不挂代理直连就通**。两个 wrangler.toml 里已经写好 `routes`（网关 `gw.moodio.art`、页面 `wow.moodio.art`，`app.moodio.art` 被 Vercel 占着）但注释掉了：**`moodio.art` 的 zone 不在当前部署账号（tmingshuang@gmail.com / `8c5f52bdea253c19925cd69a4458daf0`）下**，deploy 会报 `10083 zone does not exist`。把 zone 挪进这个账号（或把 Worker 部署到持有 zone 的那个账号）之后，去掉注释再 deploy 即可，DNS 记录 wrangler 自己建；同时把 `model.ts` 的 `GATEWAY_BASE` 换成新地址，并加一段把旧 baseUrl 改写过去的一次性迁移。在那之前靠 `callModel()` 的三次重试（退避 0.6s / 2s）扛。
+
 ## 运行与验证
 
 ```bash

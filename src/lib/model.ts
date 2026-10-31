@@ -4,9 +4,14 @@
 import type { ModelConfig } from './types';
 
 export const MODEL_KEY = 'moodio-agent-model';
+// 网关地址只写这一处。注意 workers.dev 在国内被 DNS 污染并按 SNI 掐 TLS：不挂代理连不上，挂了也时断时续
+//（实测一轮 4 次里失败 2 次，每次卡 5 秒后重置）。根治要把网关绑到没被污染的自有域名上，
+// 但 moodio.art 的 zone 在另一个 Cloudflare 账号下，当前登录的账号绑不了（见 gateway/wrangler.toml 的说明）。
+// 在那之前靠下面 callModel 的多次重试扛过去。
+export const GATEWAY_BASE = 'https://moodio-gateway.moodio-ui.workers.dev/v1';
 export const PROVIDER_DEFAULTS = {
   claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-opus-5', placeholder: 'sk-ant-...' },
-  openai: { baseUrl: 'https://moodio-gateway.moodio-ui.workers.dev/v1', model: 'deepseek-flash', placeholder: '访问口令（或该服务的 API Key）' },
+  openai: { baseUrl: GATEWAY_BASE, model: 'deepseek-flash', placeholder: '访问口令（或该服务的 API Key）' },
 } as const;
 
 export function modelCfg(): ModelConfig | null { try { return JSON.parse(localStorage.getItem(MODEL_KEY) || 'null'); } catch { return null; } }
@@ -38,7 +43,7 @@ export const CHAT_AUTO: Record<ChatKind, string[]> = {
 // 温度按用途：规划与编译要稳，写作要有创造力，看图要准
 export const CHAT_TEMPERATURE: Record<ChatKind, number> = { plan: 0.3, compile: 0.4, write: 0.7, vision: 0.2 };
 export function isAutoModel(cfg: ModelConfig | null | undefined): boolean { const m = String(cfg?.model || '').trim(); return !m || m === CHAT_AUTO_ID; }
-export function isMoodioGateway(cfg: ModelConfig | null | undefined): boolean { return modelProvider(cfg) === 'openai' && (!cfg?.baseUrl || /moodio-gateway|workers\.dev/i.test(String(cfg.baseUrl))); }
+export function isMoodioGateway(cfg: ModelConfig | null | undefined): boolean { return modelProvider(cfg) === 'openai' && (!cfg?.baseUrl || /moodio-gateway|workers\.dev|gw\.moodio\.art/i.test(String(cfg.baseUrl))); }
 export function chatModelName(id: string | undefined): string { return isAutoModel({ model: id }) ? '智能匹配' : CHAT_MODELS.find(m => m.id === id)?.name || String(id); }
 // 按用途取实际要调的配置：候选链放在 candidates 里，callModel 遇到「模型不可用」就换下一个
 export function chatCfg(cfg: ModelConfig, kind: ChatKind): ModelConfig & { candidates?: string[] } {
@@ -245,7 +250,8 @@ export async function callOpenAI(cfg: ModelConfig, sys: string, t: string, { sig
 
 // 无进展超时：连续 IDLE_MS 没收到任何字节就中止（流式按每次 onText 重置），避免请求挂死让页面一直「正在思考」
 const IDLE_MS = 150_000;
-const TRANSIENT_RE = /超时|timed? ?out|Failed to fetch|Load failed|NetworkError|返回 (429|500|502|503|504)/i;
+const TRANSIENT_RE = /超时|timed? ?out|Failed to fetch|Load failed|NetworkError|连接|返回 (429|500|502|503|504)/i;
+const TRANSIENT_TRIES = 3, TRANSIENT_BACKOFF_MS = [600, 2000];   // 实测被掐断的那几秒过去之后立刻就能通，退避不用太久
 async function callOnce(c: ModelConfig, sys: string, t: string, opts: CallOptions): Promise<string> {
   const ctrl = new AbortController(); let timer = 0;
   const arm = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(new Error('模型响应超时（150 秒无进展）')), IDLE_MS) as unknown as number; };
@@ -261,13 +267,18 @@ export async function callModel(cfg: ModelConfig & { candidates?: string[] }, sy
   let lastError: any = null;
   for (let i = 0; i < chain.length; i++) {
     const c = { ...cfg, model: chain[i] || cfg.model }; delete (c as any).candidates;
-    for (let attempt = 0; attempt < 2; attempt++) {   // 瞬时错误（超时 / 断网 / 5xx / 429）自动重试一次
+    // 瞬时错误（超时 / 断网 / 5xx / 429）重试：到网关那条线会被间歇性掐断，一次重试不够，退避后最多再试两次
+    for (let attempt = 0; attempt < TRANSIENT_TRIES; attempt++) {
       try { return await callOnce(c, sys, t, opts); }
       catch (e: any) {
         lastError = e;
         if (e?.name === 'AbortError' || opts.signal?.aborted) throw explainModelError(e);
         const msg = String(e?.message || '');
-        if (attempt === 0 && TRANSIENT_RE.test(msg) && !MODEL_UNAVAILABLE_RE.test(msg)) { opts.onText?.(''); continue; }   // 模型不可用不重试同一个，直接换下一个
+        if (attempt < TRANSIENT_TRIES - 1 && TRANSIENT_RE.test(msg) && !MODEL_UNAVAILABLE_RE.test(msg)) {   // 模型不可用不重试同一个，直接换下一个
+          opts.onText?.('');
+          await new Promise(r => setTimeout(r, TRANSIENT_BACKOFF_MS[attempt] || 2000));
+          continue;
+        }
         break;
       }
     }

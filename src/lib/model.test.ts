@@ -44,7 +44,7 @@ describe('chat model smart matching', () => {
       if (model === 'kimi-k3') return reply('{"message":"from kimi"}');
       return reply('{}');
     };
-    const cfg = m.chatCfg({ apiKey: 'x', model: 'auto', baseUrl: 'https://moodio-gateway.moodio-ui.workers.dev/v1' }, 'plan');
+    const cfg = m.chatCfg({ apiKey: 'x', model: 'auto', baseUrl: m.GATEWAY_BASE }, 'plan');
     expect(await m.callModel(cfg, 'sys', 'hi')).toBe('{"message":"from kimi"}');
     expect(calls).toEqual(['deepseek-flash', 'kimi-k3']);
     // 生成本身的错误不换模型
@@ -52,6 +52,12 @@ describe('chat model smart matching', () => {
     (globalThis as any).fetch = async (_url: string, init: any) => { calls.push(JSON.parse(init.body).model); return new Response(JSON.stringify({ error: { message: 'content too long' } }), { status: 400 }); };
     await expect(m.callModel(cfg, 'sys', 'hi')).rejects.toThrow('400');
     expect(calls).toEqual(['deepseek-flash']);
+  });
+  it('新旧两个网关地址都算自家网关', async () => {
+    const m = await import('./model');
+    expect(m.isMoodioGateway({ apiKey: 'x', baseUrl: m.GATEWAY_BASE })).toBe(true);
+    expect(m.isMoodioGateway({ apiKey: 'x', baseUrl: 'https://moodio-gateway.moodio-ui.workers.dev/v1' })).toBe(true);
+    expect(m.isMoodioGateway({ apiKey: 'x', baseUrl: 'https://api.openai.com/v1' })).toBe(false);
   });
 });
 
@@ -100,4 +106,5 @@ describe('salvagePlanParts', () => {
     expect(salvagePlanParts(misNested).actions.map(a => a.tool)).toEqual(['open_doc', 'open_media']);
     expect(salvagePlanParts('完全不是 JSON').actions).toEqual([]);
   });
+
 });
