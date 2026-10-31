@@ -158,19 +158,28 @@ say "自检"
 sleep 2
 curl -fsS --noproxy '*' http://127.0.0.1:8787/health | tee /tmp/wow-health.json; echo
 if [ -n "$DOMAIN" ]; then
-  echo -n "外网接口："; curl -fsS "https://$DOMAIN/health" && echo || echo "  （还签不下证书：确认 $DOMAIN 解析到这台机器、80 和 443 已放行，然后 systemctl reload caddy）"
-  echo -n "外网页面："; curl -fsS -o /dev/null -w "HTTP %{http_code}\n" "https://$DOMAIN/" || true
+  # Let's Encrypt 签证书要十几秒到一分钟，自检紧跟着跑往往还没好，会打出一行吓人的 TLS 错误。等它。
+  printf '等证书签发'
+  for _ in $(seq 1 24); do
+    if curl -fsS -m 5 -o /dev/null "https://$DOMAIN/health" 2>/dev/null; then echo " 好了"; break; fi
+    printf '.'; sleep 5
+  done
+  echo
+  echo -n "外网接口："; curl -fsS -m 10 "https://$DOMAIN/health" && echo || echo "（签不下来：确认 $DOMAIN 解析到这台机器、安全组放行了 80 和 443，然后 systemctl reload caddy；日志 journalctl -u caddy -n 50）"
+  echo -n "外网页面："; curl -fsS -m 10 -o /dev/null -w "HTTP %{http_code}\n" "https://$DOMAIN/" || true
 fi
 
+if [ -n "$DOMAIN" ]; then SITE_URL="https://$DOMAIN"; else SITE_URL="http://<这台机器的IP>:8787"; fi
 cat <<EOF
 
 ================ 装好了 ================
-打开这个地址就能用   ${DOMAIN:+https://$DOMAIN}${DOMAIN:-http://本机:8787}（页面与接口同源）
+打开这个地址就能用   ${SITE_URL}（页面与接口同源）
 网关口令   $(grep '^ACCESS_TOKEN=' "$ENV_FILE" | cut -d= -f2)
 配置文件   $ENV_FILE
 看日志     journalctl -u wow-server -f
 重启       systemctl restart wow-server
 更新代码   sudo bash $APP_DIR/server/deploy/setup.sh${DOMAIN:+ --domain $DOMAIN}
+改口令     编辑配置文件里的 ACCESS_TOKEN 再 systemctl restart wow-server
 
 模型 key 还没填（网关那几条路会回 503）。要填就编辑上面那个配置文件再
 systemctl restart wow-server；在那之前页面继续用原来的 Cloudflare 网关，
