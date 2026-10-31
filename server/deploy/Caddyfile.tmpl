@@ -1,0 +1,20 @@
+# 自动签 HTTPS 证书并反代到本机的后端。
+# 前提：@DOMAIN@ 的 A 记录已经指到这台机器，而且在 Cloudflare 里是灰云（DNS only）——
+# 开了橙色代理的话 Let's Encrypt 的验证会打到 Cloudflare 而不是这台机器，签不下来。
+@DOMAIN@ {
+	encode zstd gzip
+	# 成片几十 MB，上传媒体更大，默认的超时不够
+	reverse_proxy 127.0.0.1:8787 {
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+	request_body {
+		max_size 512MB
+	}
+	log {
+		output file /var/log/caddy/wow.log
+		format json
+	}
+}

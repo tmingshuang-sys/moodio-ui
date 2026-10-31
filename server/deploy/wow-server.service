@@ -1,0 +1,22 @@
+[Unit]
+Description=WoW 后端（模型网关 / 数据同步 / 服务端渲染）
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+WorkingDirectory=@APP_DIR@/server
+ExecStart=/usr/local/bin/node --env-file=@APP_DIR@/server/.env @APP_DIR@/server/src/index.mjs
+Restart=always
+RestartSec=3
+# 渲染要开好几个无头 Chrome，默认的文件句柄数不够
+LimitNOFILE=65535
+# 渲染产物和任务目录都在应用目录里，别让 systemd 的沙箱挡住
+NoNewPrivileges=true
+PrivateTmp=false
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
