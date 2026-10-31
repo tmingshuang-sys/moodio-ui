@@ -4,7 +4,7 @@ import { Plus, AtSign, ArrowUp, Square, Image, FilePlus2, Film, FileText, Wand2,
 import { useAgent, useFiles } from '../lib/store';
 import { send, stopAgent } from '../lib/agent/runner';
 import { openMenuAt } from './Menu';
-import { pickFiles, uploadFiles } from '../lib/upload';
+import { pickFiles, importFiles, ACCEPT_ALL } from '../lib/upload';
 import { useT } from '../lib/i18n';
 import { baseName } from '../lib/markdown';
 import { toast } from './Toast';
@@ -67,7 +67,7 @@ export default function Composer() {
   const submit = () => { const text = value.trim(); if (!text || busy) return; setValue(''); void send(text); };
   const insert = (text: string) => { setValue(v => (v ? v.replace(/\s+$/, '') + ' ' : '') + text + ' '); ref.current?.focus(); };
   const plusMenu = (el: Element) => openMenuAt(el, [
-    { label: t('上传图片 / 视频 / 音频'), icon: <Image size={14} />, onClick: async () => { const files = await pickFiles(); if (files.length) { await uploadFiles(files); useFiles.getState().setUi({ paneOpen: true }); } } },
+    { label: t('上传文件'), icon: <Image size={14} />, hint: '图片 / 视频 / 音频 / 字幕', onClick: async () => { const files = await pickFiles(ACCEPT_ALL); if (files.length) await importFiles(files); } },
     { label: t('新建文档'), icon: <FilePlus2 size={14} />, onClick: () => { const doc = addDoc({ name: '未命名.md', content: '', by: 'user' }); openInPane(doc.id); toast('已新建文稿，可在右侧编辑'); } },
     { label: t('生成图片'), icon: <Wand2 size={14} />, onClick: () => void generate('image') },
     { label: t('生成视频'), icon: <Clapperboard size={14} />, onClick: () => void generate('video') },

@@ -44,7 +44,7 @@ import { useAgent, useFiles } from '../lib/store';
 import { previewLines, baseName, wordCount, plainText } from '../lib/markdown';
 import { timeAgo } from '../lib/time';
 import { mediaUrl, downloadText, getBlob, downloadBlob } from '../lib/storage';
-import { uploadFiles } from '../lib/upload';
+import { importFiles } from '../lib/upload';
 import { openMenuAt } from './Menu';
 import { confirmDialog, promptDialog, folderDialog } from './Dialogs';
 import { toast } from './Toast';
@@ -229,7 +229,7 @@ export default function ResourcePane({ width }: { width: number }) {
     { label: t('删除'), danger: true, onClick: async () => { if (await confirmDialog({ title: '删除文件', body: `删除「${m.name}」？7 天内可撤销。`, okLabel: '删除', danger: true })) { const entry = useFiles.getState().removeMedia(m.id); toast(`已删除「${m.name}」`, entry ? { label: '撤销', onClick: () => useFiles.getState().restoreTrash(entry.trashId) } : undefined); } } },
   ], { width: 160, align: 'right' });
 
-  const onDrop = async (e: React.DragEvent) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.length) await uploadFiles(e.dataTransfer.files); };
+  const onDrop = async (e: React.DragEvent) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files?.length) await importFiles(e.dataTransfer.files); };
 
   return (
     <aside className={`pane${dragging ? ' dragging' : ''}`} style={{ width }} aria-label={t('资源')}

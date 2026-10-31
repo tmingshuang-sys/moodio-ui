@@ -25,6 +25,12 @@ export default function App() {
   const mainRef = useRef<HTMLDivElement>(null);
   useEffect(() => { document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN'; }, [lang]);
   useEffect(() => { resumeOnLoad(); }, []);
+  // 文件掉在没有接收区的地方时，浏览器默认会直接打开它、把页面顶掉（未保存的输入也就没了），统一拦下来
+  useEffect(() => {
+    const swallow = (e: DragEvent) => { if (Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault(); };
+    window.addEventListener('dragover', swallow); window.addEventListener('drop', swallow);
+    return () => { window.removeEventListener('dragover', swallow); window.removeEventListener('drop', swallow); };
+  }, []);
 
   const paneWidth = useCallback((total: number) => {
     const wanted = ui.paneWidth || Math.round(total * 0.56);

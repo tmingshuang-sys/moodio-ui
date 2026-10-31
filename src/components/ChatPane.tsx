@@ -15,6 +15,7 @@ import type { Chat } from '../lib/types';
 import Composer from './Composer';
 import { toast } from './Toast';
 import { send } from '../lib/agent/runner';
+import { importFiles } from '../lib/upload';
 
 const SUGGESTIONS = [
   { label: '写一条 30 秒的广告脚本', prompt: '帮我写一条 30 秒的广告脚本，先问清楚产品和受众再动笔。' },
@@ -99,8 +100,19 @@ export default function ChatPane() {
     if (nearBottom || !busy) el.scrollTo({ top: el.scrollHeight, behavior: busy ? 'auto' : 'smooth' });
   }, [messages.length, last?.text, last?.plan?.state, last?.plan?.steps?.map(s => s.status).join(), busy, chat.id]);
 
+  // 拖文件到对话区就收进工作区：图片 / 视频 / 音频进媒体库，字幕 / 文字稿进文稿区
+  const [dropping, setDropping] = useState(false);
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types || []).includes('Files');
+  const onDragOver = (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (!dropping) setDropping(true); };
+  const onDragLeave = (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); };
+  const onDrop = async (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); setDropping(false);
+    if (e.dataTransfer.files?.length) await importFiles(e.dataTransfer.files);
+  };
+
   return (
-    <section className="chat" aria-label="对话" ref={sectionRef}>
+    <section className="chat" aria-label="对话" ref={sectionRef} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
       <header className="chat-head">
         <div className="chat-title" title={chat.title}>{chat.title}</div>
         <div className="chat-tools">
@@ -123,6 +135,7 @@ export default function ChatPane() {
       </div>
       <NextStepBar />
       {!home && <Composer />}
+      {dropping && <div className="chat-drop" aria-hidden="true"><span>{t('松手就把文件放进工作区')}</span></div>}
       {leaving && (
         <div className="home-leaving" aria-hidden="true">
           {leaving.greeting && <h1 className="greeting" style={{ position: 'fixed', left: leaving.greeting.left, top: leaving.greeting.top, width: leaving.greeting.width, margin: 0 }}>{t('很高兴见到你')}，<em>Thomas</em></h1>}
