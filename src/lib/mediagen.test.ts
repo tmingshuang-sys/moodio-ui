@@ -106,7 +106,7 @@ describe('smart model matching', () => {
     const { MEDIA_DEFAULTS, currentImageModel, currentVideoModel, effectivePreset, modelDisplayName } = await load();
     expect(MEDIA_DEFAULTS.imageModel).toBe(m.AUTO); expect(MEDIA_DEFAULTS.videoModel).toBe(m.AUTO); expect(MEDIA_DEFAULTS.videoImageModel).toBe(m.AUTO);
     expect(currentImageModel(null)).toBe('auto'); expect(currentVideoModel({})).toBe('auto');
-    expect(m.modelChain('image', 'auto')[0]).toBe('doubao-seedream-5-0-260128');      // 图片默认 Seedream 5.0
+    expect(m.modelChain('image', 'auto')[0]).toBe('seedream-5-0-260128');      // 图片默认 Seedream 5.0
     expect(m.modelChain('video', undefined)[0]).toBe('dreamina-seedance-2-5-260628');   // 视频默认 Seedance 2.5
     expect(m.modelChain('video', 'fal-ai/veo3')).toEqual(['fal-ai/veo3']);            // 选了具体模型就只用它
     for (const kind of ['image', 'video', 'videoImage'] as const) {
@@ -114,7 +114,7 @@ describe('smart model matching', () => {
       for (const id of m.AUTO_CHAINS[kind]) expect(m.findPreset(list, id), `${kind} chain has unknown model ${id}`).not.toBeNull();
       if (kind !== 'videoImage') expect(m.findPreset(list, m.AUTO_CHAINS[kind].at(-1)!)!.verified, `${kind} chain must end with a verified model`).toBe(true);   // 图生视频的可灵还没实测过
     }
-    expect(effectivePreset('image', 'auto').id).toBe('doubao-seedream-5-0-260128');
+    expect(effectivePreset('image', 'auto').id).toBe('seedream-5-0-260128');
     expect(effectivePreset('image', 'auto').resolution).toBe(true);     // 面板按链首模型显示 2K / 4K
     expect(modelDisplayName('video', 'auto')).toBe('智能匹配');
     expect(modelDisplayName('video', 'dreamina-seedance-2-5-260628')).toBe('Seedance 2.5（BytePlus）');

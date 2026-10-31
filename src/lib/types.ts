@@ -23,6 +23,7 @@ export interface MediaItem {
   size: number;
   group: string;          // 分区：人物 / 场景 / 产品 / 其他…
   createdAt: number;
+  updatedAt?: number;     // 同步用：改名 / 改分区 / 补元信息时刷新；老数据没有这个字段，按 createdAt 算
   by: Origin;
   width?: number;
   height?: number;

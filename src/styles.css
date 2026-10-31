@@ -810,3 +810,8 @@ button.lg-chip-btn:hover { color: var(--ink); }
 .sv-jobs li a { font-size: 12px; color: var(--accent); }
 .spin { animation: spin 1s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 服务器设置里的「数据同步」一块：状态一行 + 取回全部创作 */
+.sv-ready > p.sv-sync { margin-bottom: 8px; min-height: 20px; }
+.sv-ready > p.sv-sync .bad { color: var(--danger); }
+.sv-ready > .btn { margin-bottom: 4px; gap: 6px; }

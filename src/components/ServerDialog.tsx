@@ -2,8 +2,10 @@
 // 做这个是为了不用再开终端。以前改一个 key 要 ssh 进去编辑 .env 再 systemctl restart，
 // 现在填完即时生效（后端 5 秒缓存）。key 只往上送、不往下回——接口只回「配没配、什么时候改的」。
 import { useEffect, useState } from 'react';
-import { Check, Loader2, RefreshCw, Server, X } from 'lucide-react';
+import { Check, CloudDownload, Loader2, RefreshCw, Server, X } from 'lucide-react';
 import { getSettings, listJobs, loginServer, logoutServer, probeServer, putSettings, serverToken, setServerToken, setupServer, whoami, type RenderJob, type ServerHealth, type SettingRow } from '../lib/server';
+import { pullAllProjects, startAutoSync, syncNow, useSync } from '../lib/sync';
+import { switchProject, deleteCreation } from '../lib/session';
 import { toast } from './Toast';
 
 type Phase = 'probing' | 'none' | 'setup' | 'login' | 'ready';
@@ -24,6 +26,8 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<SettingRow[]>([]);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [jobs, setJobs] = useState<RenderJob[]>([]);
+  const sync = useSync();
+  const [pulling, setPulling] = useState('');
 
   const refresh = async () => {
     const h = await probeServer();
@@ -53,6 +57,7 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
       const r = await setupServer({ token: setupToken.trim(), email: email.trim(), password });
       setServerToken(r.token); setMe(r.user); setPassword('');
       toast('账号已创建');
+      startAutoSync(); void syncNow();
       await refresh();
     } catch (e: any) { setErr(String(e.message)); } finally { setBusy(false); }
   };
@@ -61,8 +66,21 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
     try {
       const r = await loginServer(email.trim(), password);
       setServerToken(r.token); setMe(r.user); setPassword('');
+      startAutoSync();
+      await doPullAll();              // 换一台机器登录时，这一步才会把别处的创作取回来
       await refresh();
     } catch (e: any) { setErr(String(e.message)); } finally { setBusy(false); }
+  };
+  const doPullAll = async () => {
+    setPulling('正在取回…');
+    try {
+      const r = await pullAllProjects((done, total) => setPulling(`正在取回 ${done}/${total}`));
+      if (!r.count) { toast('服务端这边没有别的创作'); return; }
+      // 换一台机器的情形：跳到服务端最近改过的那个创作，本机那个只有示例文稿的空壳顺手删掉
+      if (r.goTo) switchProject(r.goTo);
+      if (r.dropped) deleteCreation(r.dropped);
+      toast(`已取回 ${r.count} 个创作`);
+    } catch (e: any) { setErr(String(e.message)); } finally { setPulling(''); }
   };
   const doSave = async () => {
     const patch = Object.fromEntries(Object.entries(edits).filter(([, v]) => v !== ''));
@@ -108,6 +126,17 @@ export default function ServerDialog({ onClose }: { onClose: () => void }) {
           <span className="muted">存储 {health?.blobs === 'oss' ? 'OSS' : '本机磁盘'}</span>
           <span className="muted">{me?.email}</span>
         </div>
+
+        <h3>数据同步 <button type="button" className="icon-btn" onClick={() => void syncNow()} aria-label="立即同步"><RefreshCw size={13} className={sync.status === 'syncing' ? 'spin' : ''} /></button></h3>
+        <p className="muted sv-sync">
+          {sync.status === 'syncing' ? '正在同步…'
+            : sync.status === 'error' ? <span className="bad">同步失败：{sync.error}</span>
+            : sync.at ? `上次同步 ${new Date(sync.at).toLocaleTimeString()}　拉回 ${sync.pulled} 条、推上 ${sync.pushed} 条`
+            : '文稿、媒体与对话会在改动后几秒自动同步；图片视频的文件随后单独上传。'}
+        </p>
+        <button type="button" className="btn" disabled={!!pulling} onClick={() => void doPullAll()}>
+          <CloudDownload size={13} />{pulling || '取回服务端的全部创作'}
+        </button>
 
         <h3>模型 key</h3>
         <p className="muted">填完立刻生效，不用重启。留空表示不改；填一个空格再保存表示清掉它。

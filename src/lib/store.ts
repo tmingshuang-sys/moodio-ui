@@ -47,6 +47,7 @@ interface FilesState extends FilesSnapshot {
   setUi(patch: Partial<UiPrefs>): void;
   openInPane(id: string | null): void;
   reload(): void;   // 按当前项目重新读一遍（切换 / 新建创作时用）
+  applyRemote(patch: { docs?: Doc[]; media?: MediaItem[]; removeDocs?: string[]; removeMedia?: string[]; brief?: Brief }): void;
 }
 
 let saveTimer = 0, filesDirty = false;
@@ -75,7 +76,7 @@ export const useFiles = create<FilesState>((set, get) => ({
   renameDoc(id, name) {
     const doc = get().docs.find(d => d.id === id); if (!doc) return false;
     const finalName = uniqueName(get().docs.filter(d => d.id !== id).map(d => d.name), ensureExt(sanitizeName(name), doc.kind));
-    set(s => ({ docs: s.docs.map(d => d.id === id ? { ...d, name: finalName, kind: kindFromName(finalName) } : d) })); persistFiles(get); return true;
+    set(s => ({ docs: s.docs.map(d => d.id === id ? { ...d, name: finalName, kind: kindFromName(finalName), updatedAt: Date.now() } : d) })); persistFiles(get); return true;
   },
   removeDoc(id) {
     const doc = get().docs.find(d => d.id === id); if (!doc) return null;
@@ -83,8 +84,8 @@ export const useFiles = create<FilesState>((set, get) => ({
     set(s => ({ docs: s.docs.filter(d => d.id !== id), trash: pruneTrash([entry, ...s.trash]), ui: s.ui.openId === id ? { ...s.ui, openId: null } : s.ui }));
     persistFiles(get); return entry;
   },
-  addMedia(meta) { set(s => ({ media: [meta, ...s.media.filter(m => m.id !== meta.id)] })); persistFiles(get); },
-  updateMedia(id, patch) { set(s => ({ media: s.media.map(m => m.id === id ? { ...m, ...patch } : m) })); persistFiles(get); },
+  addMedia(meta) { set(s => ({ media: [{ updatedAt: Date.now(), ...meta }, ...s.media.filter(m => m.id !== meta.id)] })); persistFiles(get); },
+  updateMedia(id, patch) { set(s => ({ media: s.media.map(m => m.id === id ? { ...m, ...patch, updatedAt: patch.updatedAt ?? Date.now() } : m) })); persistFiles(get); },
   removeMedia(id) {
     const media = get().media.find(m => m.id === id); if (!media) return null;
     const entry: TrashEntry = { trashId: uid('t'), deletedAt: Date.now(), media };
@@ -104,6 +105,25 @@ export const useFiles = create<FilesState>((set, get) => ({
   setUi(patch) { set(s => ({ ui: { ...s.ui, ...patch } })); persistFiles(get); },
   openInPane(id) { set(s => ({ ui: { ...s.ui, openId: id, paneOpen: true } })); persistFiles(get); },
   reload() { filesDirty = false; clearTimeout(saveTimer); set(loadFiles()); if (filesNeedSave) persistFiles(get); },
+  // 同步拉回来的改动一次性合进来（见 lib/sync.ts）。不走上面那些单条的 action，
+  // 因为它们各自会刷 updatedAt——那会把远端的时间戳盖掉，下一轮又当成本地更新推回去，来回打架
+  applyRemote({ docs = [], media = [], removeDocs = [], removeMedia = [], brief }) {
+    set(s => {
+      const drop = new Set(removeDocs), dropM = new Set(removeMedia);
+      const byId = new Map(docs.map(d => [d.id, d] as const));
+      const mById = new Map(media.map(m => [m.id, m] as const));
+      const nextDocs = s.docs.filter(d => !drop.has(d.id)).map(d => byId.get(d.id) || d);
+      for (const d of docs) if (!drop.has(d.id) && !s.docs.some(x => x.id === d.id)) nextDocs.unshift(d);
+      const nextMedia = s.media.filter(m => !dropM.has(m.id)).map(m => mById.get(m.id) || m);
+      for (const m of media) if (!dropM.has(m.id) && !s.media.some(x => x.id === m.id)) nextMedia.unshift(m);
+      return {
+        docs: nextDocs, media: nextMedia,
+        brief: brief ? { ...s.brief, ...brief } : s.brief,
+        ui: (drop.has(s.ui.openId || '') || dropM.has(s.ui.openId || '')) ? { ...s.ui, openId: null } : s.ui,
+      };
+    });
+    persistFiles(get);
+  },
 }));
 
 if (filesNeedSave) persistFiles(useFiles.getState);
@@ -133,6 +153,7 @@ interface ChatsState extends ChatsSnapshot {
   push(chatId: string, message: Message): void;
   mutate(fn: (chats: Chat[]) => void): void;   // 原地修改后提交（流式更新用）
   reload(activeId?: string): void;            // 按当前项目重新读一遍，可指定激活哪个对话
+  applyRemote(chats: Chat[], remove?: string[]): void;
 }
 let chatsTimer = 0, chatsDirty = false;
 function writeChatsNow(get: () => ChatsState) {
@@ -180,6 +201,22 @@ export const useChats = create<ChatsState>((set, get) => ({
     const snap = loadChats();
     if (activeId && snap.chats.some(c => c.id === activeId)) snap.active = activeId;
     set(snap); persistChats(get);
+  },
+  // 同步拉回来的对话（见 lib/sync.ts）。正在流式输出的那条不碰——远端不可能比本机这一秒更新，
+  // 盖上去只会把正在写的消息打断
+  applyRemote(incoming, remove = []) {
+    set(s => {
+      const drop = new Set(remove);
+      const live = s.chats.find(c => c.id === s.active && c.messages.some(m => m.streaming));
+      const byId = new Map(incoming.filter(c => c.id !== live?.id).map(c => [c.id, c] as const));
+      const chats = s.chats.filter(c => !drop.has(c.id)).map(c => byId.get(c.id) || c);
+      for (const c of incoming) if (!drop.has(c.id) && !s.chats.some(x => x.id === c.id)) chats.push(c);
+      chats.sort((a, b) => b.at - a.at);
+      const kept = chats.slice(0, 60);
+      if (!kept.length) kept.push({ id: uid('c'), title: '新对话', messages: [], at: Date.now() });
+      return { chats: kept, active: kept.some(c => c.id === s.active) ? s.active : kept[0].id };
+    });
+    persistChats(get);
   },
 }));
 

@@ -7,6 +7,7 @@ import { useTasks, recoverPlans } from './tasks';
 import { resumeTasks } from './mediagen';
 import { readJSON, writeJSON } from './storage';
 import { toast } from '../components/Toast';
+import { startAutoSync, pushAway, scheduleSync } from './sync';
 
 const CHATS_BASE = 'moodio-agent-chats';
 const emit = (name: string) => window.dispatchEvent(new CustomEvent(name));
@@ -21,9 +22,13 @@ function blockedByAgent(): boolean {
   if (!useAgent.getState().busy) return false;
   toast('请等待当前 Agent 任务完成，或先点「停止」。'); return true;
 }
-function reloadStores(chatId?: string) { useFiles.getState().reload(); useChats.getState().reload(chatId); useTasks.getState().reload(); recoverPlans(); resumeTasks(); afterSwitch(); }
+function reloadStores(chatId?: string) { useFiles.getState().reload(); useChats.getState().reload(chatId); useTasks.getState().reload(); recoverPlans(); resumeTasks(); afterSwitch(); scheduleSync(1500); }
 // 页面打开时：把上次关页面时还在「执行中」的计划卡收拾干净，落盘的后台任务接着轮询
-export function resumeOnLoad() { try { recoverPlans(); resumeTasks(); } catch (e) { console.warn('恢复后台任务失败', e); } }
+export function resumeOnLoad() {
+  // 两件事分开兜底：后台任务恢复失败不能把同步一起带下去——同步悄悄没开是最难发现、代价最大的那种故障
+  try { recoverPlans(); resumeTasks(); } catch (e) { console.warn('恢复后台任务失败', e); }
+  try { startAutoSync(); } catch (e) { console.warn('自动同步没能启动', e); }
+}
 
 // 当前创作是不是一片空白（没文件、没消息）：是的话点「创作」直接复用，不再建一个空项目
 export function isBlankCreation(): boolean {
@@ -46,7 +51,7 @@ export function startCreation(title = NEW_PROJECT_TITLE, { reuseBlank = true } =
   if (reuseBlank && isBlankCreation() && projects.active().title === NEW_PROJECT_TITLE) { emit('moodio:focus-composer'); return projects.active(); }
   const blank = reuseBlank ? findBlankProject() : null;
   if (blank) { switchProject(blank.id); return blank; }
-  flushStores();
+  pushAway(); flushStores();
   const p = projects.create(title, { reload: false });
   reloadStores();
   return p;
@@ -55,7 +60,7 @@ export function startCreation(title = NEW_PROJECT_TITLE, { reuseBlank = true } =
 export function switchProject(id: string, chatId?: string): boolean {
   if (blockedByAgent()) return false;
   if (id === projects.active().id) { if (chatId) useChats.getState().setActive(chatId); return true; }
-  flushStores();
+  pushAway(); flushStores();
   if (!projects.switchTo(id, { reload: false })) return false;
   reloadStores(chatId);
   return true;

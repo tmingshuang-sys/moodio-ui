@@ -39,6 +39,14 @@ export const projects = {
     if (reload) setTimeout(() => location.reload(), 300);
     return p;
   },
+  // 收一个服务端已有、本机还没有的项目进索引（同步用）：id 用服务端那个，不新生成，
+  // 否则同一个创作在两台机器上会变成两个。标成 fresh，首次加载为空白，数据由同步填进来
+  adopt(meta: ProjectMeta): boolean {
+    if (!meta?.id || index!.projects.some(p => p.id === meta.id)) return false;
+    index!.projects.push({ id: meta.id, title: meta.title || NEW_PROJECT_TITLE, createdAt: meta.createdAt || Date.now(), updatedAt: meta.updatedAt || Date.now() });
+    write(index!); markFresh(meta.id); notify();
+    return true;
+  },
   // 清空一个项目的全部数据（文件 / 对话 / 旧版工作区），之后它就是一个空白项目
   clearData(id: string) {
     SCOPED_BASES.forEach(base => { try { localStorage.removeItem(base + '::' + id); } catch { /* ignore */ } });

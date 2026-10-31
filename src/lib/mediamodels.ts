@@ -1,4 +1,4 @@
-// ===== 图片 / 视频模型目录：两家上游（fal.ai 与火山方舟），每个模型声明它接受哪些可选参数 =====
+// ===== 图片 / 视频模型目录：两家上游（fal.ai 与 BytePlus 方舟），每个模型声明它接受哪些可选参数 =====
 // 不同模型入参不一样：fal 有的收 image_size（landscape_16_9 这种枚举）、有的收 aspect_ratio（"16:9"）、有的只收 prompt；
 // 方舟把画幅 / 时长 / 分辨率以 --ratio --duration --resolution 拼在提示词后面。这里显式标出来，只发模型认识的字段。
 // 想加模型：方舟用 GET /ark/models 能列出账号下全部型号；fal 的 id 从 fal.ai 上抄，注意队列接口只在顶层命名空间不存在时才返回 404，
@@ -66,9 +66,7 @@ export const IMAGE_MODELS: ModelPreset[] = [
   { id: 'fal-ai/flux/schnell', name: 'FLUX.1 schnell', hint: '最快，适合大量出草图', provider: 'fal', ratio: 'image_size' },
   { id: 'fal-ai/flux-pro/v1.1', name: 'FLUX1.1 pro', hint: '质感更好，成本更高', provider: 'fal', ratio: 'image_size' },
   { id: 'fal-ai/bytedance/seedream/v3/text-to-image', name: 'Seedream 3.0（fal）', hint: '字节，中文理解好', provider: 'fal', ratio: 'image_size', verified: true },
-  { id: 'doubao-seedream-5-0-260128', name: 'Seedream 5.0', hint: '火山方舟，最新一代，中文与版面最好', provider: 'ark', ratio: 'arg', resolution: true, verified: true },
-  { id: 'doubao-seedream-4-5-251128', name: 'Seedream 4.5', hint: '火山方舟，上一代稳定版', provider: 'ark', ratio: 'arg', resolution: true },
-  { id: 'seedream-5-0-260128', name: 'Seedream 5.0（BytePlus）', hint: 'BytePlus 海外版方舟，同款模型', provider: 'byteplus', ratio: 'arg', resolution: true },
+  { id: 'seedream-5-0-260128', name: 'Seedream 5.0（BytePlus）', hint: 'BytePlus 海外版方舟，中文与版面最好', provider: 'byteplus', ratio: 'arg', resolution: true, verified: true },
   { id: 'dola-seedream-5-0-pro-260628', name: 'Seedream 5.0 Pro（BytePlus）', hint: 'BytePlus，质量更高', provider: 'byteplus', ratio: 'arg', resolution: true },
   { id: 'fal-ai/qwen-image', name: 'Qwen Image', hint: '通义，画面里的中文字更稳', provider: 'fal', ratio: 'image_size' },
   { id: 'fal-ai/ideogram/v3', name: 'Ideogram V3', hint: '海报、带文字的版面', provider: 'fal', ratio: 'image_size' },
@@ -93,7 +91,8 @@ export const VIDEO_IMAGE_MODELS: ModelPreset[] = [
   { id: 'fal-ai/kling-video/v1/standard/image-to-video', name: '可灵 1.0 标准（fal）', hint: '以首帧图生成', provider: 'fal', duration: true, durations: [5, 10], maxClip: 10, keyframes: 'first' },
 ];
 
-// 火山方舟这边视频型号都用不了（2.5 / 2.0 Mini 未开通，其余欠费）、图片只剩 Seedream 5.0 / 4.5 开着，已按用户要求把用不了的从目录里去掉；视频全部走 BytePlus 与 fal
+// 火山方舟（provider 'ark'）已按用户要求整家从目录里去掉：视频型号本来就用不了（2.5 / 2.0 Mini 未开通，其余欠费），图片的 Seedream 5.0 / 4.5 也一并撤掉，
+// 同款模型在 BytePlus 上有。'ark' 这个 provider 的代码还留着（BytePlus 与它接口同构，isArkLike 共用），要回来只需往目录里加回型号并配 ARK_API_KEY。
 // 声音模型（fal 上托管的 MiniMax）：设计音色固定走 voice-design（按文字描述出一段试听并返回 voice id），合成配音在下面几档里选；
 // voice id 只在 MiniMax 系里通用，所以这里不混入别家的 TTS。fal 队列、轮询、代下载与图片 / 视频共用一套。
 export const VOICE_DESIGN_MODEL = 'fal-ai/minimax/voice-design';
@@ -109,7 +108,7 @@ export const VOICE_MODELS: ModelPreset[] = [
 export const AUTO = 'auto';
 export type ModelKind = 'image' | 'video' | 'videoImage' | 'voice';
 export const AUTO_CHAINS: Record<ModelKind, string[]> = {
-  image: ['doubao-seedream-5-0-260128', 'seedream-5-0-260128', 'doubao-seedream-4-5-251128', 'fal-ai/bytedance/seedream/v3/text-to-image', 'fal-ai/flux/dev'],
+  image: ['seedream-5-0-260128', 'dola-seedream-5-0-pro-260628', 'fal-ai/bytedance/seedream/v3/text-to-image', 'fal-ai/flux/dev'],
   video: ['dreamina-seedance-2-5-260628', 'dreamina-seedance-2-0-260128', 'dreamina-seedance-2-0-fast-260128', 'seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/text-to-video'],
   videoImage: ['dreamina-seedance-2-5-260628', 'dreamina-seedance-2-0-260128', 'seedance-1-0-pro-250528', 'fal-ai/kling-video/v1/standard/image-to-video'],
   voice: ['fal-ai/minimax/speech-2.8-hd', 'fal-ai/minimax/speech-2.6-hd', 'fal-ai/minimax/speech-02-hd'],
@@ -143,12 +142,13 @@ export function presetByName(name: string | undefined): ModelPreset | null {
 export function findPreset(list: ModelPreset[], id: string | undefined): ModelPreset | null {
   return list.find(m => m.id === String(id || '')) || null;
 }
-// 自定义 id 的兜底：带斜杠当成 fal，否则当成方舟；图片按 image_size、视频按 aspect_ratio + 时长
+// 自定义 id 的兜底：带斜杠当成 fal，否则当成方舟系——火山方舟已从目录去掉，所以默认落到 BytePlus（两家接口同构，差别只在网关前缀）；
+// 图片按 image_size、视频按 aspect_ratio + 时长
 export function presetFor(list: ModelPreset[], id: string | undefined, kind: ModelKind): ModelPreset {
   const hit = findPreset(list, id);
   if (hit) return hit;
   const raw = String(id || '');
-  const provider: Provider = raw.includes('/') ? 'fal' : 'ark';
+  const provider: Provider = raw.includes('/') ? 'fal' : 'byteplus';
   const fallback: ModelPreset = { id: raw, name: '自定义模型', hint: '按通用参数发送', provider };
   if (kind === 'image') { fallback.ratio = isArkLike(provider) ? 'arg' : 'image_size'; fallback.resolution = isArkLike(provider); }
   else if (kind !== 'voice') { fallback.duration = true; fallback.resolution = isArkLike(provider); if (isArkLike(provider)) fallback.durationRange = [2, 30]; if (kind === 'video') fallback.ratio = isArkLike(provider) ? 'arg' : 'aspect_ratio'; }

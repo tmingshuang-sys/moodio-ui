@@ -8,7 +8,6 @@ export const SETTING_KEYS = [
   { key: 'DEEPSEEK_API_KEY', label: 'DeepSeek', hint: '文本模型，规划与写作的主力', secret: true },
   { key: 'KIMI_API_KEY', label: 'Kimi（Moonshot）', hint: '文本 + 看图；参考图质检要它', secret: true },
   { key: 'FAL_KEY', label: 'fal.ai', hint: '图片 / 视频 / 配音，形如 id:secret', secret: true },
-  { key: 'ARK_API_KEY', label: '火山方舟', hint: 'Seedream 出图', secret: true },
   { key: 'BYTEPLUS_API_KEY', label: 'BytePlus', hint: 'Seedance 出视频', secret: true },
   { key: 'ACCESS_TOKEN', label: '网关口令', hint: '页面调模型接口时带的口令；改了要在模型设置里同步', secret: true },
 ];
