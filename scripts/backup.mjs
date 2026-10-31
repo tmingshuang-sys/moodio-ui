@@ -6,7 +6,8 @@
 //
 // ⚠️ 下载下来的文件里有密钥（模型 key 在库的 settings 表里是明文存的，.env 里有数据库密码
 //    和网关口令）。它落在 ~/WoW备份/ 下，权限 600，别往公开的地方放。
-import { mkdirSync, chmodSync, existsSync, statSync } from 'node:fs';
+import { mkdirSync, chmodSync, existsSync, statSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { HOST, sh, runLong, local, log, die } from './remote.mjs';
@@ -29,7 +30,8 @@ const localPath = path.join(DIR, path.basename(remote));
 // workbench download 读不了 root 才能进的目录，所以先放到 /tmp 开个读权限，拿完就删
 const tmp = `/tmp/${path.basename(remote)}`;
 await sh(`cp ${remote} ${tmp} && chmod 644 ${tmp}`);
-await local('workbench', ['download', '-i', HOST.instance, '-r', HOST.region, '--remote', tmp, '--local', localPath], { timeout: 600_000 });
+// 用法是位置参数 `download <远端路径> [本地路径]`，没有 --remote / --local 这种 flag
+await local('workbench', ['download', tmp, localPath, '-i', HOST.instance, '-r', HOST.region, '-f'], { timeout: 600_000 });
 await sh(`rm -f ${tmp}`);
 
 if (!existsSync(localPath)) die(`下载完了但本机没有 ${localPath}`);
@@ -37,13 +39,22 @@ chmodSync(localPath, 0o600);
 const mb = (statSync(localPath).size / 1048576).toFixed(1);
 
 log('== 3/3 核对里面真有东西');
-// 只看文件大小不够：一个空的 tar.gz 也有几百字节。拆开看关键项在不在、db.dump 有多大
-const listing = await local('tar', ['-tzvf', localPath]);
-const need = ['db.dump', 'blobs.tar.gz'];
-for (const f of need) if (!listing.includes(f)) die(`备份里没有 ${f}，这份不能用`);
-const dumpSize = Number((listing.match(/^\S+\s+\S+\s+(\d+).*db\.dump/m) || [])[1] || 0);
+// 只看压缩包大小不够：空的 tar.gz 也有几百字节。真的解出来看。
+// （别去解析 tar -tzvf 的列——BSD tar 和 GNU tar 列数不一样，踩过）
+const listing = await local('tar', ['-tzf', localPath]);
+for (const f of ['db.dump', 'blobs.tar.gz']) if (!listing.includes(f)) die(`备份里没有 ${f}，这份不能用`);
+
+const probe = mkdtempSync(path.join(tmpdir(), 'wow-backup-'));
+await local('tar', ['-xzf', localPath, '-C', probe, './db.dump']);
+const dump = path.join(probe, 'db.dump');
+const dumpSize = statSync(dump).size;
+// pg_dump 的 custom 格式以 "PGDMP" 开头。确认这一点才算「这是一份真的数据库导出」，
+// 而不是一个碰巧叫 db.dump 的空文件
+const magic = readFileSync(dump).subarray(0, 5).toString('latin1');
+rmSync(probe, { recursive: true, force: true });
+if (magic !== 'PGDMP') die(`db.dump 开头是 ${JSON.stringify(magic)}，不是 pg_dump 的格式`);
 if (dumpSize < 4096) die(`db.dump 只有 ${dumpSize} 字节，不像是完整的数据库导出`);
-log(`   db.dump ${(dumpSize / 1024).toFixed(0)} KB，blobs 和配置都在`);
+log(`   db.dump ${(dumpSize / 1024).toFixed(0)} KB（PGDMP 格式正确），blobs 和配置都在`);
 
 log(`\n✓ 备份在本机：${localPath}（${mb} MB）`);
 log(`  服务器上也留着最近 7 份：${path.dirname(remote)}`);
