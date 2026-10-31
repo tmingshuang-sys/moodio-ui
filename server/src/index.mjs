@@ -10,6 +10,7 @@ import { db, hasDb, migrate } from './db.mjs';
 import { userFor, login, logout, createUser, newId } from './auth.mjs';
 import { ensureProject, listProjects, pull, push } from './sync.mjs';
 import { blobs, mediaKey } from './store.mjs';
+import { SETTING_KEYS, settingsStatus, saveSettings, effectiveEnv, needsSetup, ensureSetupToken, consumeSetupToken } from './settings.mjs';
 import { prepareJob, renderVideo, readcheck, runtimeReady } from './render/job.mjs';
 
 const PORT = +(process.env.PORT || 8787);
@@ -70,6 +71,16 @@ async function handleApi(req, res, url, cors) {
 
   const body = async () => { try { return JSON.parse(await readBody(req) || '{}'); } catch { return null; } };
 
+  if (p === '/api/auth/setup' && req.method === 'POST') {
+    const b = await body();
+    if (!b?.email || !b?.password) return json(res, 400, { error: { message: '要填邮箱和密码' } }, cors);
+    if (String(b.password).length < 8) return json(res, 400, { error: { message: '密码至少 8 位' } }, cors);
+    try {
+      await consumeSetupToken(b.token);
+      await createUser({ email: b.email, password: b.password, name: b.name || '' });
+      return json(res, 200, await login(b.email, b.password), cors);
+    } catch (e) { return json(res, 400, { error: { message: String(e.message) } }, cors); }
+  }
   if (p === '/api/auth/login' && req.method === 'POST') {
     const b = await body();
     const r = b && await login(b.email, b.password);
@@ -85,6 +96,23 @@ async function handleApi(req, res, url, cors) {
   if (!user) return json(res, 401, { error: { message: '没登录' } }, cors);
 
   if (p === '/api/me') return json(res, 200, { user }, cors);
+
+  if (p === '/api/settings') {
+    if (req.method === 'GET') return json(res, 200, { settings: await settingsStatus(env) }, cors);
+    if (req.method === 'PUT') {
+      const b = await body();
+      const changed = await saveSettings(b?.settings || {}, user.id);
+      return json(res, 200, { changed, settings: await settingsStatus(env) }, cors);
+    }
+  }
+
+  // 渲染任务列表：看到在跑什么、失败的是哪一条
+  if (p === '/api/render' && req.method === 'GET') {
+    const rows = await db()`select id, project_id, doc_id, status, stage, progress, error, readcheck, object_key, created_at, started_at, finished_at,
+                                   coalesce(spec->>'title', '未命名') as title
+                            from render_jobs where user_id = ${user.id} order by created_at desc limit 50`;
+    return json(res, 200, { jobs: rows }, cors);
+  }
 
   if (p === '/api/projects') {
     if (req.method === 'GET') return json(res, 200, { projects: await listProjects(user.id) }, cors);
@@ -172,9 +200,11 @@ const server = http.createServer(async (req, res) => {
   const rid = randomUUID().slice(0, 8);
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      return json(res, 200, { ok: true, service: 'wow-server', db: hasDb(), render: runtimeReady().length === 0, blobs: blobs.kind, ...gatewayHealth(env) }, cors);
+      const e = await effectiveEnv(env);
+      return json(res, 200, { ok: true, service: 'wow-server', db: hasDb(), render: runtimeReady().length === 0, blobs: blobs.kind,
+        setup: hasDb() ? await needsSetup().catch(() => false) : false, ...gatewayHealth(e) }, cors);
     }
-    if (await handleGateway(req, res, url, env)) return;
+    if (await handleGateway(req, res, url, await effectiveEnv(env))) return;
     if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url, cors);
     return json(res, 404, { error: { message: '没有这个接口' } }, cors);
   } catch (e) {
@@ -190,6 +220,8 @@ if (hasDb()) {
   const stuck = await db()`update render_jobs set status = 'failed', error = '服务重启时中断', finished_at = now()
                            where status in ('queued', 'running') returning id`;
   if (stuck.length) console.log(`把 ${stuck.length} 个中断的渲染任务标成了失败`);
+  const setupToken = await ensureSetupToken().catch(() => null);
+  if (setupToken) console.log(`还没有任何账号。打开页面后用这个一次性口令创建第一个：${setupToken}`);
 } else {
   console.log('没有 DATABASE_URL：只提供模型网关，数据与渲染接口返回 503');
 }

@@ -10,13 +10,14 @@ import { modelCfg, saveModelCfg, modelProvider, PROVIDER_DEFAULTS, probeModel, e
 import { MEDIA_DEFAULTS, mediaEndpoint } from '../lib/mediagen';
 import type { ModelConfig } from '../lib/types';
 import { toast } from './Toast';
+import ServerDialog from './ServerDialog';
 import { pathFromDrop } from '../lib/nle';
 
 type DialogSpec =
   | { kind: 'confirm'; title: string; body: ReactNode; okLabel?: string; danger?: boolean; resolve: (ok: boolean) => void }
   | { kind: 'prompt'; title: string; label?: string; value: string; placeholder?: string; okLabel?: string; resolve: (v: string | null) => void }
   | { kind: 'folder'; title: string; hint: ReactNode; resolve: (v: { handle: FileSystemDirectoryHandle | null; path: string } | null) => void }
-  | { kind: 'model' }
+  | { kind: 'model' } | { kind: 'server' }
   | { kind: 'brief' };
 interface DialogState { dialog: DialogSpec | null; open: (d: DialogSpec) => void; close: () => void; }
 const useDialog = create<DialogState>(set => ({ dialog: null, open: d => set({ dialog: d }), close: () => set({ dialog: null }) }));
@@ -32,6 +33,7 @@ export function folderDialog(opts: { title: string; hint: ReactNode }): Promise<
   return new Promise(resolve => useDialog.getState().open({ kind: 'folder', title: opts.title, hint: opts.hint, resolve }));
 }
 export const openModelSettings = () => useDialog.getState().open({ kind: 'model' });
+export const openServerSettings = () => useDialog.getState().open({ kind: 'server' });
 export const openBrief = () => useDialog.getState().open({ kind: 'brief' });
 
 function Frame({ title, children, footer, onClose }: { title: string; children: ReactNode; footer: ReactNode; onClose: () => void }) {
@@ -169,5 +171,6 @@ export function DialogHost() {
   if (d.kind === 'prompt') return <PromptDialog d={d} />;
   if (d.kind === 'folder') return <FolderDialog d={d} />;
   if (d.kind === 'model') return <ModelDialog />;
+  if (d.kind === 'server') return <ServerDialog onClose={() => useDialog.getState().close()} />;
   return <BriefDialog />;
 }

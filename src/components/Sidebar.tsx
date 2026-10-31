@@ -1,6 +1,6 @@
 // ===== 左侧导航：logo（回主页）/ 项目、创作、资源、创作历史（今天 / 昨天 / 更早）、底部用户与设置 =====
 // 「创作」= 新建一个空白创作（项目）并切换过去；创作历史列出所有项目里有内容的对话，点一条切回那个项目（不刷新页面）
-import { Sparkles, FolderOpen, PanelLeft, MoreHorizontal, FileText, Settings, Languages } from 'lucide-react';
+import { Sparkles, FolderOpen, PanelLeft, MoreHorizontal, FileText, Settings, Languages, Server } from 'lucide-react';
 import { useChats, useFiles, useAgent, useNav } from '../lib/store';
 import { projects } from '../lib/projects';
 import { startCreation, switchProject, deleteCreation, otherProjectsHistory, chatCount, renameHistoryChat, deleteHistoryChat } from '../lib/session';
@@ -9,7 +9,7 @@ import { dayGroup } from '../lib/time';
 import { useLayout, NAV_MIN } from '../lib/layout';
 import { useT, useLang } from '../lib/i18n';
 import { openMenuAt } from './Menu';
-import { confirmDialog, promptDialog, openModelSettings } from './Dialogs';
+import { confirmDialog, promptDialog, openModelSettings, openServerSettings } from './Dialogs';
 import { toast } from './Toast';
 import { modelCfg, modelLabel } from '../lib/model';
 import { useEffect, useMemo, useState, useRef } from 'react';
@@ -69,6 +69,7 @@ export default function Sidebar() {
   };
   const openSettingsMenu = (el: Element) => openMenuAt(el, [
     { label: t('模型设置'), icon: <Settings size={14} />, hint: modelCfg()?.apiKey ? '已连接' : '未连接', onClick: openModelSettings },
+    { label: t('服务器设置'), icon: <Server size={14} />, hint: '模型 key / 账号 / 渲染任务', onClick: openServerSettings },
     { label: `${t('语言')} · ${lang === 'zh' ? '中文' : 'English'}`, icon: <Languages size={14} />, onClick: toggleLang },
   ], { width: 220 });
 

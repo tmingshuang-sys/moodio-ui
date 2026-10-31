@@ -779,3 +779,34 @@ button.lg-chip-btn:hover { color: var(--ink); }
 /* 拖文件到对话区：盖一层虚线提示，不挡拖放事件（pointer-events: none） */
 .chat-drop { position: absolute; inset: 10px; z-index: 6; display: grid; place-items: center; border: 2px dashed var(--ink-3); border-radius: 16px; background: rgba(252, 252, 251, .9); pointer-events: none; animation: menu-in 140ms var(--ease-out); }
 .chat-drop span { font-size: 15px; font-weight: 500; color: var(--ink); }
+
+/* ===== 服务器设置弹窗：初始化 / 登录 / 模型 key / 渲染任务 ===== */
+.sv-dialog .dialog-body { max-height: 62vh; overflow: auto; }
+.sv-dialog footer { display: flex; gap: 8px; align-items: center; }
+.sv-err { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; background: #fdf0ee; color: var(--danger); font-size: 13.5px; }
+.sv-empty { display: grid; justify-items: center; gap: 8px; padding: 18px 8px; text-align: center; color: var(--ink-2); }
+.sv-empty code { padding: 1px 5px; border-radius: 4px; background: var(--panel); font-size: 12.5px; }
+.sv-form { display: grid; gap: 14px; }
+.sv-form label, .sv-key { display: grid; gap: 5px; font-size: 13px; color: var(--ink-2); }
+.sv-form input, .sv-key input { height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 14px; color: var(--ink); }
+.sv-form input:focus, .sv-key input:focus { outline: none; border-color: var(--accent); }
+.sv-ready h3 { margin: 20px 0 6px; font-size: 14px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+.sv-ready h3:first-child { margin-top: 0; }
+.sv-ready > p.muted { margin: 0 0 12px; font-size: 12.5px; line-height: 1.6; }
+.sv-status { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 10px 12px; border-radius: 8px; background: var(--panel); font-size: 12.5px; }
+.sv-status .ok { color: #2f6b45; }
+.sv-status .bad { color: var(--danger); }
+.sv-keys { display: grid; gap: 14px; }
+.sv-key-head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); font-weight: 500; }
+.sv-key-head em { display: inline-flex; align-items: center; gap: 3px; font-style: normal; font-size: 11.5px; }
+.sv-key small { font-size: 11.5px; }
+.sv-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sv-jobs li { display: flex; align-items: center; gap: 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.sv-jobs li b { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-jobs li span { font-size: 12px; color: var(--ink-2); }
+.sv-jobs li small { font-size: 11.5px; color: var(--danger); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-jobs li.st-done span { color: #2f6b45; }
+.sv-jobs li.st-failed span { color: var(--danger); }
+.sv-jobs li a { font-size: 12px; color: var(--accent); }
+.spin { animation: spin 1s linear infinite; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
