@@ -40,14 +40,14 @@ export async function ossConfig() {
   const v = k => s[k] || process.env[k] || '';
   const bucket = v('OSS_BUCKET').trim();
   if (!bucket) return null;
-  return { bucket, region: v('OSS_REGION').trim() || 'oss-cn-hongkong', endpoint: v('OSS_ENDPOINT').trim(), accessKeyId: v('OSS_ACCESS_KEY_ID').trim(), accessKeySecret: v('OSS_ACCESS_KEY_SECRET').trim() };
+  return { bucket, region: v('OSS_REGION').trim() || 'oss-cn-hongkong', endpoint: v('OSS_ENDPOINT').trim(), role: v('OSS_ROLE').trim(), accessKeyId: v('OSS_ACCESS_KEY_ID').trim(), accessKeySecret: v('OSS_ACCESS_KEY_SECRET').trim() };
 }
 
 let ossClient = null, ossKey = '';
 async function backend() {
   const c = await ossConfig();
   if (!c) return local;
-  if (!c.accessKeyId || !c.accessKeySecret) throw new Error('配了 OSS_BUCKET 但没有 AccessKey：在「服务器设置」里把 OSS 的 AccessKey ID 与 Secret 填上，或者清掉 OSS_BUCKET 回到本机磁盘');
+  if (!c.role && !(c.accessKeyId && c.accessKeySecret)) throw new Error('配了 OSS_BUCKET 但没有凭证：在「服务器设置」里填实例角色名（推荐），或者 AccessKey ID 与 Secret；或者清掉 OSS_BUCKET 回到本机磁盘');
   const k = JSON.stringify(c);
   if (k !== ossKey) { ossClient = createOss(c); ossKey = k; }
   return ossClient;
@@ -97,9 +97,9 @@ export async function blobsHealth() {
   let result;
   try {
     const r = await (await backend()).ping();
-    result = { kind: 'oss', ok: r.ok, error: r.error, bucket: c.bucket, region: c.region };
+    result = { kind: 'oss', ok: r.ok, error: r.error, bucket: c.bucket, region: c.region, auth: c.role ? 'role' : 'ak' };
   } catch (e) {
-    result = { kind: 'oss', ok: false, error: String(e.message), bucket: c.bucket, region: c.region };
+    result = { kind: 'oss', ok: false, error: String(e.message), bucket: c.bucket, region: c.region, auth: c.role ? 'role' : 'ak' };
   }
   ping = { key: k, at: Date.now(), result };
   return result;

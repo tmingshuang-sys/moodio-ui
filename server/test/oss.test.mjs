@@ -78,8 +78,55 @@ test('签名用的 region 去掉 oss- 前缀与 -internal 后缀；日期是 ISO
   assert.equal(isoDate(new Date(1702743657 * 1000)), '20231216T162057Z');
 });
 
-test('客户端：配置不全直接报错；host 按 bucket + endpoint 拼', () => {
-  assert.throws(() => createOss({ bucket: 'b', region: 'oss-cn-hongkong' }), /配置不全/);
+test('客户端：没 bucket 或没凭证直接报错；host 按 bucket + endpoint 拼', () => {
+  assert.throws(() => createOss({ region: 'oss-cn-hongkong', accessKeyId: 'i', accessKeySecret: 's' }), /配置不全/);
+  assert.throws(() => createOss({ bucket: 'b', region: 'oss-cn-hongkong' }), /没有凭证/);
   assert.equal(createOss({ bucket: 'b', region: 'oss-cn-hongkong', accessKeyId: 'i', accessKeySecret: 's' }).host, 'b.oss-cn-hongkong.aliyuncs.com');
   assert.equal(createOss({ bucket: 'b', region: 'oss-cn-hongkong', endpoint: 'oss-cn-hongkong-internal.aliyuncs.com', accessKeyId: 'i', accessKeySecret: 's' }).host, 'b.oss-cn-hongkong-internal.aliyuncs.com');
+});
+
+// ---- 临时凭证（实例角色）----
+import { instanceRoleCredentials, staticCredentials } from '../src/oss.mjs';
+
+test('官方 SDK 向量 ③：带 security token（实例角色的临时凭证）时 x-oss-security-token 参与签名，签名逐字相同', () => {
+  const date = '20231217T034736Z';     // time.Unix(1702784856).UTC()
+  const headers = { ...HEADERS, 'x-oss-date': date, 'x-oss-security-token': 'token' };
+  const canon = canonicalRequest({ ...REQ, headers });
+  assert.ok(canon.includes('\nx-oss-security-token:token\n'));
+  const auth = authorization({ accessKeyId: 'ak', accessKeySecret: 'sk', region: REGION, date, canon });
+  assert.equal(auth, 'OSS4-HMAC-SHA256 Credential=ak/20231217/cn-hangzhou/oss/aliyun_v4_request,Signature=b94a3f999cf85bcdc00d332fbd3734ba03e48382c36fa4d5af5df817395bd9ea');
+});
+
+test('实例角色凭证：先换元数据 token 再取凭证，没到期就复用，快到期才重取', async () => {
+  let calls = [], clock = Date.parse('2026-01-01T00:00:00Z');
+  const fetchImpl = async (url, init = {}) => {
+    calls.push((init.method || 'GET') + ' ' + url.replace('http://100.100.100.200/latest', ''));
+    if (url.endsWith('/api/token')) return { ok: true, text: async () => 'meta-token' };
+    assert.equal(init.headers['X-aliyun-ecs-metadata-token'], 'meta-token', '取凭证时要带上换来的 token');
+    return { ok: true, json: async () => ({ Code: 'Success', AccessKeyId: 'STS.id', AccessKeySecret: 'STS.secret', SecurityToken: 'STS.token', Expiration: new Date(clock + 3600_000).toISOString() }) };
+  };
+  const creds = instanceRoleCredentials('WowOssRole', { fetchImpl, now: () => clock });
+  const a = await creds();
+  assert.deepEqual([a.accessKeyId, a.token], ['STS.id', 'STS.token']);
+  assert.deepEqual(calls, ['PUT /api/token', 'GET /meta-data/ram/security-credentials/WowOssRole']);
+  await creds(); await creds();
+  assert.equal(calls.length, 2, '一小时内不该再请求');
+  clock += 56 * 60_000;                      // 离到期只剩 4 分钟
+  await creds();
+  assert.equal(calls.length, 4, '快到期要重新取');
+});
+
+test('实例角色凭证：角色没挂上（404）要把原因说清楚', async () => {
+  const fetchImpl = async url => url.endsWith('/api/token') ? { ok: false } : { ok: false, status: 404 };
+  await assert.rejects(instanceRoleCredentials('Nope', { fetchImpl })(), /没挂上这个 RAM 角色|取不到临时凭证/);
+});
+
+test('客户端：有角色名就不要求 AccessKey；两者都没有才报错', () => {
+  assert.equal(createOss({ bucket: 'b', region: 'oss-cn-hongkong', role: 'WowOssRole' }).auth, 'role');
+  assert.equal(createOss({ bucket: 'b', region: 'oss-cn-hongkong', accessKeyId: 'i', accessKeySecret: 's' }).auth, 'ak');
+  assert.throws(() => createOss({ bucket: 'b', region: 'oss-cn-hongkong' }), /没有凭证/);
+});
+
+test('静态凭证：原样返回，没有 token', async () => {
+  assert.deepEqual(await staticCredentials({ accessKeyId: 'i', accessKeySecret: 's' })(), { accessKeyId: 'i', accessKeySecret: 's', token: '' });
 });

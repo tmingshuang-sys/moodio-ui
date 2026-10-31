@@ -16,8 +16,9 @@ export const SETTING_KEYS = [
   { key: 'OSS_BUCKET', label: 'OSS Bucket', hint: '阿里云 OSS 的 bucket 名。填了媒体文件就存 OSS，留空存服务器本机磁盘', secret: false, group: 'storage' },
   { key: 'OSS_REGION', label: 'OSS 区域', hint: '如 oss-cn-hongkong（bucket 概览页「地域」那一栏，带 oss- 前缀）', secret: false, group: 'storage' },
   { key: 'OSS_ENDPOINT', label: 'OSS Endpoint（可选）', hint: '不填按区域自动拼；bucket 与服务器同区域时填内网地址 oss-cn-hongkong-internal.aliyuncs.com 更快且不计流量', secret: false, group: 'storage' },
-  { key: 'OSS_ACCESS_KEY_ID', label: 'OSS AccessKey ID', hint: 'RAM 子账号的 AccessKey，只给它这个 bucket 的读写权限', secret: true, group: 'storage' },
-  { key: 'OSS_ACCESS_KEY_SECRET', label: 'OSS AccessKey Secret', hint: '', secret: true, group: 'storage' },
+  { key: 'OSS_ROLE', label: 'OSS 实例角色（推荐）', hint: '给这台 ECS 挂一个有 OSS 权限的 RAM 角色，把角色名填这里。机器自己领临时凭证、自动轮换，哪里都不用存密钥', secret: false, group: 'storage' },
+  { key: 'OSS_ACCESS_KEY_ID', label: 'OSS AccessKey ID（没有实例角色时才填）', hint: 'RAM 子账号的 AccessKey，只给它这个 bucket 的读写权限', secret: true, group: 'storage' },
+  { key: 'OSS_ACCESS_KEY_SECRET', label: 'OSS AccessKey Secret（同上）', hint: '', secret: true, group: 'storage' },
 ];
 const KEY_SET = new Set(SETTING_KEYS.map(k => k.key));
 

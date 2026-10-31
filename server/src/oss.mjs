@@ -69,6 +69,33 @@ export function authorization({ accessKeyId, accessKeySecret, region, date, cano
   return `${ALGO} Credential=${accessKeyId}/${scopeOf(date, region)}${add},Signature=${sig}`;
 }
 
+// ---- 凭证来源 ----
+// 两种：① 静态 AccessKey（界面或 .env 里填）；② ECS 实例 RAM 角色——机器自己向元数据服务要一组几小时有效的临时凭证，
+// 自动轮换，机器上、库里、对话里都不存任何密钥。线上推荐 ②：给 ECS 挂一个只有 OSS 权限的角色，把角色名填进 OSS_ROLE 即可。
+export function staticCredentials({ accessKeyId, accessKeySecret }) {
+  return async () => ({ accessKeyId, accessKeySecret, token: '' });
+}
+const METADATA = 'http://100.100.100.200/latest';
+export function instanceRoleCredentials(role, { fetchImpl = fetch, base = METADATA, now = Date.now } = {}) {
+  let cache = null;
+  return async () => {
+    if (cache && Date.parse(cache.expiration) - now() > 5 * 60_000) return cache;    // 还有 5 分钟以上才到期就复用
+    const headers = {};
+    try {   // 元数据服务的加固模式要先换一个短期 token；普通模式这一步也能成功，所以统一先试
+      const t = await fetchImpl(`${base}/api/token`, { method: 'PUT', headers: { 'X-aliyun-ecs-metadata-token-ttl-seconds': '300' }, signal: AbortSignal.timeout(3000) });
+      if (t.ok) headers['X-aliyun-ecs-metadata-token'] = await t.text();
+    } catch { /* 拿不到就走普通模式 */ }
+    let res;
+    try { res = await fetchImpl(`${base}/meta-data/ram/security-credentials/${encodeURIComponent(role)}`, { headers, signal: AbortSignal.timeout(3000) }); }
+    catch (e) { throw new Error(`连不上 ECS 元数据服务（${e.cause?.code || e.message}）：只有跑在阿里云 ECS 上才能用实例角色`); }
+    if (!res.ok) throw new Error(`实例角色 ${role} 取不到临时凭证（HTTP ${res.status}）：确认这台 ECS 真的挂上了这个 RAM 角色`);
+    const j = await res.json();
+    if (j.Code && j.Code !== 'Success') throw new Error(`实例角色 ${role} 取临时凭证失败：${j.Code}`);
+    cache = { accessKeyId: j.AccessKeyId, accessKeySecret: j.AccessKeySecret, token: j.SecurityToken, expiration: j.Expiration };
+    return cache;
+  };
+}
+
 // 把 OSS 的 XML 错误翻成一句人话。常见的三种单独说清楚，别让用户去查错误码表
 function explain(status, text) {
   const code = /<Code>([^<]+)<\/Code>/.exec(text)?.[1] || '';
@@ -80,16 +107,19 @@ function explain(status, text) {
   return `HTTP ${status}${code ? ' ' + code : ''}${msg ? '（' + msg + '）' : ''}`;
 }
 
-export function createOss({ bucket, region, endpoint, accessKeyId, accessKeySecret }) {
-  if (!bucket || !region || !accessKeyId || !accessKeySecret) throw new Error('OSS 配置不全：bucket、region、AccessKey ID、AccessKey Secret 都要有');
+export function createOss({ bucket, region, endpoint, accessKeyId, accessKeySecret, role, credentials }) {
+  if (!bucket || !region) throw new Error('OSS 配置不全：bucket 和 region 都要有');
+  const creds = credentials || (role ? instanceRoleCredentials(role) : (accessKeyId && accessKeySecret ? staticCredentials({ accessKeyId, accessKeySecret }) : null));
+  if (!creds) throw new Error('OSS 没有凭证：填实例角色名（OSS_ROLE，推荐），或者 AccessKey ID 与 Secret');
   const host = `${bucket}.${endpoint || `${region}.aliyuncs.com`}`;
   const sregion = signRegion(region);
 
   async function call(method, key, { body, headers = {}, query = {} } = {}) {
+    const c = await creds();
     const date = isoDate();
-    const h = { 'x-oss-date': date, 'x-oss-content-sha256': UNSIGNED, ...headers };
+    const h = { 'x-oss-date': date, 'x-oss-content-sha256': UNSIGNED, ...(c.token ? { 'x-oss-security-token': c.token } : {}), ...headers };
     const canon = canonicalRequest({ method, bucket, key, query, headers: h });
-    h.Authorization = authorization({ accessKeyId, accessKeySecret, region: sregion, date, canon });
+    h.Authorization = authorization({ accessKeyId: c.accessKeyId, accessKeySecret: c.accessKeySecret, region: sregion, date, canon });
     const qs = Object.keys(query).length ? '?' + queryString(query) : '';
     try {
       return await fetch(`https://${host}/${uriEncode(key, true)}${qs}`, { method, headers: h, body, redirect: 'manual' });
@@ -101,7 +131,7 @@ export function createOss({ bucket, region, endpoint, accessKeyId, accessKeySecr
 
   return {
     kind: 'oss',
-    bucket, region, host,
+    bucket, region, host, auth: role ? 'role' : 'ak',
     async put(key, buf, mime = 'application/octet-stream') {
       const res = await call('PUT', key, { body: buf, headers: { 'Content-Type': mime } });
       if (!res.ok) await fail(res, '上传');
