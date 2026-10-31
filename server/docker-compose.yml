@@ -1,0 +1,15 @@
+# 本机开发用的 Postgres。线上用阿里云 RDS，只要把 DATABASE_URL 指过去就行。
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: wow
+      POSTGRES_PASSWORD: wow
+      POSTGRES_DB: wow
+    ports: ['5433:5432']
+    volumes: ['./.pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U wow']
+      interval: 5s
+      timeout: 3s
+      retries: 20

@@ -143,6 +143,25 @@ export function subtitlesOf(spec: SceneSpec, tl = timelineOf(spec)): Subtitle[] 
   return tl.slots.filter(s => s.beat.say).map(s => ({ start: s.start, end: s.end, text: s.beat.say }));
 }
 // 画面里缺的东西：渲染前的自检，返回人话清单
+// 一屏字幕之外的文字，观众要多久才读得完。
+// 规则抄自 lemo-opuscar 的 readcheck（MIT）：汉字 4.5 字/秒、其他 15 字/秒，再加 1.5 秒的进出画余量，下限 1.5 秒。
+// 和上游的差别：上游按「每一块文字各自计时」判，我们按整屏文字加起来算——因为读的人是顺着读下来的，
+// 一屏四条要点不会四条同时读完。所以我们这条比上游严，过了我们的就一定能过它的。
+export const CJK_CPS = 4.5, LATIN_CPS = 15, READ_PAD = 1.5;
+const CJK_RE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+export function beatTexts(b: Beat): string[] {
+  const parts = [b.heading, b.text, b.left, b.right, b.leftLabel, b.rightLabel,
+    b.value != null ? String(b.value) + (b.unit || '') : '', b.caption, b.source, b.formula?.body,
+    ...(b.items || []), ...(b.chart?.labels || []), ...(b.formula?.parts || []).flatMap(p => [p.token, p.note])];
+  return parts.map(x => String(x || '').trim()).filter(Boolean);
+}
+export function readingSeconds(b: Beat): number {
+  let cjk = 0, other = 0;
+  for (const text of beatTexts(b)) for (const ch of text) { if (/\s/.test(ch)) continue; CJK_RE.test(ch) ? cjk++ : other++; }
+  if (!cjk && !other) return 0;                       // 纯画面没有字，不占阅读时间
+  return Math.max(READ_PAD, cjk / CJK_CPS + other / LATIN_CPS + READ_PAD);
+}
+
 export function lintSpec(spec: SceneSpec): string[] {
   const out: string[] = [];
   if (!spec.beats.length) return ['画面方案里没有任何 beat'];
@@ -159,6 +178,9 @@ export function lintSpec(spec: SceneSpec): string[] {
     if (b.template === 'image' && !b.mediaId) out.push(`${at}用了 image 但没写 mediaId`);
     if (b.template === 'quote' && !b.text) out.push(`${at}用了 quote 但没写 text`);
     if ((b.items?.length || 0) > 4) out.push(`${at}列了 ${b.items!.length} 条，竖屏一屏最多 4 条`);
+    // 画面上的字要来得及读完。配音写回时长之后这一条才准，所以配音前只当提醒。
+    const need = readingSeconds(b);
+    if (need > b.seconds + 0.05) out.push(`${at}画面上的字要 ${need.toFixed(1)} 秒才读得完，这一段只有 ${b.seconds.toFixed(1)} 秒：把字减少，或者把这句口播说长一点`);
   });
   const total = timelineOf(spec).total;
   if (total > 150) out.push(`全片 ${Math.round(total)} 秒，超过 150 秒就不是短视频了`);

@@ -1,6 +1,6 @@
 // 画面方案：规整、按口播估时、时间轴、字幕与自检
 import { describe, expect, it } from 'vitest';
-import { estimateSeconds, lintSpec, normalizeSpec, parseSpec, subtitlesOf, timelineOf } from './spec';
+import { estimateSeconds, lintSpec, normalizeSpec, parseSpec, subtitlesOf, timelineOf, readingSeconds } from './spec';
 import { fitSize, roughMeasure, subtitleLines, wrapText } from './text';
 
 const beat = (say: string, template = 'bullets', extra: Record<string, unknown> = {}) => ({ say, template, ...extra });
@@ -83,5 +83,41 @@ describe('文字排版', () => {
     expect(two).toHaveLength(2);
     expect(two[0].endsWith('，')).toBe(true);
     expect(subtitleLines('啊'.repeat(60), 50, 50 * 9, roughMeasure).length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('可读时间', () => {
+  const beat = (extra: any) => ({ say: '一句口播', template: 'bullets', seconds: 3, ...extra });
+
+  it('只算画面上的字，不算字幕（字幕就是口播，时长由这一段决定）', () => {
+    expect(readingSeconds(beat({ say: '这是一句很长很长很长很长的口播稿子' }) as any)).toBe(0);
+  });
+
+  it('汉字按 4.5 字/秒、拉丁按 15 字/秒，各加 1.5 秒余量', () => {
+    expect(readingSeconds(beat({ heading: '九个字的小标题啊' }) as any)).toBeCloseTo(8 / 4.5 + 1.5, 2);
+    expect(readingSeconds(beat({ text: 'abcdefghijklmno' }) as any)).toBeCloseTo(15 / 15 + 1.5, 2);
+  });
+
+  it('一屏多块文字是加起来算的，不是各算各的', () => {
+    const one = readingSeconds(beat({ items: ['四个字啊'] }) as any);
+    const four = readingSeconds(beat({ items: ['四个字啊', '四个字啊', '四个字啊', '四个字啊'] }) as any);
+    expect(four).toBeGreaterThan(one * 2);
+  });
+
+  it('字太多而这一段太短会被 lint 拦下来', () => {
+    const spec = normalizeSpec({
+      title: 't', ratio: '9:16', theme: 'ink',
+      beats: [
+        { say: '钩子', template: 'hook', text: '钩子', seconds: 3 },
+        { say: '短', template: 'term', heading: '术语', text: '这里塞了整整一长串需要很久才能读完的解释文字', seconds: 1.5 },
+      ],
+    });
+    const issues = lintSpec(spec);
+    expect(issues.some(x => x.includes('才读得完'))).toBe(true);
+  });
+
+  it('字少、时间够就不报', () => {
+    const b = normalizeSpec({ title: 't', beats: [{ say: '短句', template: 'hook', text: '四个字啊', seconds: 6 }] }).beats[0];
+    expect(readingSeconds(b)).toBeLessThan(6);
   });
 });

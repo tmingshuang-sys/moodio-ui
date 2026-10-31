@@ -26,7 +26,7 @@ const SPEC = (voiced: boolean) => JSON.stringify({
   title: '学习率是什么', no: 1, ratio: '9:16', theme: 'ink',
   beats: [
     { say: 'AI 到底是怎么学会的？', template: 'hook', text: 'AI 怎么学会的？', seconds: 3, voiceId: voiced ? 'v1' : undefined },
-    { say: '说白了就是不停地猜。', template: 'bullets', items: ['先猜一个', '看错多少'], seconds: 3, voiceId: voiced ? 'v2' : undefined },
+    { say: '说白了就是不停地猜。', template: 'bullets', items: ['先猜一个', '看错多少'], seconds: 4, voiceId: voiced ? 'v2' : undefined },   // 4 秒：8 个汉字要 8/4.5+1.5≈3.3 秒才读得完
     { say: '猜错了就往回改一点。', template: 'steps', items: ['算误差', '改参数'], seconds: 3, voiceId: voiced ? 'v3' : undefined },
     { say: '这个步子有多大，叫学习率。', template: 'term', heading: '学习率', text: '每次往回改多少', seconds: 4, voiceId: voiced ? 'v4' : undefined },
     { say: '步子太大会错过谷底。', template: 'compare', left: '一脚跨过去', right: '稳稳走下去', seconds: 4, voiceId: voiced ? 'v5' : undefined },

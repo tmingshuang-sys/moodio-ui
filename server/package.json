@@ -1,0 +1,25 @@
+{
+  "name": "wow-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WoW 后端：模型网关、数据持久化、服务端渲染（playwright + ffmpeg）",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "setup": "node scripts/sync-vendor.mjs && npm run build:renderer && npx playwright-core install chromium-headless-shell",
+    "sync:vendor": "node scripts/sync-vendor.mjs",
+    "build:renderer": "node scripts/build-renderer.mjs",
+    "dev": "node --watch src/index.mjs",
+    "start": "node src/index.mjs",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "node scripts/migrate.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
