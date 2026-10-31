@@ -10,6 +10,7 @@
 set -euo pipefail
 
 APP_DIR=${APP_DIR:-/opt/wow}
+APP_USER=${APP_USER:-wow}
 OUT_DIR=${OUT_DIR:-/var/backups/wow}
 KEEP=${KEEP:-7}                      # 本机留几份
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -29,8 +30,10 @@ tar -czf "$WORK/blobs.tar.gz" -C "$APP_DIR/server" blobs
 # 配置：恢复时要用，里面有数据库密码与网关口令
 cp "$APP_DIR/server/.env" "$WORK/env" 2>/dev/null || true
 
-# 记一笔当时的代码版本，恢复时能对上
-(cd "$APP_DIR" && git log -1 --format='%H %ad %s' --date=iso) > "$WORK/commit.txt" 2>/dev/null || true
+# 记一笔当时的代码版本，恢复时能对上。
+# 必须 su 成 wow 跑：仓库属于 wow，root 直接进去 git 会被「dubious ownership」挡掉，
+# 结果是 commit.txt 空文件——踩过一次，备份看着成功其实少了这一项
+su - "${APP_USER:-wow}" -c "cd $APP_DIR && git log -1 --format='%H %ad %s' --date=iso" > "$WORK/commit.txt" 2>/dev/null || true
 
 OUT="$OUT_DIR/wow-$STAMP.tar.gz"
 tar -czf "$OUT" -C "$WORK" .
@@ -39,5 +42,7 @@ chmod 600 "$OUT"
 # 轮转：只留最近 KEEP 份
 ls -1t "$OUT_DIR"/wow-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 
+# 这一行是给脚本解析的，路径后面不许再跟别的东西（backup.mjs 按 BACKUP_FILE= 取）
+echo "BACKUP_FILE=$OUT"
 echo "备份完成 $OUT（$(du -h "$OUT" | cut -f1)）"
 echo "当前保留 $(ls -1 "$OUT_DIR"/wow-*.tar.gz 2>/dev/null | wc -l | tr -d ' ') 份，最多 $KEEP 份"

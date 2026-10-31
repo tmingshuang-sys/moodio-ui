@@ -18,7 +18,9 @@ const out = await runLong(`bash ${HOST.appDir}/server/deploy/backup.sh`,
   { logFile: '/tmp/wow-backup.log', done: /备份完成|Error|error:/, maxMinutes: 10, label: '备份' });
 if (!/备份完成/.test(out)) die('服务器上备份没做成，看上面的输出');
 
-const remote = (out.match(/备份完成 (\S+)/) || [])[1];
+// 按 BACKUP_FILE= 那一行取路径。别去解析「备份完成 xxx（8.0K）」那句——
+// 全角括号不是空白字符，\S+ 会把「（8.0K）」一起吃进路径里
+const remote = (out.match(/^BACKUP_FILE=(.+)$/m) || [])[1]?.trim();
 if (!remote) die('没能从输出里认出备份文件的路径');
 
 log('== 2/3 下载到本机');
@@ -34,8 +36,15 @@ if (!existsSync(localPath)) die(`下载完了但本机没有 ${localPath}`);
 chmodSync(localPath, 0o600);
 const mb = (statSync(localPath).size / 1048576).toFixed(1);
 
-log('== 3/3 核对');
-if (statSync(localPath).size < 1024) die('下载下来的文件小得不正常，别当成备份');
+log('== 3/3 核对里面真有东西');
+// 只看文件大小不够：一个空的 tar.gz 也有几百字节。拆开看关键项在不在、db.dump 有多大
+const listing = await local('tar', ['-tzvf', localPath]);
+const need = ['db.dump', 'blobs.tar.gz'];
+for (const f of need) if (!listing.includes(f)) die(`备份里没有 ${f}，这份不能用`);
+const dumpSize = Number((listing.match(/^\S+\s+\S+\s+(\d+).*db\.dump/m) || [])[1] || 0);
+if (dumpSize < 4096) die(`db.dump 只有 ${dumpSize} 字节，不像是完整的数据库导出`);
+log(`   db.dump ${(dumpSize / 1024).toFixed(0)} KB，blobs 和配置都在`);
+
 log(`\n✓ 备份在本机：${localPath}（${mb} MB）`);
 log(`  服务器上也留着最近 7 份：${path.dirname(remote)}`);
 log('\n  要恢复的话，在服务器上跑：');
