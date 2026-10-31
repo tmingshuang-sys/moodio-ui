@@ -110,6 +110,23 @@ export default function ChatPane() {
     e.preventDefault(); setDropping(false);
     if (e.dataTransfer.files?.length) await importFiles(e.dataTransfer.files);
   };
+  // 拖拽没有正常结束时（拖出窗口外松手、按 Esc 取消、在别处放下）对话区收不到 dragleave / drop，浮层会一直挂着：
+  // 在 window 上兜底，并且只要一段时间没有新的 dragover 就自己收起（拖动中浏览器每 ~100ms 就发一次 dragover）
+  useEffect(() => {
+    if (!dropping) return;
+    const clear = () => setDropping(false);
+    let timer = setTimeout(clear, 900);   // 拖动中 dragover 不断在发，900ms 没动静就是这次拖拽已经结束了
+    const keep = () => { clearTimeout(timer); timer = setTimeout(clear, 900); };
+    window.addEventListener('dragover', keep);
+    window.addEventListener('drop', clear); window.addEventListener('dragend', clear);
+    document.addEventListener('visibilitychange', clear);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('dragover', keep);
+      window.removeEventListener('drop', clear); window.removeEventListener('dragend', clear);
+      document.removeEventListener('visibilitychange', clear);
+    };
+  }, [dropping]);
 
   return (
     <section className="chat" aria-label="对话" ref={sectionRef} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
