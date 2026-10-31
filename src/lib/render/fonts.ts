@@ -8,6 +8,11 @@
 // canvas 有个坑必须注意：`ctx.fillText` 用一个还没加载完的字体**不会报错，会悄悄退回系统字体**。
 // `document.fonts.ready` 也不够——它只等排版引擎主动请求过的字体，canvas 不走排版，不算在内。
 // 所以画第一帧之前必须显式 `document.fonts.load(字号+字体名)`，这就是 loadRenderFont() 的存在意义。
+//
+// 服务端还有一个坑：Linux 上的 headless Chromium 默认对 webfont 开 full hinting，把每个字宽取整——
+// 同一句 64px 混合串 Mac 量出 1974.336，服务端不带参数量出 1977，折行就可能多一行。
+// 上游 core/render/browser.mjs 的 ARGS 带着 `--font-render-hinting=none`，关掉之后服务端量出 1974.332，
+// 和 Mac 只差浮点误差。自己另起 Chromium 量字宽或截帧时记得带上这个参数。
 export const RENDER_FONT = 'WoW Sans';
 
 // 相对路径：页面在 /（线上 Caddy 发 dist）、渲染页在 /wow/（服务端那条路）各有一份，
