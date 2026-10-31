@@ -152,6 +152,13 @@ if [ "${WOW_SKIP_SERVICES:-0}" != "1" ]; then
   sleep 3
   systemctl --no-pager --lines=12 status wow-server || true
 
+  say "每日备份"
+  sed -e "s#@APP_DIR@#$APP_DIR#g" "$APP_DIR/server/deploy/wow-backup.service" > /etc/systemd/system/wow-backup.service
+  cp "$APP_DIR/server/deploy/wow-backup.timer" /etc/systemd/system/wow-backup.timer
+  systemctl daemon-reload
+  systemctl enable --now wow-backup.timer >/dev/null
+  systemctl list-timers wow-backup.timer --no-pager | head -2
+
   if [ -n "$DOMAIN" ]; then
     say "Caddy + HTTPS（$DOMAIN）"
     chmod o+rx /opt /opt/wow 2>/dev/null || true   # caddy 以自己的账号读 dist/，路径上要能穿过去
@@ -202,6 +209,10 @@ $ACCOUNT_LINE
 看日志     journalctl -u wow-server -f
 重启       systemctl restart wow-server
 更新代码   sudo bash $APP_DIR/server/deploy/setup.sh${DOMAIN:+ --domain $DOMAIN}
+备份       每天 3:30 自动跑，存在 /var/backups/wow（留最近 7 份）
+           手动备份 sudo bash $APP_DIR/server/deploy/backup.sh
+           恢复     sudo bash $APP_DIR/server/deploy/restore.sh --latest
+           拉回本机 在自己电脑的项目目录里跑 npm run backup
 
 模型 key 和网关口令都在页面上改：侧栏底部设置 → 服务器设置。填完即时生效，
 不用再进终端、不用重启。在填好之前网关那几条路会回 503，渲染和数据同步不受影响。

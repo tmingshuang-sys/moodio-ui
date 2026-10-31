@@ -4,7 +4,7 @@
 
 WoW（产品名，2026-10-30 由 Moodio 改名）的「对话 + 文件工作区」创作原型（参考小云雀的布局）：左侧导航（创作 / 资源 / 创作历史；创作纲领入口已按要求去掉，纲领仍由 Agent 的 save_brief 与问卷写入）、中间与 Agent 对话、右侧是文件工作区。
 所有产物都是文件：剧本、分镜表、视频生成提示词、人物小传、营销文案等是 Markdown 文稿（.md，也支持 .json / .txt），图片和视频在媒体区单独分区。
-创作类型除了广告 / 故事片 / 剧集 / 短片 / MV，还有一条**科普（explainer）流水线**：从一门公开课的视频链接开始，转写 → 梳理知识点 → 拆成若干条 60 秒竖屏短视频，每条讲清楚一个知识点；它的画面**由代码逐帧渲染**（`src/lib/render/`，WebCodecs + mediabunny），不经过任何视频模型，所以不计费、几秒出片、改一个字重渲染即可。旧版的剧本稿纸、资产板块、创作画布已整体去掉（保留在分支 `main` / `split-workspace`）。
+创作类型除了广告 / 故事片 / 剧集 / 短片 / MV，还有一条**科普（explainer）流水线**：从一门公开课的视频链接开始，转写 → 梳理知识点 → 拆成若干条 60 秒竖屏短视频，每条讲清楚一个知识点；它的画面**由代码逐帧渲染**（`src/lib/render/`，WebCodecs + mediabunny），不经过任何视频模型，所以不计费、几秒出片、改一个字重渲染即可。旧版的剧本稿纸、资产板块、创作画布已整体去掉（留在 tag `v0-prototype` / `v0-split-workspace` 里，分支已清理）。
 
 技术栈：**Vite + React 19 + TypeScript**，状态用 zustand，Markdown 渲染用 react-markdown + remark-gfm，媒体 blob 用 idb-keyval 存 IndexedDB，图标用 lucide-react。数据默认只在浏览器本地（localStorage + IndexedDB）；`server/` 是 2026-10-31 起搭的 Node 后端（模型网关 + 数据同步 + 服务端渲染），页面没连后端时照样能用。
 
@@ -17,15 +17,13 @@ WoW（产品名，2026-10-30 由 Moodio 改名）的「对话 + 文件工作区�
 - `src/components/`：`Sidebar` `ChatPane` `MessageList`（消息、计划卡、追问卡、自审卡、下一步）`Composer` `ResourcePane`（分区网格 / 列表、文稿预览与编辑、媒体预览、拖拽上传）`Dialogs`（确认 / 输入 / 模型设置 / 创作纲领）`Menu` `Toast` `AgentLive`（流光与状态胶囊）
 - `src/styles.css` 全部样式；`public/wow-logo.svg` logo（纯墨色矢量、透明底，侧栏与 favicon 共用：一笔写成的 W，中间峰上浮一个点＝名字里的 o；16px 下仍可辨）；`*.test.ts` 与源码同目录（Vitest）
 - `server/` **Node 后端**（2026-10-31 起）：模型网关 + 数据同步 + 服务端渲染，三件事互不依赖。`src/gateway.mjs` 是 Cloudflare Worker 那份的移植；`src/db.mjs` / `auth.mjs` / `sync.mjs` / `store.mjs` 是账号与同步；`src/render/job.mjs` 调上游工具链出片；`vendor/lemo-opuscar/` 是 [lemo-opuscar](https://github.com/lemomo-ai/lemo-opuscar)（MIT）的原样镜像，**不要改里面的文件**。细节见 `server/README.md`
-- `gateway/` Cloudflare Worker 模型网关（持有真实 API key）：文本走 OpenAI 兼容的 `/v1/chat/completions`，图片 / 视频走 `/fal/*` 透传到 fal.ai 队列接口、`/media?url=` 代下载结果；`site/` 页面发布配置（静态资源 Worker，目录 `dist`）
+- `scripts/` 本机跑的运维脚本：`deploy.mjs`（`npm run deploy` 一条命令上线）、`backup.mjs`（`npm run backup` 把线上数据拉回本机）、`remote.mjs`（两者共用的 Workbench 调用层）、`postbuild.mjs`（构建后处理）
+- 文档分工：`README.md` 给人看（架构总览 + 「想改 X 去哪」对照表 + 命令表），`AGENTS.md` 给 Codex 等 agent 看（只有铁律，指向本文件），`docs/运维.md` 是出事时的手册（上机器、部署、备份、恢复、排障），本文件是约定与坑的唯一出处
 - `dist/` 构建产物，已 gitignore；`scripts/postbuild.mjs` 构建后把 index.html 复制一份为旧链接的文件名
 
-线上地址：页面 https://moodio-ui.moodio-ui.workers.dev ，网关 https://moodio-gateway.moodio-ui.workers.dev
+线上地址 **https://47-238-73-78.sslip.io**（页面与接口同源，Caddy 一并发）。上线用 `npm run deploy`，细节见 `docs/运维.md`。
 
-**这两个 workers.dev 域名在国内被墙**（2026-10-31 实测）：本地 DNS 返回污染地址（网关查到 `4.78.139.50` / `118.193.202.219`，真实是 `104.21.53.124` / `172.67.212.212`），就算用 `--resolve` 指到正确 IP，TLS 也在 Client Hello 被重置，所以是按 SNI 拦的。不挂代理必失败；挂 Clash 能通但时断时续（一轮 4 次失败 2 次、每次卡 5 秒，下一轮 10 次全通），请求正好掉在断的那几秒，界面上就是「模型连接失败」。
-根治是把网关与页面绑到自有域名——`moodio.art` 托在 Cloudflare（NS `brady`/`grannbo.ns.cloudflare.com`）**且没有被污染，不挂代理直连就通**。两个 wrangler.toml 里已经写好 `routes`（网关 `gw.moodio.art`、页面 `wow.moodio.art`，`app.moodio.art` 被 Vercel 占着）但注释掉了：**`moodio.art` 的 zone 不在当前部署账号（tmingshuang@gmail.com / `8c5f52bdea253c19925cd69a4458daf0`）下**，deploy 会报 `10083 zone does not exist`。把 zone 挪进这个账号（或把 Worker 部署到持有 zone 的那个账号）之后，去掉注释再 deploy 即可，DNS 记录 wrangler 自己建；同时把 `model.ts` 的 `GATEWAY_BASE` 换成新地址，并加一段把旧 baseUrl 改写过去的一次性迁移。在那之前靠 `callModel()` 的三次重试（退避 0.6s / 2s）扛。
-**绕开它最稳的办法是本地跑网关**：`cp gateway/.dev.vars.example gateway/.dev.vars` 填好 key（`.dev.vars*` 已 gitignore），`npm run gateway:dev` 起在 `http://localhost:8787`，界面「模型设置」里 Base URL 改成 `http://localhost:8787/v1`、API Key 填 `.dev.vars` 里的 `ACCESS_TOKEN`。媒体网关地址留空会自动跟着 Base URL 走（`mediaEndpoint()` 去掉 `/v1` 复用），所以图片 / 视频 / 配音一起切过去，一处改全套生效。本地网关直连 api.deepseek.com / api.moonshot.cn / fal / 方舟，这几家都没被墙。2026-10-31 实测整条链路通（浏览器 5174 → 本地网关 8787 → DeepSeek，CORS 正常，假 key 时上游如实回 401）；`ALLOWED_ORIGINS` 里已经加了 `http://localhost:5174`。
-**另外实测：DeepSeek / Moonshot / fal 三家都回放 `Access-Control-Allow-Origin`，浏览器可以直连。** 所以临时应急还有一条更省事的路——Base URL 直接填 `https://api.deepseek.com/v1`、API Key 填自己的 DeepSeek key，文本完全不经过网关；代价是图片 / 视频 / 配音的 key 在网关里，那部分仍要网关。
+**为什么不用 Cloudflare 了**（2026-10-31 实测后搬走）：`*.workers.dev` 在国内被 DNS 污染（网关查到 `4.78.139.50`，真实是 `104.21.53.124`）并按 SNI 掐 TLS——就算用 `--resolve` 指到正确 IP，Client Hello 也会被重置，所以挂代理才能连、挂了也时断时续（一轮 4 次失败 2 次）。绑自有域名本来能绕开，但 `moodio.art` 的 zone 在另一个 Cloudflare 账号下，deploy 报 `10083 zone does not exist`。最后整条搬到阿里云香港自建，页面与接口同源，国内直连 1.17 秒打开。`gateway/`（Worker 网关）与 `site/`（页面发布配置）两个目录已删除，代码在 git 历史里，网关那份已移植成 `server/src/gateway.mjs`。**Cloudflare 上那两个 Worker 还在跑、Worker secret 里还存着旧的 API key**，要在 Cloudflare 控制台手动删掉。
 
 ## 运行与验证
 
@@ -40,7 +38,7 @@ npm run build          # vite build → dist/
 
 后端（`server/`，第一次要先 `npm install && npm run setup`）：`npm run db:up` 起本机 Postgres、`npm run dev` 起服务（默认 8787）。国内拉不动 Docker Hub，用镜像站：`docker pull docker.m.daocloud.io/library/postgres:17-alpine && docker tag ... postgres:17-alpine`。
 
-发布：`npm run site:deploy`（页面）、`npm run gateway:deploy`（网关）。这台电脑上访问 GitHub / Cloudflare / npm 需要代理：
+上线：`npm run deploy`（跑闸 → push → 服务器重建 → 自检，两三分钟）。备份：`npm run backup`（让服务器现做一份再下载到 `~/WoW备份/`，这是唯一的异地备份，建议每周一次）。这台电脑上访问 GitHub / npm 需要代理：
 `export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=http://127.0.0.1:7890`。仓库已设置 `git config http.proxy`。端口以 Clash Verge 当前监听的为准（`scutil --proxy` 能看到），代理换端口后同步改这里、`.git/config` 和 `.claude/launch.json`，否则 push 会报「Failed to connect to 127.0.0.1 port …」。Cloudflare 与 api.moonshot.cn 不走代理也能连，GitHub 必须走代理。
 
 ## 修改约定
@@ -122,9 +120,10 @@ npm run build          # vite build → dist/
 - **创作 = 项目**（`session.ts`）：侧栏「创作」按钮调 `startCreation()`：新建一个空白项目并**热切换**过去（`flushStores()` 先把挂起的保存写进旧项目，再 `projects.create(...,{reload:false})` + 两个仓库 `reload()`，不刷新页面），新项目没有示例文稿、工作区默认收起（`ui.paneOpen=false`，有产物时 `openInPane()` 自动打开）、标题先叫「新创作」，第一句话发出后 `push()` 把项目名改成对话标题。当前创作还是空白时再点「创作」只聚焦输入框。「创作历史」= 当前项目的对话（内存）+ 其他项目里有内容的对话（`otherProjectsHistory()` 读 localStorage，只在项目变动时重算），点一条 `switchProject(项目id, 对话id)`；条目菜单里「重命名」同步项目名，「删除」在项目只有这一条对话时是删整个创作（`deleteCreation()`：连文件一起删，删当前项目就切到最近改动的另一个，只剩一个时清空成新创作），否则只删对话。Agent 执行中（`useAgent.busy`）拒绝切换。Agent 工具 `create_project` / `switch_project` 仍走整页刷新（它们在计划执行中途调用，热切换会让执行器丢失消息引用）。
 - **素材库（侧栏「资源」）**：`useNav.page = 'library'` 时主区整个换成 `Library.tsx`（布局参考小云雀素材库：顶部「素材库 / 资产库」标签 + 搜索，工具行「平铺 / 列表视图」「AI 生成 / 我上传的」「筛选 / 排序 / 展示尺寸」，正方形灰底卡片，视频角标时长，点开深色大图预览）。数据由 `library.ts` 的 `allMedia()` 汇总：当前项目取内存里的 `useFiles.media`（随生成实时更新），其他项目读各自的 `moodio-files-v1::<id>`；改名 / 删除 / 撤销对非当前项目直接改它的存储键（`renameLibraryMedia` / `deleteLibraryMedia` / `restoreLibraryMedia`），「打开所在创作」`openInCreation()` 先 `switchProject()` 再 `openInPane()`。「资产库」标签按分区（人物 / 场景 / 产品 / 道具 / 其他）分组显示同一批媒体。视图与尺寸偏好存 localStorage `moodio-library-prefs`。素材库只收图片与视频，文稿仍只在各自创作的工作区里。
 - **旧数据**：首次用新版打开某个项目时 `migrate.ts` 把旧版 `moodio-ui-refined-storyboard-v1::<项目id>` 转成文稿与媒体（旧键保留不删）；没有旧数据的全新项目给 `sample.ts` 的示例文稿；`projects.create()` 建的项目都带 `moodio-project-fresh::<id>` 标记，首次加载为空白且工作区收起。
-- **改名（WoW）**：用户可见的名字都改了——`index.html` 标题与 favicon、侧栏 `sb-brand`、`document.title` 的「… · WoW」（projects.ts / session.ts）、弹窗里的「WoW 网关」、系统提示开头「你是 WoW 的创作 Agent」、导出片段的文件夹名、FCPXML 的 event 名。**没动的**（动了会丢数据或换线上地址，要改先说）：localStorage / IndexedDB 的键（`moodio-files-v1` `moodio-agent-chats` `moodio-agent-model` `moodio-tasks` 等）、Cloudflare Worker 名与域名（`moodio-ui.moodio-ui.workers.dev`、`moodio-gateway…`）、仓库目录名、本地助手 `moodio-helper.py` 与它写入的 `~/Movies/Moodio/`、代码里的内部标识符（如 `isMoodioGateway`）。
+- **改名（WoW）**：用户可见的名字都改了——`index.html` 标题与 favicon、侧栏 `sb-brand`、`document.title` 的「… · WoW」（projects.ts / session.ts）、弹窗里的「WoW 网关」、系统提示开头「你是 WoW 的创作 Agent」、导出片段的文件夹名、FCPXML 的 event 名。**没动的**（动了会丢数据或换线上地址，要改先说）：localStorage / IndexedDB 的键（`moodio-files-v1` `moodio-agent-chats` `moodio-agent-model` `moodio-tasks` 等）、仓库目录名、本地助手 `moodio-helper.py` 与它写入的 `~/Movies/Moodio/`、代码里的内部标识符（如 `isMoodioGateway`）。
 - **提交**：改动完成并验证后立即 commit 并 push，提交信息用中文，末尾加 `Co-Authored-By: Claude <当前模型名> <noreply@anthropic.com>`。
-- **不要提交** `dist/`、`node_modules/`、`.wrangler/`；不要编辑 `~/Downloads` 里的旧副本。
+- **不要提交** `dist/`、`node_modules/`、`.env`；不要编辑 `~/Downloads` 里的旧副本。
+- **分支只有一个 `main`**（2026-10-31 整理：`redesign` 快进进 main，`split-workspace` / `refactor/split-files` / `rhr_git` / `archive/videomodel-*` 的提交全都已经包含在里面，删掉不丢东西；旧原型留了 tag `v0-prototype` / `v0-split-workspace`）。开工前 `git pull`，收工 `git push`。
 
 ## 代码地标
 
@@ -141,7 +140,7 @@ npm run build          # vite build → dist/
 | 后端 | `server/src/index.mjs`（HTTP 入口与渲染队列）、`gateway.mjs`（模型网关）、`db.mjs` / `auth.mjs` / `sync.mjs` / `store.mjs`（账号与同步）、`render/job.mjs`（`prepareJob` / `renderVideo` / `readcheck`）、`settings.mjs`（服务端配置，库 > .env）、`db/001_init.sql` + `db/002_settings.sql`（库表）、`vendor/lemo-opuscar/`（MIT 原样镜像，别改）|
 | 管理后台 | `components/ServerDialog.tsx`（弹窗）+ `lib/server.ts`（客户端）+ `server/src/settings.mjs`（白名单 / 一次性口令 / 只回状态）；入口在 `Sidebar.tsx` 的设置菜单 |
 | 创作流程 / 台账 / 成片 | `skills.ts`（`SKILLS` / `skillFor` / `skillStages` / `AD_MODEL_TEMPLATE` / `EVIDENCE_CONTRACT`）、`ledger.ts`（`ensureLedger` / `updateLedger` / `ledgerText`）、`lint.ts`（`lintClips`）、`sheet.ts`（`makeSheet`）、`compose.ts`（`composeVideos`）；提示注入见 `prompt.ts` 的 `skillBlock()` 与 `videoModelLine()` |
-| 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `buildInput()` / `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `gateway/worker.js` 的 `falProxy` 与 `mediaProxy` |
+| 图片 / 视频生成 | `mediagen.ts`：`generateImage()` / `generateVideo()` / `manualGenerate()`（手动入口）/ `buildInput()` / `mediaEndpoint()` / `mediaReadyReason()` / `MEDIA_DEFAULTS`；网关侧见 `server/src/gateway.mjs` 的 `falProxy` 与 `mediaProxy` |
 | 模型选择面板 | `ModelPrefs.tsx`（输入框工具栏里的按钮，视频 / 图片 / 推理模型三个标签页）；媒体模型目录 `mediamodels.ts`，推理模型目录 `model.ts` 的 `CHAT_MODELS` |
 | 计划卡 / 追问卡 / 自审卡 / 下一步 | `MessageList.tsx`（`PlanCard` / `QuestionCard` / `ReviewCard`），动作 id：`plan-confirm:` `plan-cancel:` `open-doc:` `open-media:` `restore-trash:` |
 | 工作区 | `ResourcePane.tsx`：分区网格 / 列表与搜索、`DocView`（预览 / 编辑自动保存、Agent 写入实时显示）、`MediaView`（视频全屏：用户要用播放器自带的那个全屏按钮，**但页面代码碰不到它**——浏览器把自带控件上的 click / pointerdown 全吞了，容器捕获阶段也收不到，所以别再试拦截；它在正常浏览器里本来就能用，只有嵌在应用里的预览窗会把全屏请求静默忽略（既不成功也不报错）。退路是**双击画面**：`onVideoDoubleClick` 先请求原生全屏，没进去就 `.media-body.filled` 铺满窗口，Esc / 再双击 / 右上角按钮退出。不要在顶栏另加全屏按钮，用户不要）、拖拽上传；上传逻辑 `upload.ts` |

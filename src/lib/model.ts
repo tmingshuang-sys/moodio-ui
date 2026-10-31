@@ -4,15 +4,14 @@
 import type { ModelConfig } from './types';
 
 export const MODEL_KEY = 'moodio-agent-model';
-// 网关地址只写这一处。注意 workers.dev 在国内被 DNS 污染并按 SNI 掐 TLS：不挂代理连不上，挂了也时断时续
-//（实测一轮 4 次里失败 2 次，每次卡 5 秒后重置）。根治要把网关绑到没被污染的自有域名上，
-// 但 moodio.art 的 zone 在另一个 Cloudflare 账号下，当前登录的账号绑不了（见 gateway/wrangler.toml 的说明）。
-// 在那之前靠下面 callModel 的多次重试扛过去。
-// 自建后端把页面和接口发在同一个源下时，构建时传 VITE_API_BASE=/v1，这里就变成相对路径：
-// 同源之后不需要 CORS，也不用再维护来源白名单。没传就还是原来的 Cloudflare 网关（本机开发、
-// 以及页面仍托管在 Cloudflare 上的情况）。server/deploy/setup.sh 构建前端时会传。
+// 网关地址只写这一处。默认 '/v1' = 和页面同源：线上由 Caddy 把 /v1 反代到后端，
+// 本机开发由 vite 的 proxy 代到 WOW_API（默认 127.0.0.1:8787）。同源就不需要 CORS，
+// 也不用维护来源白名单。要指到别处时构建时传 VITE_API_BASE。
+// 旧的 Cloudflare 网关（moodio-gateway.moodio-ui.workers.dev）已经不用了——它在国内被 DNS 污染
+// 并按 SNI 掐 TLS，不挂代理连不上、挂了也时断时续（实测一轮 4 次失败 2 次）。那份 Worker 的代码
+// 在 git 历史里，已移植成 server/src/gateway.mjs。下面那个常量只用来认出并改写旧配置。
 const LEGACY_GATEWAY = 'https://moodio-gateway.moodio-ui.workers.dev/v1';
-export const GATEWAY_BASE = (import.meta.env?.VITE_API_BASE as string | undefined) || LEGACY_GATEWAY;
+export const GATEWAY_BASE = (import.meta.env?.VITE_API_BASE as string | undefined) || '/v1';
 export const SAME_ORIGIN_API = GATEWAY_BASE.startsWith('/');
 export const PROVIDER_DEFAULTS = {
   claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-opus-5', placeholder: 'sk-ant-...' },
@@ -67,9 +66,9 @@ export function chatCfg(cfg: ModelConfig, kind: ChatKind): ModelConfig & { candi
 }
 const MODEL_UNAVAILABLE_RE = /返回 (404|503)|not exist|not found|不存在|未配置|无法用|invalid model|model_not_found|does not exist/i;
 // 旧配置里存的是默认的具体模型名：第一次带智能匹配的版本启动时改成智能匹配（只做一次），之后用户手选的不再改
-// 同源部署下，把旧配置里存的 workers.dev 网关地址改成同源（口令不变，但换机器后口令也会变，所以只改地址）
-(() => { try { if (!SAME_ORIGIN_API || typeof localStorage === 'undefined') return; const cfg = modelCfg();
-  if (cfg && String(cfg.baseUrl || '').includes('moodio-gateway.moodio-ui.workers.dev')) saveModelCfg({ ...cfg, baseUrl: GATEWAY_BASE });
+// 把旧配置里存的 workers.dev 网关地址改成现在的（口令不变，但换机器后口令也会变，所以只改地址）
+(() => { try { if (typeof localStorage === 'undefined') return; const cfg = modelCfg();
+  if (cfg && String(cfg.baseUrl || '').includes(LEGACY_GATEWAY.replace('/v1', ''))) saveModelCfg({ ...cfg, baseUrl: GATEWAY_BASE });
 } catch { /* ignore */ } })();
 (() => { try { if (typeof localStorage === 'undefined' || localStorage.getItem('moodio-chat-prefs-v2')) return; const cfg = modelCfg(); if (cfg && modelProvider(cfg) === 'openai' && (!cfg.model || cfg.model === PROVIDER_DEFAULTS.openai.model)) localStorage.setItem(MODEL_KEY, JSON.stringify({ ...cfg, model: CHAT_AUTO_ID })); localStorage.setItem('moodio-chat-prefs-v2', '1'); } catch { /* ignore */ } })();
 

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Moodio UI：Vite + React + TypeScript。构建产物在 dist/（纯静态，由 site/wrangler.toml 作为静态资源 Worker 发布）
+// WoW：Vite + React + TypeScript。构建产物在 dist/（纯静态，线上由服务器上的 Caddy 直接发）
 export default defineConfig({
   plugins: [react()],
   base: './',

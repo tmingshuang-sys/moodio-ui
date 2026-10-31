@@ -38,7 +38,10 @@ export function mediaEndpoint(cfg: ModelConfig | null = modelCfg()): MediaEndpoi
   const base = String(cfg?.mediaBaseUrl || '').trim().replace(/\/+$/, '')
     || (cfg?.provider !== 'claude' ? String(cfg?.baseUrl || MEDIA_DEFAULTS.baseUrl).trim().replace(/\/+$/, '').replace(/\/v1$/, '') : MEDIA_DEFAULTS.baseUrl);
   const token = String(cfg?.mediaToken || '').trim() || (cfg?.provider !== 'claude' ? String(cfg?.apiKey || '').trim() : '');
-  if (!base || !token) return null;
+  // base 是空字符串**是合法的**：同源部署时媒体接口就挂在页面自己这个源下，拼出来是 /fal/… /ark/…。
+  // 以前这里写的是 `if (!base || !token)`，于是线上（VITE_API_BASE=/v1）一律判成「没配置网关」，
+  // 图片和视频生成直接不可用——口令填得再对也没用。只有口令才是必须的。
+  if (!token) return null;
   return { base, token };
 }
 export function mediaReadyReason(): string | null {

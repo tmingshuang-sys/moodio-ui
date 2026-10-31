@@ -1,0 +1,6 @@
+[Unit]
+Description=WoW 每日备份（数据库 + 媒体文件 + 配置）
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash @APP_DIR@/server/deploy/backup.sh

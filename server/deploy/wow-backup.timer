@@ -1,0 +1,12 @@
+[Unit]
+Description=每天跑一次 WoW 备份
+
+[Timer]
+# 凌晨 3:30，加最多 30 分钟随机延迟（避开整点一起醒来）
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30m
+# 机器关机错过了就开机后补跑——定时备份最常见的失效方式就是「那天机器没开」
+Persistent=true
+
+[Install]
+WantedBy=timers.target

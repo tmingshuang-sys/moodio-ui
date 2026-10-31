@@ -26,6 +26,12 @@ describe('media endpoint', () => {
     const { mediaEndpoint } = await load();
     expect(mediaEndpoint()).toEqual({ base: 'https://media.example.com', token: 'media' });
   });
+  it('同源部署时 base 是空字符串，不能当成「没配置」——线上就是这么挂掉的', async () => {
+    setCfg({ provider: 'openai', baseUrl: '/v1', apiKey: '口令' });
+    const { mediaEndpoint, mediaReadyReason } = await load();
+    expect(mediaEndpoint()).toEqual({ base: '', token: '口令' });   // 拼出来是 /fal/… /ark/…，同源
+    expect(mediaReadyReason()).toBeNull();
+  });
   it('does not borrow the Anthropic base or key for media', async () => {
     setCfg({ provider: 'claude', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant-x' });
     const { mediaEndpoint, MEDIA_DEFAULTS } = await load();

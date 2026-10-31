@@ -2,13 +2,9 @@
 node_modules/
 .claude/
 *.log
-backups/*.json
-node_modules/
-.wrangler/
 dist/
 
-.dev.vars*
-!.dev.vars.example
+# 密钥：一律不进仓库
 .env*
 !.env.example
 
@@ -19,4 +15,3 @@ server/runtime/wow/renderer.js
 server/jobs/
 server/blobs/
 server/.pgdata/
-server/.env

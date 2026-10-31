@@ -1,4 +1,4 @@
-// 模型网关：从 gateway/worker.js（Cloudflare Worker）移植过来，路由与语义保持一致。
+// 模型网关：从原来的 Cloudflare Worker（旧仓库里的 gateway/worker.js，已删，在 git 历史里）移植过来，路由与语义保持一致。
 // 搬到自己的服务器上有两个原因：① workers.dev 在国内被 DNS 污染并按 SNI 掐 TLS，页面连不稳；
 // ② 以后渲染、存储、网关在同一台机器上，生成的素材不用再绕一圈公网。
 // 真实 key 只在服务端环境变量里，页面仍然只带 ACCESS_TOKEN。

@@ -8,11 +8,8 @@
     "preview": "vite preview --port 5174",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "gateway:login": "wrangler login --config gateway/wrangler.toml",
-    "gateway:deploy": "wrangler deploy --config gateway/wrangler.toml",
-    "gateway:dev": "wrangler dev --config gateway/wrangler.toml",
-    "site:build": "npm run check && npm run build",
-    "site:deploy": "npm run site:build && wrangler deploy --config site/wrangler.toml"
+    "deploy": "node scripts/deploy.mjs",
+    "backup": "node scripts/backup.mjs"
   },
   "dependencies": {
     "idb-keyval": "latest",
@@ -31,7 +28,6 @@
     "@vitejs/plugin-react": "latest",
     "typescript": "latest",
     "vite": "latest",
-    "vitest": "latest",
-    "wrangler": "^4.131.1"
+    "vitest": "latest"
   }
 }
