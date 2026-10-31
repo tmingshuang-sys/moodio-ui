@@ -22,8 +22,8 @@ if [ "${WOW_REEXEC:-}" != 1 ] && [ -f "$SELF" ]; then
 fi
 
 DOMAIN=""
-REPO="${WOW_REPO:-git@github.com:tmingshuang-sys/moodio-ui.git}"
-BRANCH="${WOW_BRANCH:-redesign}"
+REPO="${WOW_REPO:-https://github.com/tmingshuang-sys/moodio-ui.git}"   # 仓库是公开的，HTTPS 取代码不用任何凭据
+BRANCH="${WOW_BRANCH:-main}"
 APP_DIR=/opt/wow
 APP_USER=wow
 NODE_VERSION=v24.22.2

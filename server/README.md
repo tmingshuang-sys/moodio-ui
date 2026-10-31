@@ -8,7 +8,7 @@
 | 数据同步 | `/api/auth/*`、`/api/projects`、`/api/sync/*`、`/api/media/:id` | 用户 token | 没 `DATABASE_URL` 时回 503 |
 | 服务端渲染 | `/api/render`、`/api/render/:id`、`/api/render/:id/file` | 用户 token | 渲染环境没装时回 503 |
 
-三件事互不依赖：只想把网关搬出 `workers.dev`，不配数据库也能单独跑。
+三件事互不依赖：只想跑模型网关的话，不配数据库也能单独起。
 
 ## 跑起来
 
